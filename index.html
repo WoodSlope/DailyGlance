@@ -27,7 +27,6 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 .nav-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.05); }
 .nav-btn.active { background: var(--blue); color: #fff; }
 .header-right { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
-.cache-time { font-size: 10px; color: var(--text-dim); padding: 4px 12px; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 20px; background: rgba(30, 41, 59, 0.6); }
 
 .main-container { display: flex; height: calc(100vh - 64px); min-height: 0; }
 .chart-section { flex: 1; display: flex; flex-direction: column; padding: var(--page-padding); background: #000; min-width: 0; }
@@ -136,8 +135,10 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 .stock-search { position: relative; width: 100%; }
 .stock-search input { width: 100%; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; color: var(--text-main); font-size: 13px; font-weight: 600; outline: none; }
 .stock-search input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+.stock-search input::placeholder { color: var(--text-dim); font-weight: 400; }
 .stock-suggest { position: absolute; top: 100%; left: 0; right: 0; z-index: 100; background: #0f172a; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; margin-top: 4px; max-height: 260px; overflow-y: auto; display: none; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5); }
-.stock-suggest-item { padding: 10px 14px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.04); }
+.stock-suggest-item { padding: 10px 14px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.04); transition: background .15s; }
+.stock-suggest-item:last-child { border-bottom: none; }
 .stock-suggest-item:hover, .stock-suggest-item.active { background: rgba(59, 130, 246, 0.12); }
 .stock-suggest-item .ss-name { font-size: 13px; font-weight: 600; color: #f1f5f9; }
 .stock-suggest-item .ss-code { font-size: 11px; font-family: 'JetBrains Mono', monospace; color: #94a3b8; }
@@ -145,8 +146,7 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 
 .stock-header { display: flex; align-items: center; margin-bottom: 8px; }
 .stock-header .title-wrap span:first-child { font-size: 13px; font-weight: 700; color: #94a3b8; text-transform: uppercase; }
-.stock-header .stock-hint { margin-left: auto; font-size: 9px; color: var(--text-dim); }
-.stock-item { display: flex; align-items: center; padding: 9px 12px; border-radius: 8px; cursor: pointer; margin-bottom: 2px; }
+.stock-item { display: flex; align-items: center; padding: 9px 12px; border-radius: 8px; cursor: pointer; margin-bottom: 2px; transition: background .15s;}
 .stock-item:hover { background: rgba(59, 130, 246, 0.08); }
 .stock-item.active { background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.25); }
 .stock-item .sname { flex: 1; font-size: 13px; font-weight: 700; }
@@ -471,6 +471,7 @@ async function getCachedData(id) { const c = await dbGet(id); return (c && c.dat
 async function clearAllCache() { if(DB) { const tx = DB.transaction(STORE, 'readwrite'); tx.objectStore(STORE).clear(); await new Promise(r => tx.oncomplete = r); } state.rawData = {}; dataSourceInfo = {}; location.reload(); }
 function handleClearCache() { if(confirm('确定要清除所有缓存吗？')) clearAllCache().catch(e=>alert('清除失败: '+e.message)); }
 
+// === 核心数据预取函数 ===
 async function cachedFetch(id) {
     let firstLoad = true;
     const cachedResult = await dbGet(id);
@@ -499,6 +500,25 @@ async function cachedFetch(id) {
             updateAllIndicators();
             requestAnimationFrame(() => { draw(); updateSidebar(fresh[fresh.length-1], fresh[fresh.length-2] || null); });
         }
+    }
+}
+
+async function preloadCacheOnly() {
+    const symbols = ['sh', 'sz', 'cy'];
+    if(state.watchlist && state.watchlist.length > 0) {
+        symbols.push(...state.watchlist.slice(0, 5).map(s => codeToSecid(s.code)).filter(s => !symbols.includes(s)));
+    }
+    
+    for(const id of symbols) {
+        try {
+            const cachedResult = await dbGet(id);
+            if(cachedResult && cachedResult.data && cachedResult.data.length >= 30) {
+                if(isValidPrice(cachedResult.data[cachedResult.data.length - 1].close, id)) {
+                    state.rawData[id] = cachedResult.data;
+                    dataSourceInfo[id] = { source: 'cache', updateTime: formatCacheTime(cachedResult.updated) };
+                }
+            }
+        } catch(e) {}
     }
 }
 
@@ -701,7 +721,7 @@ function draw() {
 }
 function syncHover(els){if(els&&els.length)Object.values(state.charts).forEach(c=>{if(c){c.setActiveElements([{index:els[0].index}]);c.update('none');}});}
 
-// === 核心逻辑修改：重构侧边栏渲染 ===
+// === HTML 生成与渲染侧边栏 ===
 function generateAnalysisHTML(idx, full, meta) {
     const adv = getAdvisePosition(meta); let prevAdv = 0;
     if(idx>0) prevAdv = getAdvisePosition(getSignalMeta(idx-1, full, state.indicators));
