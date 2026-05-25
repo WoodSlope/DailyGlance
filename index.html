@@ -195,21 +195,32 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
         <div class="sg-header"><h2>📖 API接口使用说明</h2></div>
         <div class="sg-body" style="color:var(--text-dim);font-size:14px;line-height:1.8;">
             <h3 style="color:var(--text-main);margin-top:10px;">📊 分层API策略</h3>
-            <p style="font-size:12px;margin:0 0 15px 0;">根据时段自动选择最优数据源，确保数据完整且API调用最少</p>
             
             <div style="background:rgba(255,255,255,0.05);padding:15px;border-radius:8px;margin:10px 0;">
-                <p style="margin:0 0 10px 0;color:#3b82f6;font-weight:600;">⚡ 交易时段（9:15-15:15）</p>
-                <p style="margin:8px 0 0 0;font-size:12px;color:var(--text-dim);">📌 策略：历史数据取自缓存，今日数据实时更新（腾讯API），无缝拼接显示，避免重复调用</p>
+                <p style="margin:0 0 10px 0;color:#3b82f6;font-weight:600;">⚡ 历史数据源双重保障</p>
+                <p style="margin:8px 0 0 0;font-size:12px;color:var(--text-dim);">📌 1. 东方财富API：获取最近360天K线数据<br>📌 2. 腾讯财经API：作为备用源，确保数据万无一失</p>
             </div>
             
             <div style="background:rgba(255,255,255,0.05);padding:15px;border-radius:8px;margin:10px 0;">
-                <p style="margin:0 0 10px 0;color:#22c55e;font-weight:600;">🌙 非交易时段（9:15前/15:15后/周末）</p>
-                <p style="margin:8px 0 0 0;font-size:12px;color:var(--text-dim);">📌 策略：收盘后检测缓存，仅更新新增交易日数据，自动增量更新</p>
+                <p style="margin:0 0 10px 0;color:#22c55e;font-weight:600;">🌙 盘中实时更新保障</p>
+                <p style="margin:8px 0 0 0;font-size:12px;color:var(--text-dim);">📌 腾讯财经实时API：盘中每30秒获取最新价格，与历史数据无缝拼接</p>
             </div>
-            
+
             <div style="background:rgba(255,255,255,0.05);padding:15px;border-radius:8px;margin:10px 0;">
-                <p style="margin:0 0 10px 0;color:#f59e0b;font-weight:600;">🔧 手动强制更新（随时可用）</p>
-                <p style="margin:8px 0 0 0;font-size:12px;color:var(--text-dim);">📌 点击"更新数据"按钮强制全量下载。保护机制：冷却60秒防止API限流</p>
+                <p style="margin:0 0 10px 0;color:#f59e0b;font-weight:600;">🔧 更新策略详解</p>
+                <p style="margin:8px 0 0 0;font-size:12px;color:var(--text-dim);">
+                    <b>【自动加载策略】</b><br>
+                    • 每次进入页面自动检查历史数据是否完整<br>
+                    • 数据充足时自动增量更新缺失的历史数据<br>
+                    • 开盘时间(9:15-15:15)：额外每30秒获取实时价格更新<br><br>
+                    <b>【手动更新策略】</b><br>
+                    • 点击更新按钮：智能判断是否需要更新，提示确认后全量重新下载<br>
+                    • 更新冷却：60秒内禁止重复点击<br><br>
+                    <b>【增量更新保护】</b><br>
+                    • 当API返回数据不完整时，自动保留本地缓存<br>
+                    • 找不到缓存最后日期时，拒绝覆盖避免数据丢失<br>
+                    • 合并数据时自动去重，防止重复日期
+                </p>
             </div>
         </div>
     </div>
@@ -219,7 +230,7 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
     <div class="header-left">
         <div class="logo-box">
             <svg width="28" height="28" viewBox="0 0 1024 1024" fill="white" xmlns="http://www.w3.org/2000/svg">
-                <path d="M505.291305 62.923971C505.291305 63.752356 503.303214 64.912096 500.817959 65.574804 493.528235 67.231574 486.072701 73.858657 482.262162 81.811155 478.948654 88.603914 478.782977 91.586101 478.782977 137.312968L478.782977 185.690668 474.475373 185.690668C465.69449 185.690668 427.754444 194.305841 408.701583 200.601603 375.234818 211.867642 340.27696 230.092118 313.437277 250.80175L304.656393 257.428832 270.361243 223.299359C232.918229 186.187699 232.752552 186.022022 215.356461 187.678792 203.759068 188.838548 194.481153 195.299937 189.510858 206.068929 180.56428 225.453161 183.049436 230.257795 223.971668 271.345705L257.272756 304.646792 251.474059 311.936583C221.652189 348.551212 196.469277 407.200889 187.357072 461.542962L184.540529 478.110668 134.671736 478.939053 84.802943 479.767438 77.67883 484.73775C69.726331 490.37077 61.608156 503.790611 61.442479 511.246078 61.276801 519.364254 69.560654 533.612481 77.67883 539.411177L84.802943 544.381489 134.671736 545.209874 184.540529 546.03826 185.700252 552.665391C193.32138 596.238407 198.126031 613.303143 210.054796 641.799597 219.167017 663.171937 234.575 690.011619 247.994858 707.573387L257.107079 719.502135 223.143283 753.797285C195.640892 781.465353 188.848133 789.252174 187.357072 794.55384 182.718082 811.618577 188.848133 825.701126 204.587453 833.984979 212.705629 838.292582 227.119565 838.623936 234.409323 834.647687 237.225832 833.156594 254.124859 817.417273 272.183674 799.689829L305.153424 767.217126 311.946184 772.850146C350.548937 803.831755 408.038875 828.517636 459.564372 836.138781L478.782977 839.120968 478.782977 937.533137 484.25032 945.485636C490.049016 954.432197 503.800212 962.550373 512.746773 962.550373 519.705176 962.71605 532.959373 954.929228 539.089358 947.308084L544.225413 940.846678 544.722444 889.818146 545.219475 838.789613 554.6631 837.629874C607.514047 831.334146 664.341277 808.63639 706.257571 777.323426 712.387622 772.684469 718.351996 768.873897 719.346059 768.873897 720.505798 768.873897 735.913764 783.2878 753.641209 801.015245 771.534331 818.577013 787.605005 833.819302 789.427452 834.813364 810.634115 845.085341 838.302183 828.186282 838.302183 804.991494 838.136506 792.400038 833.663226 786.269987 799.69943 752.471868L767.226727 720.164843 772.362716 713.537761C806.160835 668.639279 829.686976 613.137466 837.142444 560.452163L839.130569 546.03826 888.833685 545.209874C942.347373 544.381489 943.672789 544.050135 952.122319 534.937897 956.429923 530.298939 962.559973 516.547744 962.559973 511.246078 962.559973 502.13384 953.282058 487.719937 943.672789 482.583948 939.199509 480.098792 931.578364 479.601761 888.999362 478.939053L839.296246 478.110668 836.479736 460.714577C828.030206 407.863597 807.154897 357.994804 776.338965 316.57554L767.06105 304.149761 800.859169 271.01435C837.805152 234.731076 839.6276 232.080243 837.639475 216.5066 836.479736 206.068929 829.852653 196.293999 820.906093 191.158011 812.787917 186.51902 797.711305 186.022022 789.758807 189.998271 786.77662 191.489365 769.87756 207.228685 751.984438 224.95613L719.346059 257.428832 709.405435 249.642011C669.642943 219.157433 615.466546 196.293999 562.449889 187.513149L545.882183 184.862283 545.053798 134.993456 544.225413 85.124696 539.586455 78.16626C536.604202 73.69298 532.296665 70.048084 527.160676 67.562929 522.853073 65.574804 519.208178 63.421002 518.876824 62.592617 518.048438 60.935846 505.291305 61.101523 505.291305 62.923971ZM564.769301 256.103416C639.158365 271.511365 704.435124 319.557727 741.381107 386.159903 776.338965 449.28286 783.297401 526.488367 760.268291 595.575732 732.7659 677.751517 663.01586 742.862599 578.686174 764.73197 461.221242 795.382225 337.129096 741.537183 281.627283 635.835223 241.699129 559.955132 239.876665 474.631449 276.656971 398.420005 315.425402 318.232311 392.465232 263.393206 482.759226 251.961489 502.971827 249.476333 541.740257 251.298764 564.769301 256.103416Z"/><path d="M477.954591 320.883144C439.351838 327.675903 403.896948 346.39741 375.069141 375.225217 337.626127 412.668231 318.076235 459.720448 318.076235 512.074464 318.076235 564.428479 337.626127 611.480696 375.069141 648.92371 414.997311 688.85188 464.037719 707.904741 520.864948 705.419585 568.745617 703.431461 610.164913 685.869693 645.288416 652.568605 676.767056 622.581058 695.985561 587.291846 703.275384 546.369581 707.582988 522.512118 706.091894 485.897489 699.961843 463.199733 683.228461 400.242452 636.673242 350.207982 574.544314 328.338611 566.591815 325.687778 553.503328 322.20856 545.550829 320.717467 527.657757 317.73528 495.847713 317.73528 477.954591 320.883144ZM544.722444 389.639121C565.432076 394.940787 585.147645 406.372503 601.383996 422.608855 617.123317 438.348175 624.744461 449.945568 631.371543 468.832753 652.578206 528.807846 627.229617 594.747346 571.562127 623.740798 551.183915 634.344162 538.923747 637.160639 511.918387 637.160639 491.374433 637.160639 486.072701 636.663608 475.469436 633.350067 421.292973 616.285264 385.83815 568.736016 385.83815 512.902849 385.83815 494.678373 387.49492 484.73775 392.465232 470.158235 408.204552 425.09401 447.967045 392.786985 495.682003 386.159903 509.267555 384.337455 529.645832 385.828549 544.722444 389.639121Z"/><path d="M497.835788 480.430146C474.6411 491.199155 470.16777 521.352379 489.220631 538.085761 506.119691 552.996696 532.462342 548.357738 543.065674 528.476492 548.533016 518.370192 547.704631 502.630905 541.408903 492.855925 532.793696 479.270407 512.581029 473.637321 497.835788 480.430146Z"/></svg></div>
+                <path d="M505.291305 62.923971C505.291305 63.752356 503.303214 64.912096 500.817959 65.574804 493.528235 67.231574 486.072701 73.858657 482.262162 81.811155 478.948654 88.603914 478.782977 91.586101 478.782977 137.312968L478.782977 185.690668 474.475373 185.690668C465.69449 185.690668 427.754444 194.305841 408.701583 200.601603 375.234818 211.867642 340.27696 230.092118 313.437277 250.80175L304.656393 257.428832 270.361243 223.299359C232.918229 186.187699 232.752552 186.022022 215.356461 187.678792 203.759068 188.838548 194.481153 195.299937 189.510858 206.068929 180.56428 225.453161 183.049436 230.257795 223.971668 271.345705L257.272756 304.646792 251.474059 311.936583C221.652189 348.551212 196.469277 407.200889 187.357072 461.542962L184.540529 478.110668 134.671736 478.939053 84.802943 479.767438 77.67883 484.73775C69.726331 490.37077 61.608156 503.790611 61.442479 511.246078 61.276801 519.364254 69.560654 533.612481 77.67883 539.411177L84.802943 544.381489 134.671736 545.209874 184.540529 546.03826 185.700252 552.665391C193.32138 596.238407 198.126031 613.303143 210.054796 641.799597 219.167017 663.171937 234.575 690.011619 247.994858 707.573387L257.107079 719.502135 223.143283 753.797285C195.640892 781.465353 188.848133 789.252174 187.357072 794.55384 182.718082 811.618577 188.848133 825.701126 204.587453 833.984979 212.705629 838.292582 227.119565 838.623936 234.409323 834.647687 237.225832 833.156594 254.124859 817.417273 272.183674 799.689829L305.153424 767.217126 311.946184 772.850146C350.548937 803.831755 408.038875 828.517636 459.564372 836.138781L478.782977 839.120968 478.782977 937.533137 484.25032 945.485636C490.049016 954.432197 503.800212 962.550373 512.746773 962.550373 519.705176 962.71605 532.959373 954.929228 539.089358 947.308084L544.225413 940.846678 544.722444 889.818146 545.219475 838.789613 554.6631 837.629874C607.514047 831.334146 664.341277 808.63639 706.257571 777.323426 712.387622 772.684469 718.351996 768.873897 719.346059 768.873897 720.505798 768.873897 735.913764 783.2878 753.641209 801.015245 771.534331 818.577013 787.605005 833.819302 789.427452 834.813364 810.634115 845.085341 838.302183 828.186282 838.302183 804.991494 838.136506 792.400038 833.663226 786.269987 799.69943 752.471868L767.226727 720.164843 772.362716 713.537761C806.160835 668.639279 829.686976 613.137466 837.142444 560.452163L839.130569 546.03826 888.833685 545.209874C942.347373 544.381489 943.672789 544.050135 952.122319 534.937897 956.429923 530.298939 962.559973 516.547744 962.559973 511.246078 962.559973 502.13384 953.282058 487.719937 943.672789 482.583948 939.199509 480.098792 931.578364 479.601761 888.999362 478.939053L839.296246 478.110668 836.479736 460.714577C828.030206 407.863597 807.154897 357.994804 776.338965 316.57554L767.06105 304.149761 800.859169 271.01435C837.805152 234.731076 839.6276 232.080243 837.639475 216.5066 836.479736 206.068929 829.852653 196.293999 820.906093 191.158011 812.787917 186.51902 797.711305 186.022022 789.758807 189.998271 786.77662 191.489365 769.87756 207.228685 751.984438 224.95613L719.346059 257.428832 709.405435 249.642011C669.642943 219.157433 615.466546 196.293999 562.449889 187.513149L545.882183 184.862283 545.053798 134.993456 544.225413 85.124696 539.586455 78.16626C536.604202 73.69298 532.296665 70.048084 527.160676 67.562929 522.853073 65.574804 519.208178 63.421002 518.876824 62.592617 518.048438 60.935846 505.291305 61.101523 505.291305 62.923971ZM564.769301 256.103416C639.158365 271.511365 704.435124 319.557727 741.381107 386.159903 776.338965 449.28286 783.297401 526.488367 760.268291 595.575732 732.7659 677.751517 663.01586 742.862599 578.686174 764.73197 461.221242 795.382225 337.129096 741.537183 281.627283 635.835223 241.699129 559.955132 239.876665 474.631449 276.656971 398.420005 315.425402 318.232311 392.465232 263.393206 482.759226 251.961489 502.971827 249.476333 541.740257 251.298764 564.769301 256.103416Z"/><path d="M497.835788 480.430146C474.6411 491.199155 470.16777 521.352379 489.220631 538.085761 506.119691 552.996696 532.462342 548.357738 543.065674 528.476492 548.533016 518.370192 547.704631 502.630905 541.408903 492.855925 532.793696 479.270407 512.581029 473.637321 497.835788 480.430146Z"/></svg></div>
         <div class="header-title">DailyGlance</div>
     </div>
     
@@ -261,7 +272,6 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
     </section>
     
     <aside class="info-section">
-        <!-- 固定 ID 的容器，防止切换时错乱 -->
         <div class="card" id="cardWatchlist" style="display: none;"></div>
         <div class="card" id="cardPrice" style="display: none;"></div>
         <div class="card" id="cardAnalysis" style="display: none;"></div>
@@ -327,7 +337,6 @@ const SIGNAL_DESC = {
 };
 
 const ui = {set:(id,v)=>{const e=document.getElementById(id);if(e)e.innerText=v;}, setHTML:(id,h)=>{const e=document.getElementById(id);if(e)e.innerHTML=h;}};
-function withTimeout(promise, ms, defaultValue=[]) { return Promise.race([promise, new Promise(r => setTimeout(()=>r(defaultValue), ms))]); }
 
 const STOCK_TOKEN='D43BF722C8E33BDC906FB84D85E326E8';
 function codeToSecid(c){return c.match(/^6/)?'1.'+c:'0.'+c}
@@ -341,54 +350,7 @@ const STOCK_DATABASE = [
 ];
 let stockCache = [];
 
-// === 数据获取 ===
-async function syncDataEastmoney(id) {
-    const ids = {sh:'1.000001', sz:'0.399001', cy:'0.399006'}; const secid = ids[id] || id;
-    const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&end=20500101&lmt=360`;
-    try {
-        const res = await withTimeout(fetch(url), 8000); if(!res||!res.json) return [];
-        const json = await res.json();
-        if(json.data && json.data.klines) {
-            return json.data.klines.map(l => {
-                const p = l.split(',');
-                return { date: p[0], open: parseFloat(p[1]), close: parseFloat(p[2]), high: parseFloat(p[3]), low: parseFloat(p[4]), vol: parseFloat(p[5]), amt: parseFloat(p[6]) };
-            }).filter(item => isValidPrice(item.close, id));
-        } return [];
-    } catch(e) { return []; }
-}
-
-async function syncDataTickFlow(id) {
-    const API_KEY = 'tk_7ef4f9491b2a453dbd16110569148560';
-    const ids = {sh:'000001.SH', sz:'399001.SZ', cy:'399006.SZ'}; const symbol = ids[id] || (id.startsWith('1.') ? id.substring(2)+'.SH' : id.substring(2)+'.SZ');
-    const url = `https://api.tickflow.org/v1/klines?symbol=${symbol}&period=1d&count=360`;
-    try {
-        const res = await withTimeout(fetch(url, {headers:{'x-api-key':API_KEY}}), 8000); if(!res||!res.json) return [];
-        const json = await res.json(); if(!json||!json.data) return [];
-        const { timestamp, open, close, high, low, volume, amount } = json.data;
-        if(!timestamp||!close||!Array.isArray(timestamp)) return [];
-        const result = [];
-        for(let i=0; i<timestamp.length; i++) {
-            const cp = parseFloat(close[i]); if(isNaN(cp)||cp<=0) continue;
-            result.push({ date: new Date(timestamp[i]).toISOString().split('T')[0], open: parseFloat(open[i])||0, close: cp, high: parseFloat(high[i])||0, low: parseFloat(low[i])||0, vol: parseFloat(volume[i])||0, amt: parseFloat(amount[i])||0 });
-        } return result;
-    } catch(e) { return []; }
-}
-
 function isValidPrice(price, id) { return !isNaN(price) && price > 0; }
-
-async function getRealtimePrice(id) {
-    const ids = {sh:'1.000001', sz:'0.399001', cy:'0.399006'}; const secid = ids[id] || id;
-    const url = `https://qt.gtimg.cn/q=${secid.startsWith('1.') ? 'sh' : 'sz'}${secid.split('.')[1]}`;
-    try {
-        const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 8000);
-        const res = await fetch(url, { signal: controller.signal, headers: {'Accept': '*/*','Referer': 'https://qt.gtimg.cn/'} });
-        clearTimeout(timeout); if(!res.ok) return null;
-        const text = await res.text(); const match = text.match(/v_[a-z]+(\d+)="([^"]+)"/); if(!match) return null;
-        const fields = match[2].split('~'); if(fields.length < 6) return null;
-        const price = parseFloat(fields[3]) || 0; if(price <= 0) return null;
-        return { date: new Date().toISOString().split('T')[0], open: parseFloat(fields[5])||price, high: parseFloat(fields[33])||price, low: parseFloat(fields[34])||price, close: price, vol: parseInt(fields[36])||0, amt: parseFloat(fields[37])||0 };
-    } catch(e) { return null; }
-}
 
 let lastRealtimeCall = {};
 function canCallRealtimeAPI(id) { const now = Date.now(); if(now-(lastRealtimeCall[id]||0) < 30000) return false; lastRealtimeCall[id] = now; return true; }
@@ -400,10 +362,130 @@ function getLastTradingDate() {
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
-async function syncDataWithHistory(id) {
-    let data = await syncDataEastmoney(id); if(data && data.length>=30) return data;
-    data = await syncDataTickFlow(id); if(data && data.length>=30) return data; return null;
+// === 强力获取数据封装 (完全基于 JSONP 绕过拦截) ===
+
+function jsonpFetchEastmoneyKline(id) {
+    return new Promise(resolve => {
+        const ids = {sh:'1.000001', sz:'0.399001', cy:'0.399006'}; 
+        const secid = ids[id] || id;
+        const cb = 'em_kline_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+        const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&end=20500101&lmt=360&cb=${cb}`;
+        
+        let cl = false; 
+        const cleanup = () => {
+            if(cl) return; cl=true; clearTimeout(timer); delete window[cb];
+            const s = document.getElementById(cb); if(s) s.remove();
+        };
+        const timer = setTimeout(() => { cleanup(); resolve([]); }, 8000);
+        
+        window[cb] = data => {
+            cleanup();
+            if(data && data.data && data.data.klines) {
+                const result = data.data.klines.map(l => {
+                    const p = l.split(',');
+                    return { date: p[0], open: parseFloat(p[1]), close: parseFloat(p[2]), high: parseFloat(p[3]), low: parseFloat(p[4]), vol: parseFloat(p[5]), amt: parseFloat(p[6]) };
+                }).filter(item => isValidPrice(item.close, id));
+                resolve(result);
+            } else resolve([]);
+        };
+        
+        const script = document.createElement('script');
+        script.id = cb; script.src = url; script.onerror = () => { cleanup(); resolve([]); };
+        document.head.appendChild(script);
+    });
 }
+
+function jsonpFetchTencentKline(id) {
+    return new Promise(resolve => {
+        const ids = {sh:'sh000001', sz:'sz399001', cy:'sz399006'};
+        let symbol = ids[id];
+        if(!symbol) {
+            let cleanCode = id;
+            if(id.includes('.')) cleanCode = id.split('.')[1];
+            symbol = cleanCode.startsWith('6') ? 'sh'+cleanCode : 'sz'+cleanCode;
+        }
+        
+        const cb = 'tx_kline_' + Date.now();
+        const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${symbol},day,,,360,qfq&_var=${cb}`;
+        
+        let cl = false;
+        const cleanup = () => {
+            if(cl) return; cl=true; clearTimeout(timer); delete window[cb];
+            const s = document.getElementById(cb); if(s) s.remove();
+        };
+        const timer = setTimeout(() => { cleanup(); resolve([]); }, 5000);
+        
+        window[cb] = undefined;
+        const script = document.createElement('script');
+        script.id = cb; script.src = url;
+        
+        script.onload = () => {
+            cleanup();
+            if(typeof window[cb] !== 'undefined' && window[cb].code === 0 && window[cb].data && window[cb].data[symbol]) {
+                const klines = window[cb].data[symbol].qfqday || window[cb].data[symbol].day;
+                if(!klines) { resolve([]); return; }
+                const result = klines.map(p => ({
+                    date: p[0], open: parseFloat(p[1]), close: parseFloat(p[2]), high: parseFloat(p[3]), low: parseFloat(p[4]), vol: parseFloat(p[5]), amt: p.length > 6 ? parseFloat(p[6]) : (parseFloat(p[5]) * parseFloat(p[2]) * 100)
+                })).filter(item => isValidPrice(item.close, id));
+                resolve(result);
+            } else { resolve([]); }
+        };
+        script.onerror = () => { cleanup(); resolve([]); };
+        document.head.appendChild(script);
+    });
+}
+
+function getRealtimePriceJSONP(id) {
+    return new Promise(resolve => {
+        const ids = {sh:'1.000001', sz:'0.399001', cy:'0.399006'}; const secid = ids[id] || id;
+        const market = secid.startsWith('1.') ? 'sh' : 'sz';
+        const code = secid.split('.')[1];
+        const symbol = market + code;
+        const varName = 'v_' + symbol;
+        
+        const script = document.createElement('script');
+        script.src = `https://qt.gtimg.cn/q=${symbol}`;
+        script.charset = 'GBK';
+        
+        let cl = false;
+        const cleanup = () => {
+            if(cl) return; cl=true; clearTimeout(timer);
+            if(script.parentNode) script.remove();
+        };
+        const timer = setTimeout(() => { cleanup(); resolve(null); }, 5000);
+        
+        script.onload = () => {
+            cleanup();
+            if(typeof window[varName] !== 'undefined') {
+                const fields = window[varName].split('~');
+                if(fields.length >= 6) {
+                    const price = parseFloat(fields[3]) || 0;
+                    if(price > 0) {
+                        resolve({ 
+                            date: new Date().toISOString().split('T')[0], 
+                            open: parseFloat(fields[5])||price, high: parseFloat(fields[33])||price, 
+                            low: parseFloat(fields[34])||price, close: price, 
+                            vol: parseInt(fields[36])||0, amt: parseFloat(fields[37])||0 
+                        });
+                        return;
+                    }
+                }
+            }
+            resolve(null);
+        };
+        script.onerror = () => { cleanup(); resolve(null); };
+        document.head.appendChild(script);
+    });
+}
+
+async function syncDataWithHistory(id) {
+    let data = await jsonpFetchEastmoneyKline(id); 
+    if(data && data.length >= 30) return data;
+    data = await jsonpFetchTencentKline(id); 
+    if(data && data.length >= 30) return data; 
+    return null;
+}
+
 async function syncDataIncremental(id) {
     try {
         const cached = await dbGet(id); if(!cached||!cached.data||!cached.data.length) return await syncDataWithHistory(id);
@@ -411,26 +493,48 @@ async function syncDataIncremental(id) {
         if(lastDate >= ltd) return cached.data;
         const fresh = await syncDataWithHistory(id); if(!fresh||!fresh.length) return cached.data;
         const idx = fresh.findIndex(i => i.date === lastDate);
-        return idx>=0 ? [...cached.data, ...fresh.slice(idx+1)] : fresh;
+        if(idx < 0) {
+            return fresh.length >= 30 ? fresh : cached.data;
+        }
+        const newItems = fresh.slice(idx+1);
+        if(newItems.length === 0) return cached.data;
+        const merged = [...cached.data];
+        const existingDates = new Set(cached.data.map(i=>i.date));
+        for(const item of newItems) { if(!existingDates.has(item.date)) { merged.push(item); existingDates.add(item.date); } }
+        return merged;
     } catch(e) { return await getCachedData(id)||null; }
 }
+
 async function syncData(id) {
     const cached = await getCachedData(id); const today = new Date().toISOString().split('T')[0];
     const hasToday = cached && cached.some(i=>i.date===today), hasEnough = cached && cached.length>=30;
     if(isMarketOpen()) {
         if(hasEnough) {
+            const incremental = await syncDataIncremental(id);
+            if(incremental && incremental.length > cached.length) {
+                await dbSet(id, incremental);
+                cached.length = 0; Array.prototype.push.apply(cached, incremental);
+            }
             if(!hasToday && canCallRealtimeAPI(id)) {
-                const rt = await getRealtimePrice(id); if(rt) { cached.push(rt); await dbSet(id, cached); }
+                const rt = await getRealtimePriceJSONP(id); if(rt) { cached.push(rt); await dbSet(id, cached); }
             } return cached;
         }
         const data = await syncDataWithHistory(id); if(data && data.length>=30) { await dbSet(id, data); return data; }
         return hasEnough ? cached : null;
     } else {
-        if(hasEnough) return cached;
+        if(hasEnough) {
+            const incremental = await syncDataIncremental(id);
+            if(incremental && incremental.length > cached.length) {
+                await dbSet(id, incremental);
+                return incremental;
+            }
+            return cached;
+        }
         const data = await syncDataWithHistory(id); if(data && data.length>=30) { await dbSet(id, data); return data; }
         return null;
     }
 }
+
 async function checkCacheNeedUpdate(id) {
     const cached = await dbGet(id); if(!cached||!cached.data||!cached.data.length) return {needUpdate:true, reason:'无数据'};
     const ld = cached.data[cached.data.length-1].date, ltd = getLastTradingDate();
@@ -471,7 +575,6 @@ async function getCachedData(id) { const c = await dbGet(id); return (c && c.dat
 async function clearAllCache() { if(DB) { const tx = DB.transaction(STORE, 'readwrite'); tx.objectStore(STORE).clear(); await new Promise(r => tx.oncomplete = r); } state.rawData = {}; dataSourceInfo = {}; location.reload(); }
 function handleClearCache() { if(confirm('确定要清除所有缓存吗？')) clearAllCache().catch(e=>alert('清除失败: '+e.message)); }
 
-// === 核心数据预取函数 ===
 async function cachedFetch(id) {
     let firstLoad = true;
     const cachedResult = await dbGet(id);
@@ -515,7 +618,6 @@ async function preloadCacheOnly() {
             if(cachedResult && cachedResult.data && cachedResult.data.length >= 30) {
                 if(isValidPrice(cachedResult.data[cachedResult.data.length - 1].close, id)) {
                     state.rawData[id] = cachedResult.data;
-                    dataSourceInfo[id] = { source: 'cache', updateTime: formatCacheTime(cachedResult.updated) };
                 }
             }
         } catch(e) {}
@@ -541,7 +643,6 @@ function calculateBollinger(data, idx) {
     const std=Math.sqrt(slice.reduce((s,d)=>s+Math.pow(d.close-avg,2),0)/20);
     return { middle: avg, upper: avg+2*std, lower: avg-2*std };
 }
-function calculateMA(data, n) { let r=[]; for(let i=0;i<data.length;i++){if(i<n-1){r.push(null);continue;}let s=0;for(let j=0;j<n;j++)s+=data[i-j];r.push(s/n);} return r; }
 function getWeeklyData(full, idx) {
     if(idx<4) return null; const ws=idx-(idx%5), wd=full.slice(ws, Math.min(ws+5,full.length)); if(!wd.length) return null;
     const avgVol=wd.reduce((s,d)=>s+d.vol,0)/wd.length, pwd=full.slice(Math.max(0,ws-5),ws);
@@ -697,6 +798,10 @@ function clearCharts(){
 function draw() {
     document.querySelectorAll('.empty-hint').forEach(e=>e.remove());
     const fd=state.rawData[state.id]; if(!fd || !fd.length) { clearCharts(); return; }
+    
+    if(state.lockIdx >= fd.length) state.lockIdx = fd.length - 1;
+    if(state.lockIdx < 0) state.lockIdx = fd.length - 1;
+    
     updateAllIndicators();
     const slice=fd.slice(-state.range), labels=slice.map(d=>d.date);
     const ly={padding:{left:8,right:8,top:10,bottom:0}}, yc={position:'right',grid:{color:'rgba(255,255,255,0.03)'},ticks:{color:'#64748b',font:{size:10},padding:12}};
@@ -710,7 +815,10 @@ function draw() {
     const ds=state.activeMAs.map(n=>({label:`MA${n}`, data:state.indicators.ma[n]?.slice(-state.range)||[], borderColor:MA_COLORS[n], borderWidth:1.2, pointRadius:0, order:1}));
     ds.push({isCandle:true, candleData:slice.map(d=>({o:d.open,h:d.high,l:d.low,c:d.close})), data:slice.map(d=>d.close), borderColor:'transparent', pointRadius:0, order:0});
     
-    uc('main','mainChart',{type:'line', data:{labels, datasets:ds}, options:{responsive:true, maintainAspectRatio:false, animation:false, layout:ly, plugins:{legend:{display:false}, tooltip:{enabled:true,mode:'index',intersect:false,backgroundColor:'rgba(2,6,23,0.95)',titleColor:'#f1f5f9',bodyColor:'#cbd5e1',borderColor:'rgba(59,130,246,0.3)',borderWidth:1,callbacks:{label:it=>{const d=fd.slice(-state.range)[it.dataIndex]; if(it.datasetIndex<state.activeMAs.length)return it.dataset.label+': '+(it.raw?it.raw.toFixed(2):'--'); const p=fd.slice(-state.range)[it.dataIndex-1], c=d.close-(p?p.close:d.open); return `收:${d.close.toFixed(2)} 跌跌:${c>=0?'+':''}${c.toFixed(2)}`;}}}}, scales:{x:{display:false}, y:yc}, onHover:(e,el)=>syncHover(el)}, plugins:[{id:'cp', afterDatasetsDraw:c=>{const ctx=c.ctx, x=c.scales.x, y=c.scales.y, dss=c.data.datasets.find(d=>d.isCandle); if(!dss)return; const w=(x.width/labels.length)*0.8; dss.candleData.forEach((d,i)=>{const px=x.getPixelForValue(i), cl=d.c>=d.o?'#ef4444':'#22c55e'; ctx.strokeStyle=cl; ctx.beginPath(); ctx.moveTo(px,y.getPixelForValue(d.h)); ctx.lineTo(px,y.getPixelForValue(d.l)); ctx.stroke(); ctx.fillStyle=cl; ctx.fillRect(px-w/2,Math.min(y.getPixelForValue(d.o),y.getPixelForValue(d.c)),w,Math.max(Math.abs(y.getPixelForValue(d.o)-y.getPixelForValue(d.c)),1.5));}); if(state.lockIdx!==-1){const li=slice.findIndex(d=>d.date===fd[state.lockIdx].date); if(li>=0){ctx.save(); ctx.beginPath(); ctx.setLineDash([4,4]); ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.moveTo(x.getPixelForValue(li),c.chartArea.top); ctx.lineTo(x.getPixelForValue(li),c.chartArea.bottom); ctx.stroke(); ctx.restore();}}}}]});
+    uc('main','mainChart',{
+        type:'line', data:{labels, datasets:ds}, 
+        options:{responsive:true, maintainAspectRatio:false, animation:false, layout:ly, plugins:{legend:{display:false}, tooltip:{enabled:true,mode:'index',intersect:false,backgroundColor:'rgba(2,6,23,0.95)',titleColor:'#f1f5f9',bodyColor:'#cbd5e1',borderColor:'rgba(59,130,246,0.3)',borderWidth:1,callbacks:{label:it=>{const d=fd.slice(-state.range)[it.dataIndex]; if(!d)return''; if(it.datasetIndex<state.activeMAs.length)return it.dataset.label+': '+(it.raw?it.raw.toFixed(2):'--'); const p=fd.slice(-state.range)[it.dataIndex-1], c=d.close-(p?p.close:d.open); return `收:${d.close.toFixed(2)} 跌跌:${c>=0?'+':''}${c.toFixed(2)}`;}}}}, scales:{x:{display:false}, y:yc}, onHover:(e,el)=>syncHover(el)}, 
+        plugins:[{id:'cp', afterDatasetsDraw:c=>{const ctx=c.ctx, x=c.scales.x, y=c.scales.y, dss=c.data.datasets.find(d=>d.isCandle); if(!dss || !dss.candleData)return; const w=(x.width/labels.length)*0.8; dss.candleData.forEach((d,i)=>{if(!d)return; const px=x.getPixelForValue(i), cl=d.c>=d.o?'#ef4444':'#22c55e'; ctx.strokeStyle=cl; ctx.beginPath(); ctx.moveTo(px,y.getPixelForValue(d.h)); ctx.lineTo(px,y.getPixelForValue(d.l)); ctx.stroke(); ctx.fillStyle=cl; ctx.fillRect(px-w/2,Math.min(y.getPixelForValue(d.o),y.getPixelForValue(d.c)),w,Math.max(Math.abs(y.getPixelForValue(d.o)-y.getPixelForValue(d.c)),1.5));}); if(state.lockIdx!==-1 && fd[state.lockIdx]){const li=slice.findIndex(d=>d && d.date===fd[state.lockIdx].date); if(li>=0){ctx.save(); ctx.beginPath(); ctx.setLineDash([4,4]); ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.moveTo(x.getPixelForValue(li),c.chartArea.top); ctx.lineTo(x.getPixelForValue(li),c.chartArea.bottom); ctx.stroke(); ctx.restore();}}}}]});
     
     uc('vol','volumeChart',{type:'bar', data:{labels, datasets:[{data:slice.map(d=>d.vol), backgroundColor:slice.map((d,i)=>d.close>=(i>0?slice[i-1].close:d.open)?'rgba(239,68,68,0.75)':'rgba(34,197,94,0.75)')}]}, options:{responsive:true, maintainAspectRatio:false, animation:false, layout:ly, plugins:{legend:{display:false}}, scales:{x:{display:false},y:yv}, onHover:(e,el)=>syncHover(el)}});
     
@@ -721,7 +829,6 @@ function draw() {
 }
 function syncHover(els){if(els&&els.length)Object.values(state.charts).forEach(c=>{if(c){c.setActiveElements([{index:els[0].index}]);c.update('none');}});}
 
-// === HTML 生成与渲染侧边栏 ===
 function generateAnalysisHTML(idx, full, meta) {
     const adv = getAdvisePosition(meta); let prevAdv = 0;
     if(idx>0) prevAdv = getAdvisePosition(getSignalMeta(idx-1, full, state.indicators));
@@ -781,7 +888,7 @@ function updateSidebar(item, prev) {
     cAnalysis.innerHTML = `<div class="scan-grid"><div class="scan-box ${meta.cls==='core'?'core-yellow':'regular-blue'}${meta.inCooldown?' cooldown-status':''}"><span class="scan-label">决策状态</span><span class="scan-text">${meta.type}</span><button class="ai-mini-btn" onclick="generateAIQuery()">AI解读</button></div></div><div class="brief-report">${generateAnalysisHTML(state.lockIdx, state.rawData[state.id], meta)}</div>`;
 }
 
-// === 自选股与搜索模块 ===
+// === 搜索与交互模块 ===
 function searchLocalStocks(q) {
     const qt = q.toLowerCase();
     const fb = STOCK_DATABASE.filter(s => s.Name.toLowerCase().includes(qt) || s.Code.includes(qt));
@@ -808,6 +915,7 @@ function jsonpSearchSina(query) {
 }
 async function jsonpSearch(query) { const r = await jsonpSearchEastmoney(query); return r.length ? r : await jsonpSearchSina(query); }
 
+let suggestTimer = null; let suggestActiveIdx = -1;
 function onSearchInput() { clearTimeout(suggestTimer); suggestTimer = setTimeout(fetchSuggestions, 200); }
 function closeSuggestions() { const el = document.getElementById('stockSuggest'); if(el) el.style.display='none'; suggestActiveIdx=-1; }
 async function fetchSuggestions() {
@@ -859,7 +967,43 @@ async function selectStock(code, name) {
         const cPrice = document.getElementById('cardPrice'); if(cPrice) { cPrice.style.display='block'; cPrice.innerHTML='<div class="stock-empty" style="padding:20px 0;">无数据</div>'; }
         const cAnalysis = document.getElementById('cardAnalysis'); if(cAnalysis) cAnalysis.style.display='none';
     }
+    await updateAllWatchlistData();
     renderWatchlist();
+}
+
+async function updateAllWatchlistData() {
+    const results = [];
+    for(const stock of state.watchlist) {
+        const secid = codeToSecid(stock.code);
+        if(secid === state.id) continue;
+        try {
+            const data = await syncDataWithHistory(secid);
+            if(data && data.length >= 30 && isValidPrice(data[data.length-1].close, secid)) {
+                state.rawData[secid] = data;
+                await dbSet(secid, data);
+                results.push({code: stock.code, success: true});
+            } else {
+                const cached = await dbGet(secid);
+                if(cached && cached.data && cached.data.length >= 30) {
+                    state.rawData[secid] = cached.data;
+                    results.push({code: stock.code, success: true, source: 'cache'});
+                } else {
+                    results.push({code: stock.code, success: false, reason: '数据不足或无效'});
+                }
+            }
+        } catch(e) {
+            console.log(`Failed to update ${stock.code}:`, e.message);
+            const cached = await dbGet(secid);
+            if(cached && cached.data && cached.data.length >= 30) {
+                state.rawData[secid] = cached.data;
+                results.push({code: stock.code, success: true, source: 'cache'});
+            } else {
+                results.push({code: stock.code, success: false, reason: e.message});
+            }
+        }
+    }
+    console.log('自选股数据更新结果:', results);
+    return results;
 }
 
 function renderWatchlist() {
@@ -879,24 +1023,63 @@ function renderWatchlist() {
     c1.innerHTML = `<div class="stock-header"><div class="title-wrap"><span>自选股</span></div></div>${sHtml}<div style="margin-top:8px">${lHtml}</div>`;
 }
 
-// === 导航交互 & AI ===
+// === 控制函数 ===
 function toggleMA(n) { if(state.activeMAs.includes(n)) state.activeMAs=state.activeMAs.filter(v=>v!==n); else state.activeMAs.push(n); state.activeMAs.sort((a,b)=>a-b); renderMASelector(); draw(); }
 function renderMASelector() { const c=document.getElementById('indicatorGroup'); if(c) c.innerHTML = MA_OPTIONS.map(n=>`<label class="ma-checkbox"><input type="checkbox" ${state.activeMAs.includes(n)?'checked':''} onchange="toggleMA(${n})"><span class="check-box" style="border-color:${MA_COLORS[n]};background-color:${state.activeMAs.includes(n)?MA_COLORS[n]:'transparent'}"></span>MA${n}</label>`).join(''); }
 function prevDay() { if(state.lockIdx>0) { state.lockIdx--; draw(); updateSidebar(state.rawData[state.id][state.lockIdx], state.rawData[state.id][state.lockIdx-1]); } }
-function nextDay() { if(state.lockIdx<state.rawData[state.id].length-1) { state.lockIdx++; draw(); updateSidebar(state.rawData[state.id][state.lockIdx], state.rawData[state.id][state.lockIdx-1]); } }
-function resetLatest() { state.lockIdx = state.rawData[state.id].length-1; draw(); updateSidebar(state.rawData[state.id][state.lockIdx], state.rawData[state.id][state.lockIdx-1]); }
-
+function nextDay() { if(state.lockIdx<state.rawData[state.id].length-1 && state.rawData[state.id]) { state.lockIdx++; draw(); updateSidebar(state.rawData[state.id][state.lockIdx], state.rawData[state.id][state.lockIdx-1]); } }
+function resetLatest() { if(state.rawData[state.id]) { state.lockIdx = state.rawData[state.id].length-1; draw(); updateSidebar(state.rawData[state.id][state.lockIdx], state.rawData[state.id][state.lockIdx-1]); } }
 function toggleHelp() { const o = document.getElementById('helpOverlay'); if(o) o.style.display = o.style.display === 'flex' ? 'none' : 'flex'; }
 function switchStrategy(name) { if(!STRATEGIES[name] || !confirm(`确定切换到「${name}」？\n${STRATEGIES[name].desc}`)) return; state.strategy=name; Object.assign(STRATEGY, STRATEGIES[name]); localStorage.setItem('quant_strategy', name); renderSettings(); if(state.rawData[state.id]){ updateAllIndicators(); draw(); updateSidebar(state.rawData[state.id][state.lockIdx], state.rawData[state.id][state.lockIdx-1]); } }
 function toggleSettings() { const o = document.getElementById('settingsOverlay'); if(o) { if(o.classList.contains('show')) o.classList.remove('show'); else { renderSettings(); o.classList.add('show'); } } }
+
+// === 渲染设置面板 (重构为直观规则显示) ===
 function renderSettings() {
     const p = document.getElementById('settingsPanel'); if(!p) return; const S = STRATEGY, cur = state.strategy;
+
+    // 不同模型的提示语配置
+    const stratFocus = {
+        '稳健趋势型': '重点监测均线多头、MACD金叉等趋势信号',
+        '波段抄底型': '重点监测RSI超卖、MACD底背离等反转信号',
+        '突破追涨型': '重点监测放量突破、平台突破等右侧强势信号',
+        '综合全能型': '全天候监控所有 15 种买入信号'
+    };
+
     let h=`<button class="sg-close" onclick="toggleSettings()">×</button><div class="sg-header"><h3>策略参数与算法配置</h3></div><div class="sg-body">`;
-    h+=`<div class="sg-card full" style="margin-bottom:14px"><div class="sg-card-title">四大核心量化模型 (实时切换)</div><div class="sg-strategy" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">${Object.keys(STRATEGIES).map(k=>`<button class="${cur===k?'active':''}" onclick="switchStrategy('${k}')">${k}<span class="sg-desc">${STRATEGIES[k].desc}</span></button>`).join('')}</div></div><div class="sg-grid">`;
-    h+=`<div class="sg-card"><div class="sg-card-title">当前模型参数</div><div class="sg-row"><span class="sg-label">观察窗口</span><span class="sg-val">${S.windowDays}日</span></div><div class="sg-row"><span class="sg-label">做多阈值</span><span class="sg-val">累计≥${S.buyThreshold}分</span></div><div class="sg-row"><span class="sg-label">结构破坏</span><span class="sg-val" style="color:#ef4444">任一离场触发</span></div></div>`;
-    h+=`<div class="sg-card"><div class="sg-card-title">【动能清零机制】说明</div><div style="font-size:10px;color:#94a3b8;line-height:1.4;">系统采用边缘触发算法。当发生任何一个离场信号(代表原上涨结构破坏)时，系统强制清空前期积攒的所有买入得分，并进入3天冷静期。彻底解决下跌途中盲目抄底问题。</div></div>`;
+    
+    // 1. 策略切换区
+    h+=`<div class="sg-card full" style="margin-bottom:14px"><div class="sg-card-title">四大核心量化模型 (实时切换)</div><div class="sg-strategy" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">${Object.keys(STRATEGIES).map(k=>`<button class="${cur===k?'active':''}" onclick="switchStrategy('${k}')">${k}<span class="sg-desc">${STRATEGIES[k].desc}</span></button>`).join('')}</div></div>`;
+
+    // 2. 动态生成的【执行规则明细】卡片
+    h+=`<div class="sg-card full" style="margin-bottom:14px;">`;
+    h+=`<div class="sg-card-title">【${cur}】执行规则明细</div>`;
+    h+=`<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;">`;
+
+    // 左侧：买入条件
+    h+=`<div style="background:rgba(16, 185, 129, 0.05); padding:12px; border-radius:8px; border:1px solid rgba(16, 185, 129, 0.1);">`;
+    h+=`<div style="color:#10b981; font-weight:800; font-size:12px; margin-bottom:8px;">🟢 买入条件 (积分达标)</div>`;
+    h+=`<div style="font-size:11px; line-height:1.7; color:#cbd5e1;">`;
+    h+=`• 观察窗口：最近 <span style="color:#fff;font-weight:700;font-family:JetBrains Mono;">${S.windowDays}</span> 日<br>`;
+    h+=`• 信号监测：${stratFocus[cur]}<br>`;
+    h+=`• 做多阈值：累计积分 <span style="color:#10b981;font-weight:700;font-family:JetBrains Mono;">≥ ${S.buyThreshold}</span> 分`;
+    h+=`</div></div>`;
+
+    // 右侧：卖出条件
+    h+=`<div style="background:rgba(239, 68, 68, 0.05); padding:12px; border-radius:8px; border:1px solid rgba(239, 68, 68, 0.1);">`;
+    h+=`<div style="color:#ef4444; font-weight:800; font-size:12px; margin-bottom:8px;">🔴 卖出条件 (一票否决)</div>`;
+    h+=`<div style="font-size:11px; line-height:1.7; color:#cbd5e1;">`;
+    h+=`• 结构破坏：触发监控库中 <span style="color:#ef4444;font-weight:700;">任一离场信号</span><br>`;
+    h+=`• 动能清零：强制清空积攒的所有买入得分<br>`;
+    h+=`• 强制防守：进入 <span style="color:#fff;font-weight:700;font-family:JetBrains Mono;">3</span> 天静默期，禁止盲目抄底`;
+    h+=`</div></div>`;
+
+    h+=`</div></div>`; // 结束规则卡片
+
+    // 3. 底部的信号参考库字典
+    h+=`<div class="sg-grid">`;
     h+=`<div class="sg-card full"><div class="sg-card-title">买入信号库 (仅当被选模型选中时计分)</div><div style="font-size:10px;color:#94a3b8;line-height:1.6;display:grid;grid-template-columns:1fr 1fr;gap:2px;"><div>B1: 刚形成均线多头 (3分)</div><div>B2: MACD金叉 (3分)</div><div>B3: 股价上穿20日线 (2分)</div><div>B4: 放量突破新高 (2分)</div><div>B5: 阳包阴 (2分)</div><div>B6: 缩量回踩不破 (2分)</div><div>B7: RSI超卖回升 (1分)</div><div>B8: KDJ金叉 (1分)</div><div>B9: MACD底背离 (4分)</div><div>B10: MA20上穿MA60 (2分)</div><div>B11: 均线回踩企稳 (2分)</div><div>B12: 零轴上方金叉 (3分)</div><div>B13: 周线级别走强 (3分)</div><div>B14: 平台放量突破 (2分)</div><div>B15: 均线二次金叉 (2分)</div></div></div>`;
     h+=`<div class="sg-card full"><div class="sg-card-title">离场信号库 (结构破坏点)</div><div style="font-size:10px;color:#94a3b8;line-height:1.6;display:grid;grid-template-columns:1fr 1fr;gap:2px;"><div>L2: 刚出现均线死叉</div><div>L3: 刚出现MACD死叉</div><div>L4: 放量跌破20日线</div><div>L5: 阴包阳</div><div>L6: 连阳后首阴</div><div>L7: RSI超买回落</div><div>L8: 布林上轨受阻</div><div>L9: 从高点回撤≥5%</div><div>L10: MACD顶背离</div><div style="color:#fbbf24">W1: 偏离60日线过大(警告)</div><div style="color:#fbbf24">W2: 连续缩量阳线(警告)</div></div></div></div></div>`;
+
     p.innerHTML=h;
 }
 
@@ -911,23 +1094,18 @@ function generateAIQuery() {
 function closeAIModal() { document.getElementById('aiModal')?.classList.remove('show'); }
 function copyAIQuery() { const t=document.getElementById('aiQueryText'); t.select(); navigator.clipboard.writeText(t.value).then(()=>closeAIModal()); }
 
-// === 启动 ===
+// === 初始化 ===
 async function init() {
     try { await openDB(); } catch(e) {}
     try { await loadWatchlist(); } catch(e) { state.watchlist = []; }
     try { const sc = await dbGet('stock_cache'); if(sc&&sc.data) stockCache = sc.data; } catch(e) {}
     
     const savedStrat = localStorage.getItem('quant_strategy'); 
-    if(savedStrat && STRATEGIES[savedStrat]) { 
-        state.strategy = savedStrat; 
-        Object.assign(STRATEGY, STRATEGIES[savedStrat]); 
-    } else {
-        state.strategy = '稳健趋势型'; 
-        Object.assign(STRATEGY, STRATEGIES['稳健趋势型']); 
-    }
+    if(savedStrat && STRATEGIES[savedStrat]) { state.strategy = savedStrat; Object.assign(STRATEGY, STRATEGIES[savedStrat]); } 
+    else { state.strategy = '稳健趋势型'; Object.assign(STRATEGY, STRATEGIES['稳健趋势型']); }
 
-    // Preload basic symbols
-    await Promise.all(['sh','sz','cy'].concat(state.watchlist.slice(0,3).map(s=>codeToSecid(s.code))).map(async id=>{ try{const c=await dbGet(id); if(c&&c.data&&c.data.length>=30) state.rawData[id]=c.data;}catch(e){} }));
+    // 先用缓存秒开
+    await preloadCacheOnly();
     
     document.querySelectorAll('#indexTabs .nav-btn').forEach(b=>b.onclick=async e=>{
         document.querySelectorAll('#indexTabs .nav-btn').forEach(btn=>btn.classList.remove('active')); e.target.classList.add('active');
@@ -937,16 +1115,16 @@ async function init() {
                 if(state.watchlist.length) await selectStock(state.watchlist[0].code, state.watchlist[0].name); 
                 else { 
                     clearCharts(); 
-                    const cPrice = document.getElementById('cardPrice');
-                    if(cPrice) { cPrice.style.display='block'; cPrice.innerHTML='<div class="stock-empty" style="padding:20px 0;">请搜索并添加自选股</div>'; }
-                    const cAnalysis = document.getElementById('cardAnalysis');
-                    if(cAnalysis) cAnalysis.style.display='none';
+                    const cPrice = document.getElementById('cardPrice'); if(cPrice) { cPrice.style.display='block'; cPrice.innerHTML='<div class="stock-empty" style="padding:20px 0;">请搜索并添加自选股</div>'; }
+                    const cAnalysis = document.getElementById('cardAnalysis'); if(cAnalysis) cAnalysis.style.display='none';
                 } 
             }
             else { 
                 state.id=codeToSecid(state.stockId); 
-                if(!state.rawData[state.id]) await cachedFetch(state.id); 
-                else { updateAllIndicators(); draw(); updateSidebar(state.rawData[state.id][state.lockIdx], state.rawData[state.id][state.lockIdx-1]); } 
+                if(!state.rawData[state.id]) await cachedFetch(state.id);
+                if(state.watchlist.length) await updateAllWatchlistData();
+                renderWatchlist(); 
+                updateAllIndicators(); draw(); updateSidebar(state.rawData[state.id][state.lockIdx], state.rawData[state.id][state.lockIdx-1]); 
             }
             return;
         }
@@ -956,12 +1134,41 @@ async function init() {
     document.querySelectorAll('#rangeTabs .range-btn').forEach(b=>b.onclick=e=>{
         document.querySelector('#rangeTabs .range-btn.active').classList.remove('active'); e.target.classList.add('active'); state.range=+e.target.dataset.range; draw(); updateSidebar(state.rawData[state.id][state.lockIdx], state.rawData[state.id][state.lockIdx-1]);
     });
-    ['mainChart','volumeChart','macdChart'].forEach(id=>{const el=document.getElementById(id);if(el)el.onclick=e=>{const c=Chart.getChart(el);if(!c)return;const pts=c.getElementsAtEventForMode(e,'index',{intersect:false},true);if(pts.length){const li=pts[0].index,sl=state.rawData[state.id].slice(-state.range),ti=state.rawData[state.id].indexOf(sl[li]);state.lockIdx=ti;draw();updateSidebar(state.rawData[state.id][ti],state.rawData[state.id][ti-1]);}};});
+    ['mainChart','volumeChart','macdChart'].forEach(id=>{const el=document.getElementById(id);if(el)el.onclick=e=>{const c=Chart.getChart(el);if(!c)return;const pts=c.getElementsAtEventForMode(e,'index',{intersect:false},true);if(pts.length){const li=pts[0].index,sl=state.rawData[state.id].slice(-state.range),ti=state.rawData[state.id].indexOf(sl[li]);if(ti>=0){state.lockIdx=ti;draw();updateSidebar(state.rawData[state.id][ti],state.rawData[state.id][ti-1]);}}};});
 
     setInterval(()=>ui.set('liveClock',new Date().toLocaleTimeString('zh-CN',{hour12:false})), 1000);
-    renderMASelector(); await cachedFetch(state.id); document.getElementById('loading').style.display='none';
+    renderMASelector(); 
+    await cachedFetch(state.id); 
+    document.getElementById('loading').style.display='none';
     
+    // 静默增量更新
     setTimeout(async ()=>{ if(isAfterMarketClose()) { const ui = await checkCacheNeedUpdate(state.id); if(ui.needUpdate) { const fr = await syncDataIncremental(state.id); if(fr&&fr.length) { await dbSet(state.id,fr); state.rawData[state.id]=fr; state.lockIdx=fr.length-1; updateAllIndicators(); draw(); } } } }, 1500);
+    
+    // 盘中实时更新：每30秒获取最新价格
+    let realtimeInterval;
+    function startRealtimeUpdate() {
+        if(realtimeInterval) clearInterval(realtimeInterval);
+        realtimeInterval = setInterval(async () => {
+            if(!isMarketOpen() || !state.id) return;
+            const cached = await getCachedData(state.id);
+            if(!cached || cached.length === 0) return;
+            const today = new Date().toISOString().split('T')[0];
+            const hasToday = cached.some(i => i.date === today);
+            if(!hasToday && canCallRealtimeAPI(state.id)) {
+                const rt = await getRealtimePriceJSONP(state.id);
+                if(rt) {
+                    cached.push(rt);
+                    await dbSet(state.id, cached);
+                    state.rawData[state.id] = cached;
+                    state.lockIdx = cached.length - 1;
+                    updateAllIndicators();
+                    draw();
+                }
+            }
+        }, 30000);
+    }
+    startRealtimeUpdate();
+    
     let rt; window.addEventListener('resize', ()=>{ clearTimeout(rt); rt=setTimeout(()=>Object.values(state.charts).forEach(c=>c?.resize()),100); });
 }
 
