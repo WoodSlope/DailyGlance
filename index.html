@@ -354,7 +354,7 @@ function getLastTradingDate() {
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
-// === 统一请求管理与限流器 (解决 API 轰炸与假轮询) ===
+// === 统一请求管理与限流器 ===
 const requestManager = {
     limiters: new Map(), // 存储 { lastCall: timestamp, isFetching: boolean }
     
@@ -362,10 +362,7 @@ const requestManager = {
         const now = Date.now();
         const state = this.limiters.get(id) || { lastCall: 0, isFetching: false };
 
-        // 1. 状态锁：正在请求中，跳过
         if (state.isFetching) return null;
-
-        // 2. 频率限制：至少间隔 30 秒（防止频繁切换导致的 API 压力）
         if (now - state.lastCall < 30000) return null;
 
         state.isFetching = true;
@@ -385,8 +382,7 @@ const requestManager = {
     }
 };
 
-// === 强力获取数据封装 (完全基于 JSONP 绕过拦截) ===
-
+// === 强力获取数据封装 ===
 function jsonpFetchEastmoneyKline(id) {
     return new Promise(resolve => {
         const ids = {sh:'1.000001', sz:'0.399001', cy:'0.399006'}; 
@@ -484,8 +480,10 @@ function getRealtimePriceJSONP(id) {
                 if(fields.length >= 6) {
                     const price = parseFloat(fields[3]) || 0;
                     if(price > 0) {
+                        const now = new Date();
+                        const localDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
                         resolve({ 
-                            date: new Date().toISOString().split('T')[0], 
+                            date: localDate, 
                             open: parseFloat(fields[5])||price, high: parseFloat(fields[33])||price, 
                             low: parseFloat(fields[34])||price, close: price, 
                             vol: parseInt(fields[36])||0, amt: parseFloat(fields[37])||0 
@@ -511,45 +509,41 @@ async function syncDataWithHistory(id) {
 
 async function syncDataIncremental(id) {
     try {
-        const cached = await dbGet(id); if(!cached||!cached.data||!cached.data.length) return await syncDataWithHistory(id);
-        const lastDate = cached.data[cached.data.length-1].date, ltd = getLastTradingDate();
-        if(lastDate > ltd) return cached.data;
-        const fresh = await syncDataWithHistory(id); if(!fresh||!fresh.length) return cached.data;
-        const idx = fresh.findIndex(i => i.date === lastDate);
-        if(idx < 0) {
-            return fresh.length >= 30 ? fresh : cached.data;
-        }
+        const cached = await dbGet(id); 
+        if(!cached||!cached.data||!cached.data.length) return await syncDataWithHistory(id);
         
-        // 🚨 修复3：即使日期一致，也必须用官方历史记录覆盖本地缓存的最后一条（确保最高低价和成交量最新）
-        cached.data[cached.data.length - 1] = fresh[idx];
+        const fresh = await syncDataWithHistory(id); 
+        if(!fresh||!fresh.length) return cached.data;
 
-        const newItems = fresh.slice(idx+1);
-        const merged = [...cached.data];
-        if (newItems.length > 0) {
-            const existingDates = new Set(cached.data.map(i=>i.date));
-            for(const item of newItems) { if(!existingDates.has(item.date)) { merged.push(item); existingDates.add(item.date); } }
-        }
+        const mergedMap = new Map();
+        cached.data.forEach(item => mergedMap.set(item.date, item));
+        fresh.forEach(item => mergedMap.set(item.date, item));
+        
+        const merged = Array.from(mergedMap.values()).sort((a, b) => a.date.localeCompare(b.date));
         return merged;
     } catch(e) { return await getCachedData(id)||null; }
 }
 
 async function syncData(id) {
-    const cached = await getCachedData(id); const today = new Date().toISOString().split('T')[0];
+    const cached = await getCachedData(id); 
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
     const hasEnough = cached && cached.length>=30;
+    
     if(isMarketOpen()) {
         if(hasEnough) {
             const incremental = await syncDataIncremental(id);
-            if(incremental && incremental.length >= cached.length) {
+            if(incremental && incremental.length > 0) { 
                 await dbSet(id, incremental);
                 cached.length = 0; Array.prototype.push.apply(cached, incremental);
             }
-            // 🚨 修复1：盘中同步时，利用 requestManager 统一限流拉取最新价
+            
             const rt = await requestManager.fetchRealtimeWithThrottle(id);
             if(rt) { 
                 if(cached[cached.length-1].date === today) {
-                    cached[cached.length-1] = rt; // 替换更新
+                    cached[cached.length-1] = rt;
                 } else {
-                    cached.push(rt); // 新日追加
+                    cached.push(rt);
                 }
                 await dbSet(id, cached); 
             }
@@ -560,7 +554,7 @@ async function syncData(id) {
     } else {
         if(hasEnough) {
             const incremental = await syncDataIncremental(id);
-            if(incremental && incremental.length >= cached.length) {
+            if(incremental && incremental.length > 0) {
                 await dbSet(id, incremental);
                 return incremental;
             }
@@ -590,7 +584,7 @@ async function handleUpdateData(forceFull=false) {
         const fresh = (!forceFull&&!info.needUpdate) ? await syncDataIncremental(state.id) : await syncDataWithHistory(state.id);
         if(fresh && fresh.length) {
             await dbSet(state.id, fresh); state.rawData[state.id] = fresh; state.lockIdx = fresh.length-1;
-            updateAllIndicators(); draw(); updateSidebar(fresh[fresh.length-1], fresh[fresh.length-2]||null);
+            updateAllIndicators(); draw(); safeUpdateSidebar();
             alert(`更新成功！共 ${fresh.length} 条数据。`);
         } else alert('数据更新失败！');
     } catch(e) { alert('更新失败：'+e.message); } finally { btn.disabled=false; btn.innerHTML='<svg class="icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M44 31C44 36.5228 39.5228 41 34 41C32.2091 41 30.5281 40.5292 29.0741 39.7046C26.5143 38.2529 24.6579 35.7046 24.1436 32.6983C24.0492 32.1463 24 31.5789 24 31C24 28.4323 24.9678 26.0906 26.5585 24.3198C28.3892 22.2818 31.0449 21 34 21C39.5228 21 44 25.4772 44 31Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M34 12V20V21C31.0449 21 28.3892 22.2818 26.5585 24.3198C24.9678 26.0906 24 28.4323 24 31C24 31.5789 24.0492 32.1463 24.1436 32.6983C24.6579 35.7046 26.5143 38.2529 29.0741 39.7046C26.4116 40.5096 22.8776 41 19 41C10.7157 41 4 38.7614 4 36V28V20V12" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M34 12C34 14.7614 27.2843 17 19 17C10.7157 17 4 14.7614 4 12C4 9.23858 10.7157 7 19 7C27.2843 7 34 9.23858 34 12Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 28C4 30.7614 10.7157 33 19 33C20.807 33 22.5393 32.8935 24.1436 32.6983" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 20C4 22.7614 10.7157 25 19 25C21.7563 25 24.339 24.7522 26.5585 24.3198" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M38 31C38 33.2091 36.2091 35 34 35" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M30 31C30 28.7909 31.7909 27 34 27" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
@@ -620,7 +614,7 @@ async function cachedFetch(id) {
         updateAllIndicators();
         document.getElementById('loading').style.display = 'none';
         renderMASelector();
-        requestAnimationFrame(() => { draw(); updateSidebar(state.rawData[id][state.lockIdx], state.rawData[id][state.lockIdx-1] || null); });
+        requestAnimationFrame(() => { draw(); safeUpdateSidebar(); });
         firstLoad = false;
     }
 
@@ -637,7 +631,7 @@ async function cachedFetch(id) {
         if (id === state.id) {
             if (firstLoad) { document.getElementById('loading').style.display = 'none'; renderMASelector(); }
             updateAllIndicators();
-            requestAnimationFrame(() => { draw(); updateSidebar(fresh[fresh.length-1], fresh[fresh.length-2] || null); });
+            requestAnimationFrame(() => { draw(); safeUpdateSidebar(); });
         }
     }
 }
@@ -863,7 +857,7 @@ function draw() {
         uc('macd','macdChart',{type:'line', data:{labels, datasets:[{data:md.diff.slice(-state.range), borderColor:'#3b82f6', borderWidth:1, pointRadius:0},{data:md.dea.slice(-state.range), borderColor:'#f59e0b', borderWidth:1, pointRadius:0},{type:'bar', data:md.bar.slice(-state.range), backgroundColor:md.bar.slice(-state.range).map(v=>v>=0?'rgba(239,68,68,0.6)':'rgba(34,197,94,0.6)')}]}, options:{responsive:true, maintainAspectRatio:false, animation:false, layout:ly, plugins:{legend:{display:false}}, scales:{x:{display:false},y:yc}, onHover:(e,el)=>syncHover(el)}});
     }
 }
-function syncHover(els){if(els&&els.length)Object.values(state.charts).forEach(c=>{if(c){c.setActiveElements([{index:els[0].index}]);c.update('none');}});}
+function syncHover(els){if(els&&els.length)Object.values(state.charts).forEach(c=>{if(c){c.setActiveElements([{datasetIndex:0, index:els[0].index}]);c.update('none');}});}
 
 function generateAnalysisHTML(idx, full, meta) {
     const adv = getAdvisePosition(meta); let prevAdv = 0;
@@ -922,6 +916,17 @@ function updateSidebar(item, prev) {
     
     const meta = getSignalMeta(state.lockIdx, state.rawData[state.id], state.indicators);
     cAnalysis.innerHTML = `<div class="scan-grid"><div class="scan-box ${meta.cls==='core'?'core-yellow':'regular-blue'}${meta.inCooldown?' cooldown-status':''}"><span class="scan-label">决策状态</span><span class="scan-text">${meta.type}</span><button class="ai-mini-btn" onclick="generateAIQuery()">AI解读</button></div></div><div class="brief-report">${generateAnalysisHTML(state.lockIdx, state.rawData[state.id], meta)}</div>`;
+}
+
+// 提取一个统一的安全侧边栏更新函数，避免越界访问产生 TypeError
+function safeUpdateSidebar() {
+    const rd = state.rawData[state.id];
+    if (rd && rd.length > 0) {
+        if (state.lockIdx < 0 || state.lockIdx >= rd.length) state.lockIdx = rd.length - 1;
+        updateSidebar(rd[state.lockIdx], state.lockIdx > 0 ? rd[state.lockIdx - 1] : null);
+    } else {
+        updateSidebar(null, null);
+    }
 }
 
 // === 搜索与交互模块 ===
@@ -996,7 +1001,7 @@ async function selectStock(code, name) {
         const data = await syncData(secid);
         if(data && data.length && isValidPrice(data[data.length-1].close, secid)) { 
             state.rawData[secid]=data; await dbSet(secid,data); state.lockIdx=data.length-1; 
-            updateAllIndicators(); draw(); updateSidebar(data[data.length-1], data[data.length-2]); 
+            updateAllIndicators(); draw(); safeUpdateSidebar(); 
         } else throw new Error('Invalid');
     } catch(e) { 
         state.rawData[secid]=null; clearCharts(); 
@@ -1013,7 +1018,6 @@ async function updateAllWatchlistData() {
         const secid = codeToSecid(stock.code);
         if(secid === state.id) continue;
         try {
-            // 🚨 修复2：不再无脑拉全量历史，改用带有缓存保护和增量逻辑的 syncData
             const data = await syncData(secid);
             if(data && data.length >= 30 && isValidPrice(data[data.length-1].close, secid)) {
                 state.rawData[secid] = data;
@@ -1056,11 +1060,11 @@ function renderWatchlist() {
 // === 控制函数 ===
 function toggleMA(n) { if(state.activeMAs.includes(n)) state.activeMAs=state.activeMAs.filter(v=>v!==n); else state.activeMAs.push(n); state.activeMAs.sort((a,b)=>a-b); renderMASelector(); draw(); }
 function renderMASelector() { const c=document.getElementById('indicatorGroup'); if(c) c.innerHTML = MA_OPTIONS.map(n=>`<label class="ma-checkbox"><input type="checkbox" ${state.activeMAs.includes(n)?'checked':''} onchange="toggleMA(${n})"><span class="check-box" style="border-color:${MA_COLORS[n]};background-color:${state.activeMAs.includes(n)?MA_COLORS[n]:'transparent'}"></span>MA${n}</label>`).join(''); }
-function prevDay() { if(state.lockIdx>0) { state.lockIdx--; draw(); updateSidebar(state.rawData[state.id][state.lockIdx], state.rawData[state.id][state.lockIdx-1]); } }
-function nextDay() { if(state.lockIdx<state.rawData[state.id].length-1 && state.rawData[state.id]) { state.lockIdx++; draw(); updateSidebar(state.rawData[state.id][state.lockIdx], state.rawData[state.id][state.lockIdx-1]); } }
-function resetLatest() { if(state.rawData[state.id]) { state.lockIdx = state.rawData[state.id].length-1; draw(); updateSidebar(state.rawData[state.id][state.lockIdx], state.rawData[state.id][state.lockIdx-1]); } }
+function prevDay() { if(state.lockIdx>0) { state.lockIdx--; draw(); safeUpdateSidebar(); } }
+function nextDay() { const rd=state.rawData[state.id]; if(rd && state.lockIdx<rd.length-1) { state.lockIdx++; draw(); safeUpdateSidebar(); } }
+function resetLatest() { const rd=state.rawData[state.id]; if(rd) { state.lockIdx = rd.length-1; draw(); safeUpdateSidebar(); } }
 function toggleHelp() { const o = document.getElementById('helpOverlay'); if(o) o.style.display = o.style.display === 'flex' ? 'none' : 'flex'; }
-function switchStrategy(name) { if(!STRATEGIES[name] || !confirm(`确定切换到「${name}」？\n${STRATEGIES[name].desc}`)) return; state.strategy=name; Object.assign(STRATEGY, STRATEGIES[name]); localStorage.setItem('quant_strategy', name); renderSettings(); if(state.rawData[state.id]){ updateAllIndicators(); draw(); updateSidebar(state.rawData[state.id][state.lockIdx], state.rawData[state.id][state.lockIdx-1]); } }
+function switchStrategy(name) { if(!STRATEGIES[name] || !confirm(`确定切换到「${name}」？\n${STRATEGIES[name].desc}`)) return; state.strategy=name; Object.assign(STRATEGY, STRATEGIES[name]); localStorage.setItem('quant_strategy', name); renderSettings(); if(state.rawData[state.id]){ updateAllIndicators(); draw(); safeUpdateSidebar(); } }
 function toggleSettings() { const o = document.getElementById('settingsOverlay'); if(o) { if(o.classList.contains('show')) o.classList.remove('show'); else { renderSettings(); o.classList.add('show'); } } }
 
 // === 渲染设置面板 (重构为直观规则显示) ===
@@ -1141,7 +1145,7 @@ async function init() {
                 if(!state.rawData[state.id]) await cachedFetch(state.id);
                 if(state.watchlist.length) await updateAllWatchlistData();
                 renderWatchlist(); 
-                updateAllIndicators(); draw(); updateSidebar(state.rawData[state.id][state.lockIdx], state.rawData[state.id][state.lockIdx-1]); 
+                updateAllIndicators(); draw(); safeUpdateSidebar(); 
             }
             return;
         }
@@ -1149,9 +1153,33 @@ async function init() {
     });
 
     document.querySelectorAll('#rangeTabs .range-btn').forEach(b=>b.onclick=e=>{
-        document.querySelector('#rangeTabs .range-btn.active').classList.remove('active'); e.target.classList.add('active'); state.range=+e.target.dataset.range; draw(); updateSidebar(state.rawData[state.id][state.lockIdx], state.rawData[state.id][state.lockIdx-1]);
+        document.querySelector('#rangeTabs .range-btn.active').classList.remove('active'); e.target.classList.add('active'); state.range=+e.target.dataset.range; draw(); safeUpdateSidebar();
     });
-    ['mainChart','volumeChart','macdChart'].forEach(id=>{const el=document.getElementById(id);if(el)el.onclick=e=>{const c=Chart.getChart(el);if(!c)return;const pts=c.getElementsAtEventForMode(e,'index',{intersect:false},true);if(pts.length){const li=pts[0].index,sl=state.rawData[state.id].slice(-state.range),ti=state.rawData[state.id].indexOf(sl[li]);if(ti>=0){state.lockIdx=ti;draw();updateSidebar(state.rawData[state.id][ti],state.rawData[state.id][ti-1]);}}};});
+
+    ['mainChart','volumeChart','macdChart'].forEach(id=>{
+        const el=document.getElementById(id);
+        if(el) {
+            el.onclick=e=>{
+                const c=Chart.getChart(el);
+                if(!c) return;
+                const pts=c.getElementsAtEventForMode(e,'index',{intersect:false},true);
+                if(pts.length){
+                    const li=pts[0].index;
+                    const sl=state.rawData[state.id].slice(-state.range);
+                    const dataItem = sl[li];
+                    if (!dataItem) return;
+                    const ti=state.rawData[state.id].indexOf(dataItem);
+                    if(ti>=0){
+                        state.lockIdx=ti;
+                        requestAnimationFrame(() => {
+                            draw();
+                            safeUpdateSidebar();
+                        });
+                    }
+                }
+            };
+        }
+    });
 
     setInterval(()=>ui.set('liveClock',new Date().toLocaleTimeString('zh-CN',{hour12:false})), 1000);
     renderMASelector(); 
@@ -1165,19 +1193,18 @@ async function init() {
     let realtimeInterval;
     function startRealtimeUpdate() {
         if(realtimeInterval) clearInterval(realtimeInterval);
-        // 这里把原来迟钝的 30 秒轮询，改成了更敏捷的 5 秒心跳
-        // 因为内部有 requestManager 限流，所以心跳快不仅不会封号，还能在切换股票时获得极速响应
         realtimeInterval = setInterval(async () => {
             if(!isMarketOpen() || !state.id) return;
             
-            // 🚨 修复1：通过限流器安全地拉取数据
+            // 通过限流器安全地拉取数据
             const rt = await requestManager.fetchRealtimeWithThrottle(state.id);
             
             if(rt) {
                 const cached = await getCachedData(state.id);
                 if(!cached || cached.length === 0) return;
                 
-                const today = new Date().toISOString().split('T')[0];
+                const now = new Date();
+                const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
                 
                 if (cached[cached.length-1].date === today) {
                     cached[cached.length-1] = rt; // 如果是今天，替换为最新的实时切片
@@ -1198,7 +1225,7 @@ async function init() {
                 
                 // 只有用户没有在查看历史数据时，才刷新侧边栏
                 if(state.lockIdx === cached.length - 1) {
-                    updateSidebar(cached[cached.length-1], cached[cached.length-2]);
+                    safeUpdateSidebar();
                 }
             }
         }, 5000); 
