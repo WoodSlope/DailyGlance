@@ -630,16 +630,31 @@ function draw() {
     const slice = currentFd.slice(-actualRange);
     const labels = slice.map(d => d.date);
     
-    const commonOptions = {
-        responsive: true, maintainAspectRatio: false, animation: false,
-        layout: { padding: { left: 8, right: 8, top: 10, bottom: 0 } },
-        interaction: { mode: 'index', intersect: false }, 
-        scales: {
-            x: { display: false },
-            y: { position: 'right', grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#64748b', font: { size: 10 }, padding: 12 } }
-        },
-        plugins: { legend: { display: false } },
-        onHover: (e, els) => syncHover(els)
+    const ly = {
+        padding:{left:8,right:8,top:10,bottom:0}
+    };
+    
+    // 强制右侧 Y 轴占据固定宽度，实现上下图表完美对齐
+    const yc = {
+        position:'right',
+        grid:{color:'rgba(255,255,255,0.03)'},
+        ticks:{color:'#64748b', font:{size:10}, padding:12},
+        afterFit: (scale) => {
+            scale.width = 60; // 强制分配 60px 宽度给 Y 轴区域
+        }
+    };
+    
+    // 成交量格式化：使用易读的单位，并强制宽度对齐
+    const yv = {
+        ...yc, 
+        ticks:{
+            ...yc.ticks, 
+            callback: (v) => {
+                if(v >= 100000000) return (v/100000000).toFixed(1) + '亿';
+                if(v >= 10000) return (v/10000).toFixed(0) + '万';
+                return v;
+            }
+        }
     };
     
     const uc = (k, id, cfg) => {
@@ -659,11 +674,12 @@ function draw() {
     const localAlignPlugin = {
         id: 'localAlignPlugin',
         afterDatasetsDraw: c => {
-            const { ctx, chartArea: { top, bottom }, scales: { x } } = c;
+            const { ctx, chartArea: { top, bottom, left, right }, scales: { x } } = c;
             
             const dss = c.data.datasets.find(d => d.isCandle);
             if (dss && dss.candleData) {
-                const w = (x.width / c.data.labels.length) * 0.8;
+                // 计算柱子宽度时，限制最大宽度，防止数据少时柱子过粗
+                const w = Math.min((x.width / c.data.labels.length) * 0.8, 20);
                 dss.candleData.forEach((d, i) => {
                     if (!d) return;
                     const px = x.getPixelForValue(i), cl = d.c >= d.o ? '#ef4444' : '#22c55e';
@@ -679,29 +695,87 @@ function draw() {
                 const li = c.data.labels.indexOf(targetDate);
                 if (li >= 0) {
                     const px = x.getPixelForValue(li);
-                    ctx.save(); ctx.beginPath(); ctx.setLineDash([4, 4]); ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1;
-                    ctx.moveTo(px, top); ctx.lineTo(px, bottom); ctx.stroke(); ctx.restore();
+                    // 确保十字准线只在绘图区内部绘制
+                    if (px >= left && px <= right) {
+                        ctx.save(); ctx.beginPath(); ctx.setLineDash([4, 4]); ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1;
+                        ctx.moveTo(px, top); ctx.lineTo(px, bottom); ctx.stroke(); ctx.restore();
+                    }
                 }
             }
         }
     };
     
-    const tooltipCallbacks = {
-        label: it => {
-            const dFd = getActiveData(); if (!dFd) return '';
-            const dSlice = dFd.slice(-actualRange); const d = dSlice[it.dataIndex]; if (!d) return '';
-            if (it.datasetIndex < state.activeMAs.length) return it.dataset.label + ': ' + (it.raw ? it.raw.toFixed(2) : '--');
-            const p = dSlice[it.dataIndex - 1]; const ch = d.close - (p ? p.close : d.open);
-            return `收:${d.close.toFixed(2)} 涨跌:${ch >= 0 ? '+' : ''}${ch.toFixed(2)}`;
+    const commonTooltipOptions = {
+        enabled: true, mode: 'index', intersect: false,
+        backgroundColor: 'rgba(2,6,23,0.95)', titleColor: '#f1f5f9', bodyColor: '#cbd5e1', borderColor: 'rgba(59,130,246,0.3)', borderWidth: 1,
+        callbacks: {
+            label: it => {
+                const dFd = getActiveData(); if (!dFd) return '';
+                const dSlice = dFd.slice(-actualRange); const d = dSlice[it.dataIndex]; if (!d) return '';
+                if (it.datasetIndex < state.activeMAs.length) return it.dataset.label + ': ' + (it.raw ? it.raw.toFixed(2) : '--');
+                const p = dSlice[it.dataIndex - 1]; const ch = d.close - (p ? p.close : d.open);
+                return `收:${d.close.toFixed(2)} 涨跌:${ch >= 0 ? '+' : ''}${ch.toFixed(2)}`;
+            }
         }
     };
+    
+    // 所有图表共享完全一致的 layout 和 interaction 设置
+    const baseOptions = {
+        responsive:true, maintainAspectRatio:false, animation:false, layout:ly, 
+        interaction: { mode: 'index', intersect: false }
+    };
 
-    uc('main','mainChart',{ type:'line', data:{labels, datasets:ds}, options:{ ...commonOptions, plugins:{...commonOptions.plugins, tooltip:{...commonOptions.plugins.tooltip, callbacks: tooltipCallbacks}} }, plugins: [localAlignPlugin] });
-    uc('vol','volumeChart',{ type:'bar', data:{ labels, datasets:[{ data:slice.map(d=>d.vol), backgroundColor:slice.map((d,i)=>d.close>=(i>0?slice[i-1].close:d.open)?'rgba(239,68,68,0.75)':'rgba(34,197,94,0.75)') }] }, options: commonOptions, plugins: [localAlignPlugin] });
+    uc('main','mainChart',{ 
+        type:'line', 
+        data:{labels, datasets:ds}, 
+        options:{ 
+            ...baseOptions, 
+            plugins:{ legend:{display:false}, tooltip: commonTooltipOptions }, 
+            scales:{x:{display:false}, y:yc}, 
+            onHover:(e,els)=>syncHover(els) 
+        }, 
+        plugins: [localAlignPlugin] 
+    });
+    
+    // 成交量柱子颜色优化：跌为绿，涨为红，与K线保持绝对一致
+    uc('vol','volumeChart',{ 
+        type:'bar', 
+        data:{ 
+            labels, 
+            datasets:[{ 
+                data:slice.map(d=>d.vol), 
+                backgroundColor:slice.map(d=> d.close >= d.open ? 'rgba(239,68,68,0.75)' : 'rgba(34,197,94,0.75)') 
+            }] 
+        }, 
+        options: {
+            ...baseOptions,
+            plugins:{ legend:{display:false}, tooltip:{mode:'index', intersect:false} },
+            scales:{x:{display:false}, y:yv},
+            onHover:(e,els)=>syncHover(els)
+        }, 
+        plugins: [localAlignPlugin] 
+    });
     
     if(state.indicators.macd) {
         const md = state.indicators.macd;
-        uc('macd','macdChart',{ type:'line', data:{ labels, datasets:[ {data:md.diff.slice(-actualRange), borderColor:'#3b82f6', borderWidth:1, pointRadius:0}, {data:md.dea.slice(-actualRange), borderColor:'#f59e0b', borderWidth:1, pointRadius:0}, {type:'bar', data:md.bar.slice(-actualRange), backgroundColor:md.bar.slice(-actualRange).map(v=>v>=0?'rgba(239,68,68,0.6)':'rgba(34,197,94,0.6)')} ] }, options: commonOptions, plugins: [localAlignPlugin] });
+        uc('macd','macdChart',{ 
+            type:'line', 
+            data:{ 
+                labels, 
+                datasets:[ 
+                    {data:md.diff.slice(-actualRange), borderColor:'#3b82f6', borderWidth:1, pointRadius:0}, 
+                    {data:md.dea.slice(-actualRange), borderColor:'#f59e0b', borderWidth:1, pointRadius:0}, 
+                    {type:'bar', data:md.bar.slice(-actualRange), backgroundColor:md.bar.slice(-actualRange).map(v=>v>=0?'rgba(239,68,68,0.6)':'rgba(34,197,94,0.6)')} 
+                ] 
+            }, 
+            options: {
+                ...baseOptions,
+                plugins:{ legend:{display:false}, tooltip:{mode:'index', intersect:false} },
+                scales:{x:{display:false}, y:yc}, // MACD 也使用基础 Y 轴配置确保宽度一致
+                onHover:(e,els)=>syncHover(els)
+            }, 
+            plugins: [localAlignPlugin] 
+        });
     }
 }
 
