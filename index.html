@@ -181,10 +181,12 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 
 <div id="loading">DailyGlance 系统同步中...</div>
 
+<!-- Overlay for Settings -->
 <div id="settingsOverlay" onclick="if(event.target===this)toggleSettings()">
     <div id="settingsPanel"></div>
 </div>
 
+<!-- Overlay for Help -->
 <div id="helpOverlay" onclick="if(event.target===this)toggleHelp()">
     <div id="helpPanel">
         <button class="sg-close" onclick="toggleHelp()">×</button>
@@ -194,7 +196,7 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
             
             <div style="background:rgba(255,255,255,0.05);padding:15px;border-radius:8px;margin:10px 0;">
                 <p style="margin:0 0 10px 0;color:#3b82f6;font-weight:600;">⚡ 历史数据源双重保障</p>
-                <p style="margin:8px 0 0 0;font-size:12px;color:var(--text-dim);">📌 1. 东方财富API：获取最近360天K线数据<br>📌 2. 腾讯财经API：作为备用源，确保数据万无一失</p>
+                <p style="margin:8px 0 0 0;font-size:12px;color:var(--text-dim);">📌 1. 东方财富API：获取最近1000天K线数据<br>📌 2. 腾讯财经API：作为备用源，确保数据万无一失</p>
             </div>
             
             <div style="background:rgba(255,255,255,0.05);padding:15px;border-radius:8px;margin:10px 0;">
@@ -375,12 +377,12 @@ const requestManager = {
     }
 };
 
-// === 强力获取数据封装 ===
+// === 强力获取数据封装 (🚨 请求参数改为 lmt=1000 以完全支撑周线数据) ===
 function jsonpFetchEastmoneyKline(id) {
     return new Promise(resolve => {
         const ids = {sh:'1.000001', sz:'0.399001', cy:'0.399006'}; const secid = ids[id] || id;
         const cb = 'em_kline_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
-        const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&end=20500101&lmt=360&cb=${cb}`;
+        const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&end=20500101&lmt=1000&cb=${cb}`;
         let cl = false; const cleanup = () => { if(cl) return; cl=true; clearTimeout(timer); delete window[cb]; const s = document.getElementById(cb); if(s) s.remove(); };
         const timer = setTimeout(() => { cleanup(); resolve([]); }, 8000);
         window[cb] = data => { cleanup(); if(data && data.data && data.data.klines) { resolve(data.data.klines.map(l => { const p = l.split(','); return { date: p[0], open: parseFloat(p[1]), close: parseFloat(p[2]), high: parseFloat(p[3]), low: parseFloat(p[4]), vol: parseFloat(p[5]), amt: parseFloat(p[6]) }; }).filter(item => isValidPrice(item.close, id))); } else resolve([]); };
@@ -391,7 +393,7 @@ function jsonpFetchTencentKline(id) {
     return new Promise(resolve => {
         const ids = {sh:'sh000001', sz:'sz399001', cy:'sz399006'}; let symbol = ids[id];
         if(!symbol) { let cleanCode = id; if(id.includes('.')) cleanCode = id.split('.')[1]; symbol = cleanCode.startsWith('6') ? 'sh'+cleanCode : 'sz'+cleanCode; }
-        const cb = 'tx_kline_' + Date.now(); const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${symbol},day,,,360,qfq&_var=${cb}`;
+        const cb = 'tx_kline_' + Date.now(); const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${symbol},day,,,1000,qfq&_var=${cb}`;
         let cl = false; const cleanup = () => { if(cl) return; cl=true; clearTimeout(timer); delete window[cb]; const s = document.getElementById(cb); if(s) s.remove(); };
         const timer = setTimeout(() => { cleanup(); resolve([]); }, 5000); window[cb] = undefined;
         const script = document.createElement('script'); script.id = cb; script.src = url;
@@ -597,15 +599,12 @@ function getAdvisePosition(meta) {
     if(meta.type==='✅ 强势出现') return 80; if(meta.type==='⚠️ 风险预警') return 50; if(meta.type==='👀 谨慎观望') return 30; return 0;
 }
 
-// === 图表与视图更新（性能优化核心区） ===
 function updateAllIndicators() {
     const full = getActiveData(); if(!full) return;
     MA_OPTIONS.forEach(n => state.indicators.ma[n] = Calcs.ma(full, n));
     state.indicators.macd = Calcs.macd(full); state.indicators.rsi = Calcs.rsi(full);
     
-    // 🚀 性能优化1：烙印算法。历史数据的买卖信号是恒定的，只算一次，不再全量覆盖算！
     for(let i=0; i<full.length; i++) {
-        // 如果这个索引已经算过，且不是最后一天，直接跳过！计算量从 O(n) 直接降低为 O(1)
         if (full[i]._signals && i !== full.length - 1) continue; 
         full[i]._signals = calculateDailySignals(i, full, state.indicators);
     }
@@ -631,17 +630,16 @@ function draw() {
     const slice = currentFd.slice(-actualRange);
     const labels = slice.map(d => d.date);
     
-    // 🚨 核心配置：开启 Chart.js 的 index 原生垂直对齐
     const commonOptions = {
         responsive: true, maintainAspectRatio: false, animation: false,
         layout: { padding: { left: 8, right: 8, top: 10, bottom: 0 } },
-        interaction: { mode: 'index', intersect: false }, // 让所有图表在X轴共享对齐
+        interaction: { mode: 'index', intersect: false }, 
         scales: {
             x: { display: false },
             y: { position: 'right', grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#64748b', font: { size: 10 }, padding: 12 } }
         },
         plugins: { legend: { display: false } },
-        onHover: (e, el) => syncHover(el)
+        onHover: (e, els) => syncHover(els)
     };
     
     const uc = (k, id, cfg) => {
@@ -663,7 +661,6 @@ function draw() {
         afterDatasetsDraw: c => {
             const { ctx, chartArea: { top, bottom }, scales: { x } } = c;
             
-            // 如果是主图，画K线柱
             const dss = c.data.datasets.find(d => d.isCandle);
             if (dss && dss.candleData) {
                 const w = (x.width / c.data.labels.length) * 0.8;
@@ -675,10 +672,10 @@ function draw() {
                 });
             }
 
-            // 画内部对齐虚线
-            const safeIdx = getSafeIndex(currentFd);
-            if (safeIdx >= 0 && safeIdx < currentFd.length) {
-                const targetDate = currentFd[safeIdx].date;
+            const safeIdx = getSafeIndex(getActiveData());
+            const actData = getActiveData();
+            if (actData && safeIdx >= 0 && safeIdx < actData.length) {
+                const targetDate = actData[safeIdx].date;
                 const li = c.data.labels.indexOf(targetDate);
                 if (li >= 0) {
                     const px = x.getPixelForValue(li);
@@ -707,7 +704,34 @@ function draw() {
         uc('macd','macdChart',{ type:'line', data:{ labels, datasets:[ {data:md.diff.slice(-actualRange), borderColor:'#3b82f6', borderWidth:1, pointRadius:0}, {data:md.dea.slice(-actualRange), borderColor:'#f59e0b', borderWidth:1, pointRadius:0}, {type:'bar', data:md.bar.slice(-actualRange), backgroundColor:md.bar.slice(-actualRange).map(v=>v>=0?'rgba(239,68,68,0.6)':'rgba(34,197,94,0.6)')} ] }, options: commonOptions, plugins: [localAlignPlugin] });
     }
 }
-function syncHover(els){if(els&&els.length)Object.values(state.charts).forEach(c=>{if(c){c.setActiveElements([{datasetIndex:0, index:els[0].index}]);c.update('none');}});}
+
+let hoverRAF = null;
+function syncHover(els) {
+    if(els && els.length) {
+        const li = els[0].index;
+        const activeData = getActiveData();
+        const actualRange = state.period === 'weekly' ? Math.ceil(state.range / 5) : state.range;
+        const sl = activeData.slice(-actualRange);
+        const dataItem = sl[li];
+        
+        if(dataItem) {
+            const ti = activeData.indexOf(dataItem);
+            if(ti >= 0 && state.lockIdx !== ti){
+                state.lockIdx = ti;
+                if(hoverRAF) cancelAnimationFrame(hoverRAF);
+                hoverRAF = requestAnimationFrame(() => {
+                    safeUpdateSidebar();
+                    Object.values(state.charts).forEach(c=>{
+                        if(c){
+                            c.setActiveElements([{datasetIndex:0, index:li}]);
+                            c.update('none');
+                        }
+                    });
+                });
+            }
+        }
+    }
+}
 
 function generateAnalysisHTML(idx, full, meta) {
     const adv = getAdvisePosition(meta); let prevAdv = 0;
@@ -1037,25 +1061,32 @@ async function init() {
         document.querySelector('#rangeTabs .range-btn.active').classList.remove('active'); e.target.classList.add('active'); state.range=+e.target.dataset.range; draw(); safeUpdateSidebar();
     });
 
+    // 🚀 体验强化：自动重置最新日期
+    const container = document.querySelector('.integrated-container');
+    if (container) {
+        container.addEventListener('mouseleave', () => {
+            const act = getActiveData();
+            if(act && state.lockIdx !== act.length - 1) {
+                state.lockIdx = act.length - 1;
+                if(hoverRAF) cancelAnimationFrame(hoverRAF);
+                hoverRAF = requestAnimationFrame(() => {
+                    safeUpdateSidebar();
+                    Object.values(state.charts).forEach(c => {
+                        if(c) { c.setActiveElements([]); c.update('none'); }
+                    });
+                });
+            }
+        });
+    }
+
+    // 兼容触摸点击的 fallback
     ['mainChart','volumeChart','macdChart'].forEach(id=>{
         const el=document.getElementById(id);
         if(el) {
             el.onclick=e=>{
                 const c=Chart.getChart(el); if(!c) return;
                 const pts=c.getElementsAtEventForMode(e,'index',{intersect:false},true);
-                if(pts.length){
-                    const li=pts[0].index;
-                    const activeData = getActiveData();
-                    const actualRange = state.period === 'weekly' ? Math.ceil(state.range / 5) : state.range;
-                    const sl = activeData.slice(-actualRange);
-                    const dataItem = sl[li];
-                    if (!dataItem) return;
-                    const ti = activeData.indexOf(dataItem);
-                    if(ti>=0){
-                        state.lockIdx=ti;
-                        requestAnimationFrame(() => { draw(); safeUpdateSidebar(); });
-                    }
-                }
+                if(pts.length) syncHover(pts);
             };
         }
     });
