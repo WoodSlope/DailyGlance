@@ -56,10 +56,11 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 .ma-checkbox input:checked + .check-box { background: var(--blue); border-color: var(--blue); }
 
 .integrated-container { flex: 1; display: flex; flex-direction: column; border: 1px solid var(--border-color); background: #0b0f1a; border-radius: 16px; overflow: hidden; min-height: 0; }
-.main-chart-box { flex: 6; position: relative; min-height: 0; }
-.volume-chart-box { flex: 2; position: relative; border-top: 1px solid var(--border-color); min-height: 0; }
-.macd-chart-box { flex: 2; position: relative; border-top: 1px solid var(--border-color); min-height: 0; }
-.main-chart-box canvas, .volume-chart-box canvas, .macd-chart-box canvas { width: 100% !important; height: 100% !important; }
+.main-chart-box { flex: 5; position: relative; min-height: 0; }
+.volume-chart-box { flex: 1.5; position: relative; border-top: 1px solid var(--border-color); min-height: 0; }
+.macd-chart-box { flex: 1.5; position: relative; border-top: 1px solid var(--border-color); min-height: 0; }
+.kdj-chart-box { flex: 1.5; position: relative; border-top: 1px solid var(--border-color); min-height: 0; }
+.main-chart-box canvas, .volume-chart-box canvas, .macd-chart-box canvas, .kdj-chart-box canvas { width: 100% !important; height: 100% !important; }
 
 .info-section { width: 380px; border-left: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 18px; gap: 14px; overflow-y: auto; background: var(--sidebar-bg); flex-shrink: 0; }
 .card { background: var(--card-bg); border-radius: 16px; padding: 15px; border: 1px solid var(--border-color); }
@@ -294,13 +295,14 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
                 <div class="ma-selector" id="indicatorGroup"></div>
             </div>
             <div class="toolbar-right">
-                <button id="updateDataBtn" onclick="handleUpdateData()" title="更新数据" class="icon-btn"><svg class="icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M44 31C44 36.5228 39.5228 41 34 41C32.2091 41 30.5281 40.5292 29.0741 39.7046C26.5143 38.2529 24.6579 35.7046 24.1436 32.6983C24.0492 32.1463 24 31.5789 24 31C24 28.4323 24.9678 26.0906 26.5585 24.3198C28.3892 22.2818 31.0449 21 34 21C39.5228 21 44 25.4772 44 31Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M34 12V20V21C31.0449 21 28.3892 22.2818 26.5585 24.3198C24.9678 26.0906 24 28.4323 24 31C24 31.5789 24.0492 32.1463 24.1436 32.6983C24.6579 35.7046 26.5143 38.2529 29.0741 39.7046C26.4116 40.5096 22.8776 41 19 41C10.7157 41 4 38.7614 4 36V28V20V12" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M34 12C34 14.7614 27.2843 17 19 17C10.7157 17 4 14.7614 4 12C4 9.23858 10.7157 7 19 7C27.2843 7 34 9.23858 34 12Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 28C4 30.7614 10.7157 33 19 33C20.807 33 22.5393 32.8935 24.1436 32.6983" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 20C4 22.7614 10.7157 25 19 25C21.7563 25 24.339 24.7522 26.5585 24.3198" stroke currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M38 31C38 33.2091 36.2091 35 34 35" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M30 31C30 28.7909 31.7909 27 34 27" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <button id="updateDataBtn" onclick="handleUpdateData()" title="更新数据" class="icon-btn"><svg class="icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M44 31C44 36.5228 39.5228 41 34 41C32.2091 41 30.5281 40.5292 29.0741 39.7046C26.5143 38.2529 24.6579 35.7046 24.1436 32.6983C24.0492 32.1463 24 31.5789 24 31C24 28.4323 24.9678 26.0906 26.5585 24.3198C28.3892 22.2818 31.0449 21 34 21C39.5228 21 44 25.4772 44 31Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M34 12V20V21C31.0449 21 28.3892 22.2818 26.5585 24.3198C24.9678 26.0906 24 28.4323 24 31C24 31.5789 24.0492 32.1463 24.1436 32.6983C24.6579 35.7046 26.5143 38.2529 29.0741 39.7046C26.4116 40.5096 22.8776 41 19 41C10.7157 41 4 38.7614 4 36V28V20V12" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M34 12C34 14.7614 27.2843 17 19 17C10.7157 17 4 14.7614 4 12C4 9.23858 10.7157 7 19 7C27.2843 7 34 9.23858 34 12Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 28C4 30.7614 10.7157 33 19 33C20.807 33 22.5393 32.8935 24.1436 32.6983" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 20C4 22.7614 10.7157 25 19 25C21.7563 25 24.339 24.7522 26.5585 24.3198" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M38 31C38 33.2091 36.2091 35 34 35" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M30 31C30 28.7909 31.7909 27 34 27" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             </div>
         </div>
         <div class="integrated-container">
             <div class="main-chart-box"><canvas id="mainChart"></canvas></div>
             <div class="volume-chart-box"><canvas id="volumeChart"></canvas></div>
             <div class="macd-chart-box"><canvas id="macdChart"></canvas></div>
+            <div class="kdj-chart-box"><canvas id="kdjChart"></canvas></div>
         </div>
     </section>
     
@@ -360,7 +362,7 @@ const STRATEGIES = {
 };
 
 let STRATEGY = {}; 
-let state = { id:'sh', mode:'index', range:180, lockIdx:-1, periodLocks:{daily:-1, weekly:-1}, charts:{}, rawData:{}, weeklyData:{}, period: 'daily', activeMAs:[5,20,60], indicators:{ma:{}, macd:null, rsi:null}, watchlist:[], stockId:null, strategy: '稳健趋势型' };
+let state = { id:'sh', mode:'index', range:180, lockIdx:-1, periodLocks:{daily:-1, weekly:-1}, charts:{}, rawData:{}, weeklyData:{}, period: 'daily', activeMAs:[5,20,60], indicators:{ma:{}, macd:null, rsi:null, kdj:null}, watchlist:[], stockId:null, strategy: '稳健趋势型' };
 let stockSelectionSeq = 0;
 Object.assign(STRATEGY, STRATEGIES['稳健趋势型']);
 
@@ -627,7 +629,8 @@ async function ensureMarketTemperatureData() {
 const Calcs = {
     ma:(data,n)=>{let r=[];for(let i=0;i<data.length;i++){if(i<n-1){r.push(null);continue;}let s=0;for(let j=0;j<n;j++)s+=data[i-j].close;r.push(s/n);}return r;},
     macd:(data)=>{let e12=[],e26=[],diff=[],dea=[],bar=[];for(let i=0;i<data.length;i++){let c=data[i].close;if(i===0){e12[i]=e26[i]=c;}else{e12[i]=c*2/13+e12[i-1]*11/13;e26[i]=c*2/27+e26[i-1]*25/27;}diff[i]=e12[i]-e26[i];dea[i]=(i===0)?diff[i]:(diff[i]*2/11+dea[i-1]*9/11);bar[i]=diff[i]-dea[i];}return{diff,dea,bar};},
-    rsi:(data,n=14)=>{let r=[],g=[0],l=[0];for(let i=1;i<data.length;i++){let d=data[i].close-data[i-1].close;g.push(d>0?d:0);l.push(d<0?-d:0);}let ag=0,al=0;for(let i=0;i<data.length;i++){if(i<n){ag+=g[i];al+=l[i];r.push(null);}else if(i===n){ag/=n;al/=n;r.push(100-100/(1+(ag/(al||0.0001))));}else{ag=(ag*(n-1)+g[i])/n;al=(al*(n-1)+l[i])/n;r.push(100-100/(1+(ag/(al||0.0001))));}}return r;}
+    rsi:(data,n=14)=>{let r=[],g=[0],l=[0];for(let i=1;i<data.length;i++){let d=data[i].close-data[i-1].close;g.push(d>0?d:0);l.push(d<0?-d:0);}let ag=0,al=0;for(let i=0;i<data.length;i++){if(i<n){ag+=g[i];al+=l[i];r.push(null);}else if(i===n){ag/=n;al/=n;r.push(100-100/(1+(ag/(al||0.0001))));}else{ag=(ag*(n-1)+g[i])/n;al=(al*(n-1)+l[i])/n;r.push(100-100/(1+(ag/(al||0.0001))));}}return r;},
+    kdj:(data,n=9)=>{let k=[],d=[],j=[];let prevK=50,prevD=50;for(let i=0;i<data.length;i++){if(i<n-1){k.push(null);d.push(null);j.push(null);continue;}let slice=data.slice(i-n+1,i+1);let hn=Math.max(...slice.map(v=>v.high));let ln=Math.min(...slice.map(v=>v.low));let rsv=hn===ln?50:(data[i].close-ln)/(hn-ln)*100;let curK=(2/3)*prevK+(1/3)*rsv;let curD=(2/3)*prevD+(1/3)*curK;let curJ=3*curK-2*curD;k.push(curK);d.push(curD);j.push(curJ);prevK=curK;prevD=curD;}return{k,d,j};}
 };
 function calculateKDJ(data, idx) { if(idx<8) return null; const low9=Math.min(...data.slice(idx-8,idx+1).map(d=>d.low)), high9=Math.max(...data.slice(idx-8,idx+1).map(d=>d.high)); const rsv=(data[idx].close-low9)/(high9-low9)*100||50; const prevK=idx>0&&data[idx-1]._kdjK?data[idx-1]._kdjK:50, prevD=idx>0&&data[idx-1]._kdjD?data[idx-1]._kdjD:50; const K=(2/3)*prevK+(1/3)*rsv, D=(2/3)*prevD+(1/3)*K, J=3*K-2*D; data[idx]._kdjK=K; data[idx]._kdjD=D; return { K, D, J, prevK, prevD }; }
 function calculateBollinger(data, idx) { if(idx<19) return null; const slice=data.slice(idx-19,idx+1), avg=slice.reduce((s,d)=>s+d.close,0)/20; const std=Math.sqrt(slice.reduce((s,d)=>s+Math.pow(d.close-avg,2),0)/20); return { middle: avg, upper: avg+2*std, lower: avg-2*std }; }
@@ -954,7 +957,7 @@ function getWeeklyDirectionContext(idx, full, ind) {
 function updateAllIndicators() {
     const full = getActiveData(); if(!full) return;
     MA_OPTIONS.forEach(n => state.indicators.ma[n] = Calcs.ma(full, n));
-    state.indicators.macd = Calcs.macd(full); state.indicators.rsi = Calcs.rsi(full);
+    state.indicators.macd = Calcs.macd(full); state.indicators.rsi = Calcs.rsi(full); state.indicators.kdj = Calcs.kdj(full);
     
     for(let i=0; i<full.length; i++) {
         if (full[i]._signals && i !== full.length - 1) continue; 
@@ -964,11 +967,11 @@ function updateAllIndicators() {
 
 function clearCharts(){
     Object.keys(state.charts).forEach(k=>{if(state.charts[k]){state.charts[k].destroy();delete state.charts[k]}});
-    ['mainChart','volumeChart','macdChart'].forEach(id=>{
+    ['mainChart','volumeChart','macdChart','kdjChart'].forEach(id=>{
         const el=document.getElementById(id); if(!el)return; const p=el.parentElement; p.style.position='relative';
         let ph=p.querySelector('.empty-hint'); if(!ph){ph=document.createElement('div');ph.className='empty-hint';p.appendChild(ph);}
         ph.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#334155;font-size:12px;font-weight:600;letter-spacing:1px;z-index:5';
-        ph.innerText={'mainChart':'K 线图','volumeChart':'成交量','macdChart':'MACD'}[id]+' — 暂无数据';
+        ph.innerText={'mainChart':'K 线图','volumeChart':'成交量','macdChart':'MACD','kdjChart':'KDJ'}[id]+' — 暂无数据';
     });
 }
 
@@ -1133,6 +1136,28 @@ function draw() {
                 ...baseOptions,
                 plugins:{ legend:{display:false}, tooltip:{mode:'index', intersect:false} },
                 scales:{x:{display:false}, y:yc}, // MACD 也使用基础 Y 轴配置确保宽度一致
+                onHover:(e,els)=>syncHover(els)
+            }, 
+            plugins: [localAlignPlugin] 
+        });
+    }
+
+    if(state.indicators.kdj) {
+        const kd = state.indicators.kdj;
+        uc('kdj','kdjChart',{ 
+            type:'line', 
+            data:{ 
+                labels, 
+                datasets:[ 
+                    {label: 'K', data:kd.k.slice(-actualRange), borderColor:'#f1f5f9', borderWidth:1, pointRadius:0, tension:0.2}, 
+                    {label: 'D', data:kd.d.slice(-actualRange), borderColor:'#f59e0b', borderWidth:1, pointRadius:0, tension:0.2}, 
+                    {label: 'J', data:kd.j.slice(-actualRange), borderColor:'#a855f7', borderWidth:1, pointRadius:0, tension:0.2} 
+                ] 
+            }, 
+            options: {
+                ...baseOptions,
+                plugins:{ legend:{display:false}, tooltip:{mode:'index', intersect:false} },
+                scales:{x:{display:false}, y:yc}, 
                 onHover:(e,els)=>syncHover(els)
             }, 
             plugins: [localAlignPlugin] 
