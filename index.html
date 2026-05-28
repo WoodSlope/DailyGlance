@@ -345,7 +345,6 @@ const customConfirm = (msg) => new Promise(resolve => {
     okBtn.focus();
 });
 
-
 // === 状态与配置 ===
 let dataSourceInfo = {};
 let dataLoadStatus = {};
@@ -503,10 +502,8 @@ function alignLockToPeriod(targetPeriod, anchorDate) {
     return findNearestIndexByDate(data, anchorDate);
 }
 
-// 全新的安全索引函数，彻底杜绝 -1 报错
 function getSafeIndex(data) {
     if (!data || data.length === 0) return -1;
-    // 如果还没设定 lockIdx 或 lockIdx 超出范围，默认返回最新一天的索引
     if (state.lockIdx < 0 || state.lockIdx >= data.length) {
         setLockIdx(data.length - 1);
         return data.length - 1;
@@ -550,7 +547,6 @@ const requestManager = {
     }
 };
 
-// === 强力获取数据封装 (🚨 请求参数改为 lmt=1000 以完全支撑周线数据) ===
 function jsonpFetchEastmoneyKline(id) {
     return new Promise(resolve => {
         const secid = resolveSecid(id);
@@ -562,6 +558,7 @@ function jsonpFetchEastmoneyKline(id) {
         const script = document.createElement('script'); script.id = cb; script.src = url; script.onerror = () => { cleanup(); resolve([]); }; document.head.appendChild(script);
     });
 }
+
 function jsonpFetchTencentKline(id) {
     return new Promise(resolve => {
         let symbol = resolveTencentSymbol(id);
@@ -573,6 +570,7 @@ function jsonpFetchTencentKline(id) {
         script.onerror = () => { cleanup(); resolve([]); }; document.head.appendChild(script);
     });
 }
+
 function getRealtimePriceJSONP(id) {
     return new Promise(resolve => {
         const symbol = resolveTencentSymbol(id); const varName = 'v_' + symbol;
@@ -844,23 +842,39 @@ function checkUnconditionalExit(idx, full, ind) {
 
 function getSignalMeta(idx, full, ind) {
     const sigs = calculateAllSignals(idx, full, ind), S = STRATEGY;
-    const hasUncond = checkUnconditionalExit(idx, full, ind), hasExit = sigs.exitSignals.length>0 && !hasUncond;
+    const hasUncond = checkUnconditionalExit(idx, full, ind);
     const warns = Object.keys(sigs.allSignals).filter(s=>S.warningSignals?.includes(s));
+    
+    // 🚀 核心修复1：区分“核心破位”和“普通减仓”
+    const strongExits = sigs.exitSignals.filter(s => ['L3', 'L4', 'L5', 'L9', 'L10'].includes(s));
     
     let type, cls, detail, logic;
     if(hasUncond) { type='🛑 清仓规避'; cls='core'; detail='顶背离后MACD死叉'; logic='触发高危清仓信号'; }
-    else if(sigs.exitSignals.length>0) { type='🚪 趋势走弱'; cls='core'; detail='触发离场防守信号'; logic='防守: '+sigs.exitSignals.join(','); }
+    else if(strongExits.length > 0) { type='🚪 趋势破位'; cls='core'; detail='触发核心破位防守'; logic='防守: '+strongExits.join(','); }
     else if(sigs.inCooldown) { type='⏸️ 离场观望'; cls='regular'; detail=`结构已破位，冷静期剩余${3-sigs.daysSinceExit}天`; logic=`动能清零，需重新积攒`; }
     else if(sigs.windowScore>=S.buyThreshold && warns.length) { type='⚠️ 谨慎看多'; cls='core'; detail='买入积分达标但伴随过热风险'; logic=warns.join(','); }
     else if(sigs.windowScore>=S.buyThreshold) { type='✅ 明确转强'; cls='core'; detail=`积分:${sigs.windowScore} 达到买入条件`; logic='做多信号: '+(sigs.buySignals.join(',')||'历史积分'); }
     else if(sigs.windowScore>=Math.max(3, S.buyThreshold-2)) { type='👀 关注异动'; cls='regular'; detail=`当前积分:${sigs.windowScore}，即将达标`; logic='接近转强，可列入观察'; }
+    // 🚀 核心修复2：加入“均线记忆”，只要在20日线上方，就是趋势抱单，绝不清仓！
+    else if(full[idx].close > (ind.ma[20]?.[idx] || Infinity)) { type='📈 趋势抱单'; cls='regular'; detail='依托均线多头结构持仓'; logic='虽无新买点，但大趋势完好'; }
     else { type='👀 弱势震荡'; cls='regular'; detail='积分不足，缺乏上行动能'; logic='耐心等待放量或信号确认'; }
     
     return { ...sigs, type, cls, detail, logic, warningSignals:warns, windowBuyCount:sigs.windowSignals.filter(w=>w.signal.startsWith('B')).length, windowExitCount:sigs.windowSignals.filter(w=>w.signal.startsWith('L')).length, triggeredSignals:[...sigs.buySignals, ...sigs.exitSignals] };
 }
 
-function getBasePosition(meta) {
-    if(meta.type==='✅ 明确转强') return 80; if(meta.type==='⚠️ 谨慎看多') return 50; if(meta.type==='👀 关注异动') return 30; return 0;
+function getBasePosition(idx, full, ind, meta) {
+    if(meta.type==='✅ 明确转强') return 80; 
+    if(meta.type==='⚠️ 谨慎看多') return 50; 
+    if(meta.type==='👀 关注异动') return 30; 
+    
+    // 🚀 核心修复3：给“趋势抱单”分配底仓
+    if(meta.type==='📈 趋势抱单') {
+        const ma20 = ind.ma[20]?.[idx], ma60 = ind.ma[60]?.[idx];
+        if (ma20 && ma60 && ma20 > ma60) return 60; // 绝对多头给60%
+        return 40; // 偏多头给40%
+    }
+    
+    return 0;
 }
 
 function getATR(data, idx, n=14) {
@@ -962,21 +976,31 @@ function getExitSeverity(meta) {
 function roundPosition(v) { return Math.max(0, Math.min(80, Math.round(v / 10) * 10)); }
 
 function getDecisionContext(idx, full, ind, meta) {
-    const base = getBasePosition(meta), market = getMarketContext(full[idx]?.date), risk = getRiskContext(idx, full, ind), exit = getExitSeverity(meta);
+    const base = getBasePosition(idx, full, ind, meta), market = getMarketContext(full[idx]?.date), risk = getRiskContext(idx, full, ind), exit = getExitSeverity(meta);
     let position = roundPosition(Math.min(base * market.coef * risk.coef, market.maxPosition));
-    if(exit.level === '清仓防守' || exit.level === '强离场' || meta.inCooldown || meta.type.includes('离场')) position = 0;
+    
+    // 修正了强制归零的条件，仅当真正破位或清仓时才归零
+    if(exit.level === '清仓防守' || exit.level === '强离场' || meta.inCooldown || meta.type.includes('离场') || meta.type.includes('破位')) position = 0;
     else if(exit.level === '减仓观察') position = Math.min(position, 30);
+    
     if(meta.warningSignals?.length) position = Math.min(position, 40);
     if(risk.score < 40) position = Math.min(position, 20);
+    
     const signalReady = meta.windowScore >= STRATEGY.buyThreshold;
-    const action = position === 0 ? (signalReady ? '风控拦截' : '继续观望') : position <= 30 ? '小仓试探' : position <= 50 ? '轻仓进场' : '分批进场';
-    const actionReason = exit.level !== '无明确离场' ? exit.detail : meta.inCooldown ? '冷静期内，等待重新积累信号' : signalReady ? '策略积分达标，且没有离场拦截' : `当前积分${meta.windowScore || 0}，未达到${STRATEGY.buyThreshold}分`;
+    const action = position === 0 ? (signalReady ? '风控拦截' : '继续观望') : position <= 30 ? '小仓防守' : position <= 50 ? '轻仓持股' : '积极持股';
+    
+    let actionReason = '';
+    if (exit.level !== '无明确离场') actionReason = exit.detail;
+    else if (meta.inCooldown) actionReason = '冷静期内，等待重新积累信号';
+    else if (signalReady) actionReason = '策略积分达标，且没有离场拦截';
+    else if (base > 0) actionReason = '依托均线多头趋势底仓持有';
+    else actionReason = `当前积分${meta.windowScore || 0}，缺乏明确上行动能`;
 
     let simpleAction = '持币观望';
     let simpleColor = 'var(--text-dim)';
     
     if (position === 0) {
-        if (exit.level !== '无明确离场' || meta.type.includes('规避')) {
+        if (exit.level !== '无明确离场' || meta.type.includes('规避') || meta.type.includes('破位')) {
             simpleAction = '清仓离场';
             simpleColor = 'var(--red)';
         } else {
@@ -1011,7 +1035,7 @@ function getDecisionContext(idx, full, ind, meta) {
     return { basePosition: base, position, market, risk, exit, action, signalReady, actionReason, regime, simpleAction, simpleColor };
 }
 
-function getAdvisePosition(meta) { return getBasePosition(meta); }
+function getAdvisePosition(idx, full, ind, meta) { return getBasePosition(idx, full, ind, meta); }
 
 function getWeeklyDirectionContext(idx, full, ind) {
     const item = full[idx], close = item.close;
@@ -1747,7 +1771,7 @@ async function init() {
     }
 
     // 兼容触摸点击的 fallback
-    ['mainChart','volumeChart','macdChart'].forEach(id=>{
+    ['mainChart','volumeChart','macdChart','kdjChart'].forEach(id=>{
         const el=document.getElementById(id);
         if(el) {
             el.onclick=e=>{
