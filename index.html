@@ -172,22 +172,16 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 .stock-empty { padding: 20px 0; text-align: center; color: var(--text-dim); font-size: 11px; line-height: 1.8; }
 .stock-empty strong { display: block; color: #cbd5e1; font-size: 12px; margin-bottom: 4px; }
 
-.ai-mini-btn { position: absolute; top: 8px; right: 8px; padding: 3px 8px; font-size: 10px; font-weight: 600; color: rgba(255, 255, 255, 0.85); background: rgba(0, 0, 0, 0.2); border: none; border-radius: 6px; cursor: pointer; transition: all .2s; }
-.ai-mini-btn:hover { background: rgba(0, 0, 0, 0.35); color: #fff; }
-.ai-modal { display: none; position: fixed; inset: 0; z-index: 9998; align-items: center; justify-content: center; padding: 20px; }
-.ai-modal.show { display: flex; }
-.ai-modal-overlay { position: absolute; inset: 0; background: rgba(2, 6, 23, 0.7); backdrop-filter: blur(6px); }
-.ai-modal-content { position: relative; display: flex; flex-direction: column; background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 0.92)); border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); border-radius: 16px; width: 100%; max-width: 560px; max-height: 80vh; overflow: hidden; }
-.ai-modal-header { display: flex; justify-content: space-between; padding: 24px 24px 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
-.ai-modal-title { font-size: 14px; font-weight: 800; color: var(--text-main); }
-.ai-modal-close { position: absolute; top: 12px; right: 14px; background: none; border: none; color: #64748b; font-size: 18px; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
-.ai-modal-close:hover { color: var(--text-main); background: rgba(255, 255, 255, 0.06); }
-.ai-modal-body { flex: 1; padding: 16px 24px; overflow-y: auto; }
-.ai-modal-body textarea { width: 100%; height: 100%; min-height: 300px; padding: 14px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; background: rgba(0, 0, 0, 0.3); color: var(--text-main); font-size: 13px; font-family: 'JetBrains Mono', monospace; resize: none; outline: none; }
-.ai-modal-footer { display: flex; gap: 10px; padding: 16px 24px; border-top: 1px solid rgba(255, 255, 255, 0.08); justify-content: flex-end; }
-.ai-modal-btn { padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
-.ai-modal-btn-secondary { background: rgba(148, 163, 184, 0.1); color: var(--text-dim); border: 1px solid rgba(148, 163, 184, 0.3); }
-.ai-modal-btn-primary { background: var(--blue); color: #fff; border: 1px solid transparent; }
+/* Custom Modal Styles */
+#customModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px); z-index:10000; align-items:center; justify-content:center; }
+.custom-modal-box { background:#0f172a; padding:24px; border-radius:12px; border:1px solid #334155; min-width:320px; box-shadow:0 20px 40px rgba(0,0,0,0.4); text-align:center; }
+.custom-modal-msg { margin-bottom:24px; color:#f1f5f9; font-size:14px; line-height:1.6; }
+.custom-modal-btns { display:flex; gap:12px; justify-content:center; }
+.custom-modal-btn { padding:8px 20px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; transition:all .2s; }
+.btn-cancel { background:transparent; border:1px solid #475569; color:#94a3b8; }
+.btn-cancel:hover { background:rgba(255,255,255,0.05); color:#fff; }
+.btn-ok { background:var(--blue); border:none; color:#fff; }
+.btn-ok:hover { background:#2563eb; }
 
 @media (max-width: 1024px) { .info-section { width: 320px; } .price-main { font-size: 28px; } }
 @media (max-width: 768px) {
@@ -217,6 +211,17 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 <body>
 
 <div id="loading">DailyGlance 系统同步中...</div>
+
+<!-- Custom Global Modal -->
+<div id="customModal">
+    <div class="custom-modal-box">
+        <div id="customModalMsg" class="custom-modal-msg"></div>
+        <div class="custom-modal-btns">
+            <button id="customModalBtnCancel" class="custom-modal-btn btn-cancel">取消</button>
+            <button id="customModalBtnOk" class="custom-modal-btn btn-ok">确定</button>
+        </div>
+    </div>
+</div>
 
 <!-- Overlay for Settings -->
 <div id="settingsOverlay" onclick="if(event.target===this)toggleSettings()">
@@ -257,9 +262,9 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 <header class="header">
     <div class="header-left">
         <div class="logo-box">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
-                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
-                <circle cx="12" cy="12" r="3" />
+            <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M3 12s2.5-6 9-6 9 6 9 6-2.5 6-9 6-9-6-9-6Z" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="12" cy="12" r="2.5" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
         </div>
         <div class="header-title">DailyGlance</div>
@@ -317,6 +322,30 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 </main>
 
 <script>
+// === Custom Modal System (replaces native alert/confirm) ===
+const customAlert = (msg) => new Promise(resolve => {
+    const m = document.getElementById('customModal');
+    document.getElementById('customModalMsg').innerText = msg;
+    document.getElementById('customModalBtnCancel').style.display = 'none';
+    const okBtn = document.getElementById('customModalBtnOk');
+    okBtn.onclick = () => { m.style.display = 'none'; resolve(true); };
+    m.style.display = 'flex';
+    okBtn.focus();
+});
+
+const customConfirm = (msg) => new Promise(resolve => {
+    const m = document.getElementById('customModal');
+    document.getElementById('customModalMsg').innerText = msg;
+    const cancelBtn = document.getElementById('customModalBtnCancel');
+    const okBtn = document.getElementById('customModalBtnOk');
+    cancelBtn.style.display = 'block';
+    cancelBtn.onclick = () => { m.style.display = 'none'; resolve(false); };
+    okBtn.onclick = () => { m.style.display = 'none'; resolve(true); };
+    m.style.display = 'flex';
+    okBtn.focus();
+});
+
+
 // === 状态与配置 ===
 let dataSourceInfo = {};
 let dataLoadStatus = {};
@@ -561,7 +590,43 @@ async function syncData(id) { const cached = await getCachedData(id); const now 
 async function checkCacheNeedUpdate(id) { const cached = await dbGet(id); if(!cached||!cached.data||!cached.data.length) return {needUpdate:true, reason:'无数据'}; const ld = cached.data[cached.data.length-1].date, ltd = getLastTradingDate(); if(ld < ltd) return {needUpdate:true, reason:'数据过期', missingDays:Math.ceil((new Date(ltd)-new Date(ld))/86400000)}; return {needUpdate:false, reason:'已最新'}; }
 
 let lastUpdateClick=0; const UPDATE_COOLDOWN=60000;
-async function handleUpdateData(forceFull=false) { const btn = document.getElementById('updateDataBtn'); if(!btn) return; const now = Date.now(); if(!forceFull && now-lastUpdateClick < UPDATE_COOLDOWN) { alert(`请等待 ${Math.ceil((UPDATE_COOLDOWN-(now-lastUpdateClick))/1000)} 秒`); return; } lastUpdateClick = now; if(!state.id) return; const info = await checkCacheNeedUpdate(state.id); if(!confirm(info.needUpdate ? `需要更新：${info.reason}\n确定？` : '缓存已最新，确定要重新下载全部数据吗？')) return; btn.disabled=true; btn.innerHTML='<svg class="icon spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/></svg>'; try { const fresh = (!forceFull&&!info.needUpdate) ? await syncDataIncremental(state.id) : await syncDataWithHistory(state.id); if(fresh && fresh.length) { await dbSet(state.id, fresh); setRawData(state.id, fresh); setLockIdx(getActiveData().length-1); updateAllIndicators(); draw(); safeUpdateSidebar(); alert(`更新成功！共 ${fresh.length} 条数据。`); } else alert('数据更新失败！'); } catch(e) { alert('更新失败：'+e.message); } finally { btn.disabled=false; btn.innerHTML='<svg class="icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M44 31C44 36.5228 39.5228 41 34 41C32.2091 41 30.5281 40.5292 29.0741 39.7046C26.5143 38.2529 24.6579 35.7046 24.1436 32.6983C24.0492 32.1463 24 31.5789 24 31C24 28.4323 24.9678 26.0906 26.5585 24.3198C28.3892 22.2818 31.0449 21 34 21C39.5228 21 44 25.4772 44 31Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M34 12V20V21C31.0449 21 28.3892 22.2818 26.5585 24.3198C24.9678 26.0906 24 28.4323 24 31C24 31.5789 24.0492 32.1463 24.1436 32.6983C24.6579 35.7046 26.5143 38.2529 29.0741 39.7046C26.4116 40.5096 22.8776 41 19 41C10.7157 41 4 38.7614 4 36V28V20V12" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M34 12C34 14.7614 27.2843 17 19 17C10.7157 17 4 14.7614 4 12C4 9.23858 10.7157 7 19 7C27.2843 7 34 9.23858 34 12Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 28C4 30.7614 10.7157 33 19 33C20.807 33 22.5393 32.8935 24.1436 32.6983" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 20C4 22.7614 10.7157 25 19 25C21.7563 25 24.339 24.7522 26.5585 24.3198" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M38 31C38 33.2091 36.2091 35 34 35" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M30 31C30 28.7909 31.7909 27 34 27" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>'; } }
+async function handleUpdateData(forceFull=false) { 
+    const btn = document.getElementById('updateDataBtn'); 
+    if(!btn) return; 
+    const now = Date.now(); 
+    if(!forceFull && now-lastUpdateClick < UPDATE_COOLDOWN) { 
+        await customAlert(`请等待 ${Math.ceil((UPDATE_COOLDOWN-(now-lastUpdateClick))/1000)} 秒`); 
+        return; 
+    } 
+    lastUpdateClick = now; 
+    if(!state.id) return; 
+    
+    const info = await checkCacheNeedUpdate(state.id); 
+    const confirmed = await customConfirm(info.needUpdate ? `需要更新：${info.reason}\n确定？` : '缓存已最新，确定要重新下载全部数据吗？');
+    if(!confirmed) return;
+    
+    btn.disabled=true; 
+    btn.innerHTML='<svg class="icon spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/></svg>'; 
+    try { 
+        const fresh = (!forceFull&&!info.needUpdate) ? await syncDataIncremental(state.id) : await syncDataWithHistory(state.id); 
+        if(fresh && fresh.length) { 
+            await dbSet(state.id, fresh); 
+            setRawData(state.id, fresh); 
+            setLockIdx(getActiveData().length-1); 
+            updateAllIndicators(); 
+            draw(); 
+            safeUpdateSidebar(); 
+            await customAlert(`更新成功！共 ${fresh.length} 条数据。`); 
+        } else {
+            await customAlert('数据更新失败！'); 
+        }
+    } catch(e) { 
+        await customAlert('更新失败：'+e.message); 
+    } finally { 
+        btn.disabled=false; 
+        btn.innerHTML='<svg class="icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M44 31C44 36.5228 39.5228 41 34 41C32.2091 41 30.5281 40.5292 29.0741 39.7046C26.5143 38.2529 24.6579 35.7046 24.1436 32.6983C24.0492 32.1463 24 31.5789 24 31C24 28.4323 24.9678 26.0906 26.5585 24.3198C28.3892 22.2818 31.0449 21 34 21C39.5228 21 44 25.4772 44 31Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M34 12V20V21C31.0449 21 28.3892 22.2818 26.5585 24.3198C24.9678 26.0906 24 28.4323 24 31C24 31.5789 24.0492 32.1463 24.1436 32.6983C24.6579 35.7046 26.5143 38.2529 29.0741 39.7046C26.4116 40.5096 22.8776 41 19 41C10.7157 41 4 38.7614 4 36V28V20V12" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M34 12C34 14.7614 27.2843 17 19 17C10.7157 17 4 14.7614 4 12C4 9.23858 10.7157 7 19 7C27.2843 7 34 9.23858 34 12Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 28C4 30.7614 10.7157 33 19 33C20.807 33 22.5393 32.8935 24.1436 32.6983" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 20C4 22.7614 10.7157 25 19 25C21.7563 25 24.339 24.7522 26.5585 24.3198" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M38 31C38 33.2091 36.2091 35 34 35" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M30 31C30 28.7909 31.7909 27 34 27" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>'; 
+    } 
+}
 
 // === DB & Cache ===
 let DB = null; const DB_NAME = 'QuantProDB_v515', DB_VER = 1, STORE = 'kline';
@@ -570,7 +635,7 @@ function dbGet(id) { return new Promise(resolve => { if(!DB) return resolve(null
 function dbSet(id, data) { return new Promise(resolve => { if(!DB) return resolve(); const tx = DB.transaction(STORE, 'readwrite'); tx.objectStore(STORE).put({ id, data, updated: Date.now() }); tx.oncomplete = () => resolve(); tx.onerror = () => resolve(); }); }
 async function getCachedData(id) { const c = await dbGet(id); return (c && c.data) ? c.data : null; }
 async function clearAllCache() { if(DB) { const tx = DB.transaction(STORE, 'readwrite'); tx.objectStore(STORE).clear(); await new Promise(r => tx.oncomplete = r); } state.rawData = {}; state.weeklyData = {}; dataSourceInfo = {}; location.reload(); }
-function handleClearCache() { if(confirm('确定要清除所有缓存吗？')) clearAllCache().catch(e=>alert('清除失败: '+e.message)); }
+async function handleClearCache() { const confirmed = await customConfirm('确定要清除所有缓存吗？'); if(confirmed) { clearAllCache().catch(async e => await customAlert('清除失败: '+e.message)); } }
 
 async function cachedFetch(id) {
     let firstLoad = true;
@@ -1202,7 +1267,6 @@ function generateAnalysisHTML(idx, full, meta) {
         const fmt = v => v ? v.toFixed(2) : '--';
         return `
             <div style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 12px; padding: 16px; margin-bottom: 14px; position: relative;">
-                <button class="ai-mini-btn" onclick="generateAIQuery()">AI解读</button>
                 <div style="font-size:11px; margin-bottom:6px; color:rgba(255,255,255,0.7); font-weight:700;">周线大方向</div>
                 <div style="font-size:22px; font-weight:900; color:#fff;">${wk.direction}</div>
             </div>
@@ -1263,7 +1327,6 @@ function generateAnalysisHTML(idx, full, meta) {
 
     const riskFlags = decision.risk.flags.length ? decision.risk.flags.join(' / ') : '无高波动或严重偏离';
     const fmt = v => v ? v.toFixed(2) : '--';
-    const strategyText = decision.regime.recommended === state.strategy ? decision.regime.recommended : `${decision.regime.recommended}（当前为${state.strategy}）`;
     const primaryReason = decision.exit.level !== '无明确离场' ? decision.exit.detail : decision.regime.reason;
 
     let topCardBg = '', topBorder = '';
@@ -1273,12 +1336,11 @@ function generateAnalysisHTML(idx, full, meta) {
     else if (decision.simpleAction === '积极持有') { topCardBg = 'rgba(34, 197, 94, 0.12)'; topBorder = 'rgba(34, 197, 94, 0.3)'; }
     else { topCardBg = 'rgba(255, 255, 255, 0.04)'; topBorder = 'rgba(255, 255, 255, 0.1)'; }
 
-    const cooldownHtml = meta.inCooldown ? `<div style="position:absolute; top:8px; right:64px; background:var(--yellow); color:#000; font-size:9px; font-weight:800; padding:2px 6px; border-radius:4px;">冷却中</div>` : '';
+    const cooldownHtml = meta.inCooldown ? `<div style="position:absolute; top:12px; right:12px; background:var(--yellow); color:#000; font-size:9px; font-weight:800; padding:2px 6px; border-radius:4px;">冷却中</div>` : '';
 
     return `
         <div style="background: ${topCardBg}; border: 1px solid ${topBorder}; border-radius: 12px; padding: 16px; margin-bottom: 14px; position: relative;">
             ${cooldownHtml}
-            <button class="ai-mini-btn" onclick="generateAIQuery()">AI解读</button>
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <div>
                     <div style="font-size:11px; margin-bottom:6px; color:rgba(255,255,255,0.7); font-weight:700;">极简操作建议</div>
@@ -1391,7 +1453,7 @@ function onSearchKeydown(e) {
 
 async function loadWatchlist() { try { const w=await dbGet('watchlist_list'); state.watchlist=(w&&w.data)||[]; } catch(e) { state.watchlist=[]; } }
 async function saveWatchlist() { await dbSet('watchlist_list', state.watchlist); }
-async function addToWatchlist(code, name) { if(!state.watchlist.some(s=>s.code===code)) { if(state.watchlist.length>=10) { alert('最多10只自选股'); return; } state.watchlist.push({code,name}); await saveWatchlist(); renderWatchlist(); } }
+async function addToWatchlist(code, name) { if(!state.watchlist.some(s=>s.code===code)) { if(state.watchlist.length>=10) { await customAlert('最多10只自选股'); return; } state.watchlist.push({code,name}); await saveWatchlist(); renderWatchlist(); } }
 async function removeStock(code) { 
     state.watchlist = state.watchlist.filter(s=>s.code!==code); 
     await saveWatchlist(); 
@@ -1506,7 +1568,13 @@ function prevDay() { if(state.lockIdx>0) { setLockIdx(state.lockIdx - 1); draw()
 function nextDay() { const rd=getActiveData(); if(rd && state.lockIdx<rd.length-1) { setLockIdx(state.lockIdx + 1); draw(); safeUpdateSidebar(); } }
 function resetLatest() { const rd=getActiveData(); if(rd) { setLockIdx(rd.length-1); draw(); safeUpdateSidebar(); } }
 function toggleHelp() { const o = document.getElementById('helpOverlay'); if(o) o.style.display = o.style.display === 'flex' ? 'none' : 'flex'; }
-function switchStrategy(name) { if(!STRATEGIES[name] || !confirm(`确定切换到「${name}」？\n${STRATEGIES[name].desc}`)) return; state.strategy=name; Object.assign(STRATEGY, STRATEGIES[name]); localStorage.setItem('quant_strategy', name); renderSettings(); if(getActiveData()){ updateAllIndicators(); draw(); safeUpdateSidebar(); } }
+async function switchStrategy(name) { 
+    if(!STRATEGIES[name]) return;
+    const confirmed = await customConfirm(`确定切换到「${name}」？\n${STRATEGIES[name].desc}`);
+    if(!confirmed) return;
+    state.strategy=name; Object.assign(STRATEGY, STRATEGIES[name]); localStorage.setItem('quant_strategy', name); renderSettings(); 
+    if(getActiveData()){ updateAllIndicators(); draw(); safeUpdateSidebar(); } 
+}
 function toggleSettings() { const o = document.getElementById('settingsOverlay'); if(o) { if(o.classList.contains('show')) o.classList.remove('show'); else { renderSettings(); o.classList.add('show'); } } }
 
 function renderSettings() {
@@ -1579,25 +1647,6 @@ function renderSettings() {
     p.innerHTML=h;
 }
 
-function generateAIQuery() {
-    const nm = state.mode==='stock' ? state.stockId : (getIndexConfig(state.id)?.name || state.id);
-    const act = getActiveData();
-    const safeIdx = getSafeIndex(act);
-    const it = act?.[safeIdx], p = act?.[safeIdx-1]; if(!it) return;
-    const meta = getSignalMeta(safeIdx, act, state.indicators), ch = it.close-(p?p.close:it.open);
-    if(state.period === 'weekly') {
-        const wk = getWeeklyDirectionContext(safeIdx, act, state.indicators);
-        const qWeekly = `【周线方向过滤解读】\n标的：${nm}\n周期：周线\n日期：${it.date}\n收盘：${it.close.toFixed(2)} (${ch>=0?'+':''}${(ch/(p?p.close:it.open)*100).toFixed(2)}%)\n周线方向：${wk.direction}\n当前位置：${wk.position}\n趋势修复：${wk.repair}\n20周线：${wk.ma20 ? wk.ma20.toFixed(2) : '--'}\n60周线：${wk.ma60 ? wk.ma60.toFixed(2) : '--'}\n防守区：${wk.support.toFixed(2)}\n压力区：${wk.pressure.toFixed(2)}\n对日线影响：${wk.dailyImpact}\n请只从大方向、位置、日线信号是否应降权三个角度分析。`;
-        const modal = document.getElementById('aiModal') || (()=>{ const d=document.createElement('div'); d.id='aiModal'; d.className='ai-modal'; d.innerHTML=`<div class="ai-modal-overlay" onclick="closeAIModal()"></div><div class="ai-modal-content"><div class="ai-modal-header"><span class="ai-modal-title">AI 解读</span><button class="sg-close" onclick="closeAIModal()">×</button></div><div class="ai-modal-body"><textarea id="aiQueryText" readonly></textarea></div><div class="ai-modal-footer"><button class="btn-primary" onclick="copyAIQuery()">复制</button></div></div>`; document.body.appendChild(d); return d; })();
-        document.getElementById('aiQueryText').value = qWeekly; modal.classList.add('show'); return;
-    }
-    const decision = getDecisionContext(safeIdx, act, state.indicators, meta);
-    const q = `【技术面雷达解读】\n标的：${nm}\n周期：${state.period==='weekly'?'周线':'日线'}\n日期：${it.date}\n收盘：${it.close.toFixed(2)} (${ch>=0?'+':''}${(ch/(p?p.close:it.open)*100).toFixed(2)}%)\n状态：${meta.type}\n走势类型：${decision.regime.regime}\n推荐策略：${decision.regime.recommended}\n推荐理由：${decision.regime.reason}\n离场级别：${decision.exit.level}（${decision.exit.detail}）\n市场环境：${decision.market.label}（${decision.market.reason}）\n四指数温度：${decision.market.detail || '数据不足'}\n风险评分：${decision.risk.score}/100，${decision.risk.level}\n操作倾向：${decision.action}\n建议上限：${decision.position}%\n观察位：${decision.risk.watch.toFixed(2)}\n防守位：${decision.risk.stop.toFixed(2)}\n压力位：${decision.risk.pressure.toFixed(2)}\n策略逻辑：${meta.logic}\n请从走势是否匹配推荐策略、信号可靠性、风险收益比、等待条件四个角度分析。`;
-    const m = document.getElementById('aiModal') || (()=>{ const d=document.createElement('div'); d.id='aiModal'; d.className='ai-modal'; d.innerHTML=`<div class="ai-modal-overlay" onclick="closeAIModal()"></div><div class="ai-modal-content"><div class="ai-modal-header"><span class="ai-modal-title">AI 解读</span><button class="sg-close" onclick="closeAIModal()">×</button></div><div class="ai-modal-body"><textarea id="aiQueryText" readonly></textarea></div><div class="ai-modal-footer"><button class="btn-primary" onclick="copyAIQuery()">复制</button></div></div>`; document.body.appendChild(d); return d; })();
-    document.getElementById('aiQueryText').value = q; m.classList.add('show');
-}
-function closeAIModal() { document.getElementById('aiModal')?.classList.remove('show'); }
-function copyAIQuery() { const t=document.getElementById('aiQueryText'); t.select(); navigator.clipboard.writeText(t.value).then(()=>closeAIModal()); }
 
 // === 初始化 ===
 async function init() {
@@ -1698,7 +1747,21 @@ async function init() {
     document.getElementById('loading').style.display='none';
     setTimeout(()=>ensureMarketTemperatureData(), 300);
     
-    setTimeout(async ()=>{ if(isAfterMarketClose()) { const ui = await checkCacheNeedUpdate(state.id); if(ui.needUpdate) { const fr = await syncDataIncremental(state.id); if(fr&&fr.length) { await dbSet(state.id,fr); setRawData(state.id, fr); setLockIdx(getActiveData().length-1); updateAllIndicators(); draw(); } } } }, 1500);
+    setTimeout(async ()=>{ 
+        if(isAfterMarketClose()) { 
+            const ui = await checkCacheNeedUpdate(state.id); 
+            if(ui.needUpdate) { 
+                const fr = await syncDataIncremental(state.id); 
+                if(fr&&fr.length) { 
+                    await dbSet(state.id,fr); 
+                    setRawData(state.id, fr); 
+                    setLockIdx(getActiveData().length-1); 
+                    updateAllIndicators(); 
+                    draw(); 
+                } 
+            } 
+        } 
+    }, 1500);
     
     let realtimeInterval;
     function startRealtimeUpdate() {
