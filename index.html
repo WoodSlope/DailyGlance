@@ -805,14 +805,27 @@ function calculateAllSignals(idx, full, ind) {
         const daySigs = full[i]._signals || [];
         daySigs.forEach(sig => {
             if(!usedSignals.has(sig)) {
-                if(sig.startsWith('L') && S.exitSignals.includes(sig)) { windowSignals.push({day:i, signal:sig}); usedSignals.add(sig); }
+                if(sig.startsWith('L') && S.exitSignals.includes(sig)) { 
+                    windowSignals.push({day:i, signal:sig}); 
+                    usedSignals.add(sig); 
+                }
                 else if(sig.startsWith('B') && S.buySignals.includes(sig)) {
                     if (i > lastExitIdx) {
-                        const score = getSignalScore(sig, S), groupKey = getScoreGroupKey(S, sig);
-                        const existing = groupBest.get(groupKey);
-                        if(!existing || score > existing.score) groupBest.set(groupKey, { score, signal:sig });
-                        windowSignals.push({day:i, signal:sig});
-                        usedSignals.add(sig);
+                        // 🚀 核心修复：历史买点“破位失效”判定
+                        // 如果今天的收盘价跌破了该历史信号触发当天的最低价，说明原支撑/形态彻底失效
+                        let isFailed = false;
+                        if (i < idx && full[idx].close < full[i].low) {
+                            isFailed = true;
+                        }
+                        
+                        // 只有未失效的信号，才允许计入总分和显示列表
+                        if (!isFailed) {
+                            const score = getSignalScore(sig, S), groupKey = getScoreGroupKey(S, sig);
+                            const existing = groupBest.get(groupKey);
+                            if(!existing || score > existing.score) groupBest.set(groupKey, { score, signal:sig });
+                            windowSignals.push({day:i, signal:sig});
+                            usedSignals.add(sig);
+                        }
                     }
                 }
             }
