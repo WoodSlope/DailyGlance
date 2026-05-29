@@ -787,14 +787,23 @@ function calculateAllSignals(idx, full, ind) {
     const signals = {}; rawSigs.forEach(s => { signals[s] = {status:true, score:SIGNAL_SCORES[s]||0}; });
     const S = STRATEGY, activeBuySignals = rawSigs.filter(s => S.buySignals.includes(s)), activeExitSignals = rawSigs.filter(s => S.exitSignals.includes(s));
     
+    // 🚀 核心修复：定义哪些才是能触发“3天强制冷却期”的【核心破位信号】
+    const coreExitSignals = ['L2', 'L3', 'L4', 'L9', 'L10'];
+    
     let lastExitIdx = -1;
     for(let i = idx; i >= Math.max(0, idx - 60); i--) {
         const dSigs = full[i]._signals || [];
-        if(dSigs.some(s => s.startsWith('L') && S.exitSignals.includes(s))) { lastExitIdx = i; break; }
+        // 🚀 只有当历史触发的信号中，包含了【核心破位信号】且被当前策略启用时，才记录为最后离场点
+        if(dSigs.some(s => s.startsWith('L') && S.exitSignals.includes(s) && coreExitSignals.includes(s))) { 
+            lastExitIdx = i; break; 
+        }
     }
     
     let inCooldown = false, daysSinceExit = Infinity;
-    if(lastExitIdx >= 0 && lastExitIdx < idx) { daysSinceExit = idx - lastExitIdx; if(daysSinceExit <= 3) { inCooldown = true; } }
+    if(lastExitIdx >= 0 && lastExitIdx < idx) { 
+        daysSinceExit = idx - lastExitIdx; 
+        if(daysSinceExit <= 3) { inCooldown = true; } 
+    }
     
     let windowSignals = []; const usedSignals = new Set(), groupBest = new Map();
     const windowStart = Math.max(0, idx - S.windowDays + 1);
@@ -809,14 +818,11 @@ function calculateAllSignals(idx, full, ind) {
                 }
                 else if(sig.startsWith('B') && S.buySignals.includes(sig)) {
                     if (i > lastExitIdx) {
-                        // 🚀 核心修复：历史买点“破位失效”判定
-                        // 如果今天的收盘价跌破了该历史信号触发当天的最低价，说明原支撑/形态彻底失效
                         let isFailed = false;
                         if (i < idx && full[idx].close < full[i].low) {
                             isFailed = true;
                         }
                         
-                        // 只有未失效的信号，才允许计入总分和显示列表
                         if (!isFailed) {
                             const score = getSignalScore(sig, S), groupKey = getScoreGroupKey(S, sig);
                             const existing = groupBest.get(groupKey);
