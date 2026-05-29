@@ -757,7 +757,6 @@ function calculateDailySignals(idx, full, ind) {
     if(checkPlatformBreak(full, idx) && volRatio > 1.5) result.push('B14'); 
     if(prevMa5<=prevMa20 && ma5>ma20 && checkRecentDeadCross(full, ind.ma[5], ind.ma[20], idx)) result.push('B15'); 
     
-    // 🚀 B16: 周线支撑企稳
     const lookback100 = full.slice(Math.max(0, idx-100), idx); 
     const weeklySupport = lookback100.length ? Math.min(...lookback100.map(d=>d.low)) : 0;
     if(weeklySupport > 0 && item.low <= weeklySupport * 1.03 && item.close > item.open && item.close > weeklySupport) result.push('B16');
@@ -787,13 +786,11 @@ function calculateAllSignals(idx, full, ind) {
     const signals = {}; rawSigs.forEach(s => { signals[s] = {status:true, score:SIGNAL_SCORES[s]||0}; });
     const S = STRATEGY, activeBuySignals = rawSigs.filter(s => S.buySignals.includes(s)), activeExitSignals = rawSigs.filter(s => S.exitSignals.includes(s));
     
-    // 🚀 核心修复：定义哪些才是能触发“3天强制冷却期”的【核心破位信号】
     const coreExitSignals = ['L2', 'L3', 'L4', 'L9', 'L10'];
     
     let lastExitIdx = -1;
     for(let i = idx; i >= Math.max(0, idx - 60); i--) {
         const dSigs = full[i]._signals || [];
-        // 🚀 只有当历史触发的信号中，包含了【核心破位信号】且被当前策略启用时，才记录为最后离场点
         if(dSigs.some(s => s.startsWith('L') && S.exitSignals.includes(s) && coreExitSignals.includes(s))) { 
             lastExitIdx = i; break; 
         }
@@ -851,7 +848,6 @@ function getSignalMeta(idx, full, ind) {
     const hasUncond = checkUnconditionalExit(idx, full, ind);
     const warns = Object.keys(sigs.allSignals).filter(s=>S.warningSignals?.includes(s));
     
-    // 🚀 核心修复1：区分“核心破位”和“普通减仓”
     const strongExits = sigs.exitSignals.filter(s => ['L3', 'L4', 'L5', 'L9', 'L10'].includes(s));
     
     let type, cls, detail, logic;
@@ -861,7 +857,6 @@ function getSignalMeta(idx, full, ind) {
     else if(sigs.windowScore>=S.buyThreshold && warns.length) { type='⚠️ 谨慎看多'; cls='core'; detail='买入积分达标但伴随过热风险'; logic=warns.join(','); }
     else if(sigs.windowScore>=S.buyThreshold) { type='✅ 明确转强'; cls='core'; detail=`积分:${sigs.windowScore} 达到买入条件`; logic='做多信号: '+(sigs.buySignals.join(',')||'历史积分'); }
     else if(sigs.windowScore>=Math.max(3, S.buyThreshold-2)) { type='👀 关注异动'; cls='regular'; detail=`当前积分:${sigs.windowScore}，即将达标`; logic='接近转强，可列入观察'; }
-    // 🚀 核心修复2：加入“均线记忆”，只要在20日线上方，就是趋势抱单，绝不清仓！
     else if(full[idx].close > (ind.ma[20]?.[idx] || Infinity)) { type='📈 趋势抱单'; cls='regular'; detail='依托均线多头结构持仓'; logic='虽无新买点，但大趋势完好'; }
     else { type='👀 弱势震荡'; cls='regular'; detail='积分不足，缺乏上行动能'; logic='耐心等待放量或信号确认'; }
     
@@ -873,11 +868,10 @@ function getBasePosition(idx, full, ind, meta) {
     if(meta.type==='⚠️ 谨慎看多') return 50; 
     if(meta.type==='👀 关注异动') return 30; 
     
-    // 🚀 核心修复3：给“趋势抱单”分配底仓
     if(meta.type==='📈 趋势抱单') {
         const ma20 = ind.ma[20]?.[idx], ma60 = ind.ma[60]?.[idx];
-        if (ma20 && ma60 && ma20 > ma60) return 60; // 绝对多头给60%
-        return 40; // 偏多头给40%
+        if (ma20 && ma60 && ma20 > ma60) return 60; 
+        return 40; 
     }
     
     return 0;
@@ -981,17 +975,24 @@ function getExitSeverity(meta) {
 
 function roundPosition(v) { return Math.max(0, Math.min(80, Math.round(v / 10) * 10)); }
 
-function getDecisionContext(idx, full, ind, meta) {
+// 🚀 核心修复：引入 isPrev 计算标志，安全获取前置仓位
+function getDecisionContext(idx, full, ind, meta, isPrev = false) {
     const base = getBasePosition(idx, full, ind, meta), market = getMarketContext(full[idx]?.date), risk = getRiskContext(idx, full, ind), exit = getExitSeverity(meta);
     let position = roundPosition(Math.min(base * market.coef * risk.coef, market.maxPosition));
     
-    // 修正了强制归零的条件，仅当真正破位或清仓时才归零
     if(exit.level === '清仓防守' || exit.level === '强离场' || meta.inCooldown || meta.type.includes('离场') || meta.type.includes('破位')) position = 0;
     else if(exit.level === '减仓观察') position = Math.min(position, 30);
     
     if(meta.warningSignals?.length) position = Math.min(position, 40);
     if(risk.score < 40) position = Math.min(position, 20);
     
+    // 💡 获取前置仓位 (避免死循环，isPrev 标志位阻断)
+    let prevAdv = 0;
+    if (!isPrev && idx > 0) {
+        const prevMeta = getSignalMeta(idx - 1, full, ind);
+        prevAdv = getDecisionContext(idx - 1, full, ind, prevMeta, true).position;
+    }
+
     const signalReady = meta.windowScore >= STRATEGY.buyThreshold;
     const action = position === 0 ? (signalReady ? '风控拦截' : '继续观望') : position <= 30 ? '小仓防守' : position <= 50 ? '轻仓持股' : '积极持股';
     
@@ -1005,6 +1006,7 @@ function getDecisionContext(idx, full, ind, meta) {
     let simpleAction = '持币观望';
     let simpleColor = 'var(--text-dim)';
     
+    // 🚀 核心修复：根据 prevAdv 修正“减仓”和“试探”的文案逻辑
     if (position === 0) {
         if (exit.level !== '无明确离场' || meta.type.includes('规避') || meta.type.includes('破位')) {
             simpleAction = '清仓离场';
@@ -1015,14 +1017,19 @@ function getDecisionContext(idx, full, ind, meta) {
         }
     } else if (position <= 30) {
         if (exit.level === '减仓观察' || meta.warningSignals?.length) {
-            simpleAction = '防守减仓';
-            simpleColor = 'var(--yellow)';
+            // 如果原本空仓，遇到预警只叫“谨慎试探”，不叫“减仓”
+            if (prevAdv === 0) {
+                simpleAction = '谨慎试探';
+                simpleColor = 'var(--yellow)';
+            } else {
+                simpleAction = '防守减仓';
+                simpleColor = 'var(--yellow)';
+            }
         } else {
             simpleAction = '轻仓试探';
             simpleColor = 'var(--blue)';
         }
     } else {
-        // 🚀 UI 文案优化：区分“产生新买点”和“只是顺势拿着”
         if (meta.type === '📈 趋势抱单' && meta.buySignals.length === 0) {
             simpleAction = '顺势持有';
             simpleColor = 'var(--green)';
@@ -1044,7 +1051,7 @@ function getDecisionContext(idx, full, ind, meta) {
     }
     const regime = { regime: regimeName, stance, recommended, reason };
 
-    return { basePosition: base, position, market, risk, exit, action, signalReady, actionReason, regime, simpleAction, simpleColor };
+    return { basePosition: base, position, prevAdv, market, risk, exit, action, signalReady, actionReason, regime, simpleAction, simpleColor };
 }
 
 function getAdvisePosition(idx, full, ind, meta) { return getBasePosition(idx, full, ind, meta); }
@@ -1111,17 +1118,15 @@ function draw() {
         padding:{left:8,right:8,top:10,bottom:0}
     };
     
-    // 强制右侧 Y 轴占据固定宽度，实现上下图表完美对齐
     const yc = {
         position:'right',
         grid:{color:'rgba(255,255,255,0.03)'},
         ticks:{color:'#64748b', font:{size:10}, padding:12},
         afterFit: (scale) => {
-            scale.width = 60; // 强制分配 60px 宽度给 Y 轴区域
+            scale.width = 60;
         }
     };
     
-    // 成交量格式化：使用易读的单位，并强制宽度对齐
     const yv = {
         ...yc, 
         ticks:{
@@ -1145,7 +1150,6 @@ function draw() {
         isCandle: false, candleData: null
     }));
     
-    // 💡 将当前图表的唯一标识存入 dataset，用于后续验证
     ds.push({
         label: 'KLine',
         isCandle: true, 
@@ -1162,7 +1166,6 @@ function draw() {
         afterDatasetsDraw: c => {
             const { ctx, chartArea: { top, bottom, left, right }, scales: { x } } = c;
             
-            // 💡 修复核心：寻找当前最新且被标记为 K 线的 dataset
             const dss = c.data.datasets.find(d => d.isCandle === true && d.candleData);
             if (dss && dss.candleData) {
                 const w = Math.min((x.width / c.data.labels.length) * 0.8, 20);
@@ -1205,7 +1208,6 @@ function draw() {
         }
     };
     
-    // 所有图表共享完全一致的 layout 和 interaction 设置
     const baseOptions = {
         responsive:true, maintainAspectRatio:false, animation:false, layout:ly, 
         interaction: { mode: 'index', intersect: false }
@@ -1223,7 +1225,6 @@ function draw() {
         plugins: [localAlignPlugin] 
     });
     
-    // 成交量柱子颜色优化：跌为绿，涨为红，与K线保持绝对一致
     uc('vol','volumeChart',{ 
         type:'bar', 
         data:{ 
@@ -1257,7 +1258,7 @@ function draw() {
             options: {
                 ...baseOptions,
                 plugins:{ legend:{display:false}, tooltip:{mode:'index', intersect:false} },
-                scales:{x:{display:false}, y:yc}, // MACD 也使用基础 Y 轴配置确保宽度一致
+                scales:{x:{display:false}, y:yc},
                 onHover:(e,els)=>syncHover(els)
             }, 
             plugins: [localAlignPlugin] 
@@ -1340,15 +1341,20 @@ function generateAnalysisHTML(idx, full, meta) {
     }
 
     const decision = getDecisionContext(idx, full, state.indicators, meta);
-    const adv = decision.position; let prevAdv = 0;
-    if(idx>0) {
-        const prevMeta = getSignalMeta(idx-1, full, state.indicators);
-        prevAdv = getDecisionContext(idx-1, full, state.indicators, prevMeta).position;
-    }
+    const adv = decision.position; 
+    const prevAdv = decision.prevAdv; // 💡 使用 getDecisionContext 算好的 prevAdv
+    
     let ct = '维持在 '+adv+'%', cc = 'var(--text-dim)';
     if(adv===0 && prevAdv===0) ct = '只观察，不开新仓';
-    // 🚀 UI 文案优化：让仓位上限的回升听起来更符合风控逻辑
-    else if(adv>prevAdv) { ct = `风控解除，上限恢复至 ${adv}%`; cc = 'var(--red)'; }
+    // 🚀 核心修复：更智能的变动文案，区分“从0建仓”和“上限调高”
+    else if (adv > prevAdv) { 
+        if (prevAdv === 0) {
+            ct = `动能转强，试探建仓至 ${adv}%`; 
+        } else {
+            ct = `环境转暖，上限恢复至 ${adv}%`; 
+        }
+        cc = 'var(--red)'; 
+    }
     else if(adv<prevAdv) { ct = `降至 ${adv}%` + (adv===0?' (防守)':''); cc = 'var(--green)'; }
     
     const ptsRaw = [], ptsValid = [], S = STRATEGY;
@@ -1385,13 +1391,13 @@ function generateAnalysisHTML(idx, full, meta) {
     const primaryReason = decision.exit.level !== '无明确离场' ? decision.exit.detail : decision.regime.reason;
 
     let topCardBg = '', topBorder = '';
+    // 使用 simpleAction 来判断边框颜色
     if (decision.simpleAction === '清仓离场') { topCardBg = 'rgba(239, 68, 68, 0.12)'; topBorder = 'rgba(239, 68, 68, 0.3)'; }
-    else if (decision.simpleAction === '防守减仓') { topCardBg = 'rgba(245, 158, 11, 0.12)'; topBorder = 'rgba(245, 158, 11, 0.3)'; }
+    else if (decision.simpleAction === '防守减仓' || decision.simpleAction === '谨慎试探') { topCardBg = 'rgba(245, 158, 11, 0.12)'; topBorder = 'rgba(245, 158, 11, 0.3)'; }
     else if (decision.simpleAction === '轻仓试探') { topCardBg = 'rgba(59, 130, 246, 0.12)'; topBorder = 'rgba(59, 130, 246, 0.3)'; }
-    else if (decision.simpleAction === '积极持有') { topCardBg = 'rgba(34, 197, 94, 0.12)'; topBorder = 'rgba(34, 197, 94, 0.3)'; }
+    else if (decision.simpleAction === '积极持有' || decision.simpleAction === '顺势持有') { topCardBg = 'rgba(34, 197, 94, 0.12)'; topBorder = 'rgba(34, 197, 94, 0.3)'; }
     else { topCardBg = 'rgba(255, 255, 255, 0.04)'; topBorder = 'rgba(255, 255, 255, 0.1)'; }
 
-    // 🚀 核心优化：将冷却标签放在卡片边缘避免遮挡任何文字
     const cooldownHtml = meta.inCooldown ? `<div style="position:absolute; top:8px; right:8px; background:var(--yellow); color:#000; font-size:9px; font-weight:800; padding:2px 6px; border-radius:4px;">冷却中</div>` : '';
 
     return `
@@ -1521,20 +1527,17 @@ async function removeStock(code) {
     renderWatchlist(); 
 }
 
-// 🚀 性能优化2：在选股操作中主动让权 UI 线程
 async function selectStock(code, name) {
     const selectionSeq = ++stockSelectionSeq;
     const secid = codeToSecid(code); await addToWatchlist(code, name);
     if(selectionSeq !== stockSelectionSeq) return;
     state.mode='stock'; state.id=secid; state.stockId=code; activeIndexTab=null;
     
-    // UI 快速响应更新
     document.querySelectorAll('#indexTabs .nav-btn').forEach(b=>b.classList.remove('active')); 
     document.querySelector('#indexTabs .nav-btn[data-id="stock"]').classList.add('active');
-    renderWatchlist(); // 立刻将点击的股票加上高亮样式
-    clearCharts(); // 🚀 修复点2：点击个股时立刻销毁上一只股票的画布，杜绝残影重叠
+    renderWatchlist(); 
+    clearCharts(); 
     
-    // 关键插入：使用 setTimeout 0 解锁主线程，让浏览器能立马把上面的 UI 变化“画”到屏幕上
     await new Promise(resolve => setTimeout(resolve, 0));
 
     try {
@@ -1551,7 +1554,6 @@ async function selectStock(code, name) {
         const cAnalysis = document.getElementById('cardAnalysis'); if(cAnalysis) cAnalysis.style.display='none';
     }
     
-    // 🚀 性能优化3：加入防抖逻辑，避免疯狂点击产生请求雪崩
     debounceWatchlistUpdate();
 }
 
@@ -1561,7 +1563,7 @@ function debounceWatchlistUpdate() {
     watchlistUpdateTimer = setTimeout(async () => {
         await updateAllWatchlistData();
         renderWatchlist();
-    }, 2000); // 停止点击 2 秒后才静默更新其它股票数据
+    }, 2000);
 }
 
 async function updateAllWatchlistData() {
@@ -1588,7 +1590,6 @@ async function updateAllWatchlistData() {
             }
         }
     }
-    console.log('自选股数据更新结果:', results);
     return results;
 }
 
@@ -1615,7 +1616,6 @@ function toggleMA(n) {
     else state.activeMAs.push(n);
     state.activeMAs.sort((a,b)=>a-b);
     renderMASelector();
-    // 强制销毁主图表，杜绝均线切换时的幽灵残影
     if(state.charts['main']) { state.charts['main'].destroy(); delete state.charts['main']; }
     draw();
 }
@@ -1668,7 +1668,6 @@ function renderSettings() {
     h+=`</div></div>`;
     h+=`</div></div>`;
 
-    // 🚀 核心优化：动态生成买入信号列表，启用高亮，未启用划线 (包含 B16)
     const bSigs = ['B1','B2','B3','B4','B5','B6','B7','B8','B9','B10','B11','B12','B13','B14','B15','B16'];
     let bHtml = bSigs.map(id => {
         let active = S.buySignals && S.buySignals.includes(id);
@@ -1727,14 +1726,12 @@ async function init() {
                 } 
             }
             else { 
-                // 复用防抖保护，提升顶部 Tab 切回股票的响应速度
                 await selectStock(state.stockId, state.watchlist.find(s=>s.code===state.stockId)?.name || '股票');
             }
             return;
         }
         state.mode='index'; state.id=e.target.dataset.id; renderWatchlist(); clearCharts(); 
         
-        // 瞬间切换大盘，不阻塞 UI
         await new Promise(r => setTimeout(r, 0));
         await cachedFetch(state.id);
     });
@@ -1747,7 +1744,6 @@ async function init() {
         e.target.classList.add('active'); 
         state.period = e.target.dataset.period;
         
-        // 🚨 新增：动态更新时间范围按钮的文本
         const isWeekly = state.period === 'weekly';
         document.querySelectorAll('#rangeTabs .range-btn').forEach(rb => {
             const rangeVal = parseInt(rb.dataset.range);
@@ -1765,7 +1761,6 @@ async function init() {
         draw(); safeUpdateSidebar();
     });
 
-    // 🚀 体验强化：自动重置最新日期
     const container = document.querySelector('.integrated-container');
     if (container) {
         container.addEventListener('mouseleave', () => {
@@ -1783,7 +1778,6 @@ async function init() {
         });
     }
 
-    // 兼容触摸点击的 fallback
     ['mainChart','volumeChart','macdChart','kdjChart'].forEach(id=>{
         const el=document.getElementById(id);
         if(el) {
