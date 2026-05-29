@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#101114">
+<title>DailyGlance v4.1 极速版</title>
+<style>
+:root {
+  --bg: #101114;
+  --panel: #181a20;
+  --panel-2: #20242b;
+  --panel-3: #252a32;
+  --line: rgba(255,255,255,.1);
+  --text: #f4f6f8;
+  --muted: #98a2ad;
+  --soft: #c7cdd4;
+  --red: #ef4444;
+  --green: #22c55e;
+  --blue: #38bdf8;
+  --yellow: #f59e0b;
+  --teal: #14b8a6;
+  --danger: #fb7185;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; }
+body { padding: 0 0 calc(78px + var(--safe-bottom)); }
+button, input { font: inherit; }
+button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.app { width: min(1120px, 100%); margin: 0 auto; }
+.topbar { position: sticky; top: 0; z-index: 30; padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px; background: rgba(16,17,20,.94); border-bottom: 1px solid var(--line); backdrop-filter: blur(16px); }
+.top-row { display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: center; gap: 8px; }
+.brand { min-width: 0; }
+.brand strong { display: block; font-size: 17px; line-height: 1.05; font-weight: 950; letter-spacing: 0; }
+.brand span { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pill-btn { height: 34px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); padding: 0 10px; font-size: 12px; font-weight: 900; }
+.strategy-btn { border-color: rgba(20,184,166,.35); color: #ccfbf1; background: rgba(20,184,166,.13); }
+.market-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+.market-pill { min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.035); padding: 7px 6px; }
+.market-pill .market-line { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-width: 0; white-space: nowrap; }
+.market-pill .market-line + .market-line { margin-top: 4px; }
+.market-pill .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 10px; font-weight: 800; }
+.market-pill .state { flex-shrink: 0; font-size: 10px; font-weight: 950; }
+.market-pill .price { min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: right; font: 900 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: #e5e7eb; }
+.market-pill .change { flex-shrink: 0; font: 900 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.market-pill.bull .state { color: var(--red); }
+.market-pill.bear .state { color: var(--green); }
+.market-pill.neutral .state { color: var(--yellow); }
+.strategy-menu { position: absolute; right: 12px; top: calc(50px + env(safe-area-inset-top, 0px)); z-index: 50; display: none; width: min(300px, calc(100vw - 24px)); padding: 7px; border: 1px solid rgba(255,255,255,.13); border-radius: 10px; background: #15171c; box-shadow: 0 20px 46px rgba(0,0,0,.45); }
+.strategy-menu.show { display: block; }
+.strategy-option { width: 100%; min-height: 42px; border: 0; border-radius: 8px; background: transparent; color: var(--soft); text-align: left; padding: 7px 9px; }
+.strategy-option strong { display: block; font-size: 13px; }
+.strategy-option span { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.35; }
+.strategy-option.active { color: #fff; background: rgba(20,184,166,.16); }
+.search-wrap { position: relative; padding: 10px 12px 6px; }
+.search-box { display: grid; grid-template-columns: minmax(0,1fr) 70px; gap: 8px; align-items: center; }
+.search-box input { height: 40px; width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 9px; outline: 0; background: var(--panel); color: var(--text); padding: 0 12px; font-size: 14px; }
+.search-box input::placeholder { color: #737b85; }
+.search-box button { height: 40px; border: 0; border-radius: 9px; background: var(--teal); color: #042f2e; font-weight: 950; }
+.suggest { position: absolute; left: 12px; right: 12px; top: 56px; z-index: 40; display: none; max-height: 300px; overflow-y: auto; border: 1px solid rgba(255,255,255,.13); border-radius: 10px; background: #15171c; box-shadow: 0 18px 42px rgba(0,0,0,.45); }
+.suggest-item { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; width: 100%; padding: 12px; border: 0; border-bottom: 1px solid rgba(255,255,255,.06); background: transparent; color: var(--text); text-align: left; }
+.suggest-item:last-child { border-bottom: 0; }
+.suggest-item.active { background: rgba(20,184,166,.16); }
+.suggest-item .name { font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suggest-item .code { color: var(--muted); font: 800 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.board-head { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: end; gap: 10px; padding: 9px 12px 8px; }
+.board-head h2 { margin: 0; font-size: 13px; color: var(--soft); letter-spacing: 0; }
+.board-head span { color: var(--muted); font-size: 11px; text-align: right; }
+.list { display: grid; grid-template-columns: 1fr; gap: 9px; padding: 0 12px; }
+.card { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: linear-gradient(180deg, rgba(37,42,50,.96), rgba(24,26,32,.98)); }
+.card.hot { border-color: rgba(239,68,68,.34); }
+.card.watch { border-color: rgba(245,158,11,.35); }
+.card.safe { border-color: rgba(148,163,184,.22); }
+.card.wait { border-color: rgba(148,163,184,.18); }
+.card-head { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; padding: 12px 12px 7px; }
+.stock-title { min-width: 0; }
+.stock-title .name { font-size: 16px; line-height: 1.1; font-weight: 950; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stock-title .meta { margin-top: 4px; color: var(--muted); font: 800 11px ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.price { text-align: right; white-space: nowrap; }
+.price .num { font: 950 20px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.price .chg { margin-top: 2px; font: 900 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.up { color: var(--red); }
+.down { color: var(--green); }
+.flat { color: var(--muted); }
+.action-grid { display: grid; grid-template-columns: minmax(0,1fr) 82px 64px; gap: 7px; padding: 0 12px 9px; }
+.action-box, .position-box, .score-box { min-width: 0; border: 1px solid rgba(255,255,255,.07); border-radius: 8px; background: rgba(255,255,255,.035); padding: 8px; }
+.tiny-label { color: var(--muted); font-size: 10px; line-height: 1; font-weight: 900; }
+.action-box .action { margin-top: 5px; font-size: 20px; line-height: 1.05; font-weight: 950; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.position-box, .score-box { text-align: center; padding-left: 5px; padding-right: 5px; }
+.position-box .val { margin-top: 3px; font: 950 24px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.score-box .val { margin-top: 6px; font: 950 18px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.metric-row { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 1px; margin: 0 12px 9px; overflow: hidden; border: 1px solid rgba(255,255,255,.06); border-radius: 8px; background: rgba(255,255,255,.08); }
+.metric { min-width: 0; padding: 7px 5px; background: rgba(16,17,20,.72); text-align: center; }
+.metric .k { color: var(--muted); font-size: 10px; }
+.metric .v { margin-top: 3px; font: 900 12px ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.backtest-row { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 1px; margin: 0 12px 9px; overflow: hidden; border: 1px solid rgba(255,255,255,.06); border-radius: 8px; background: rgba(255,255,255,.08); }
+.bt { min-width: 0; padding: 7px 5px; background: rgba(16,17,20,.62); text-align: center; }
+.bt .k { color: var(--muted); font-size: 10px; }
+.bt .v { margin-top: 3px; font: 950 12px ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bt.good .v { color: var(--teal); }
+.bt.bad .v { color: var(--danger); }
+.bt.mid .v { color: var(--yellow); }
+.reason { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; padding: 0 12px 9px; color: #d2d7de; font-size: 12px; line-height: 1.45; }
+.signals { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 12px 9px; }
+.tag { max-width: 100%; border-radius: 999px; padding: 3px 7px; background: rgba(148,163,184,.15); color: #cbd5e1; font-size: 10px; line-height: 1.25; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tag.buy { background: rgba(56,189,248,.18); color: #bae6fd; }
+.tag.exit { background: rgba(251,113,133,.16); color: #fecdd3; }
+.tag.warn { background: rgba(245,158,11,.17); color: #fde68a; }
+.spark { display: block; width: calc(100% - 24px); height: 34px; margin: 0 12px 8px; }
+.card-foot { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 8px; min-height: 36px; padding: 7px 12px; border-top: 1px solid rgba(255,255,255,.06); background: rgba(255,255,255,.025); color: var(--muted); font-size: 11px; }
+.card-foot span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-foot button { border: 0; background: transparent; color: #a8b0ba; font-size: 12px; font-weight: 900; padding: 5px 0 5px 8px; }
+.empty { display: none; margin: 24px 12px 0; padding: 24px 18px; border: 1px dashed rgba(255,255,255,.18); border-radius: 10px; color: var(--muted); text-align: center; line-height: 1.7; font-size: 13px; }
+.toast { position: fixed; left: 16px; right: 16px; bottom: calc(80px + var(--safe-bottom)); z-index: 80; display: none; padding: 12px 14px; border: 1px solid rgba(255,255,255,.13); border-radius: 10px; background: rgba(20,22,28,.96); box-shadow: 0 16px 36px rgba(0,0,0,.38); color: var(--text); text-align: center; font-size: 13px; }
+.bottom-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; padding: 9px 12px calc(9px + var(--safe-bottom)); border-top: 1px solid var(--line); background: rgba(16,17,20,.94); backdrop-filter: blur(16px); }
+.bottom-inner { width: min(1120px, 100%); margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.bottom-inner button { height: 42px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel-2); color: #e7eaee; font-weight: 950; }
+.bottom-inner .primary { border-color: rgba(20,184,166,.55); background: var(--teal); color: #052f2c; }
+@media (min-width: 720px) {
+  body { padding-bottom: 24px; }
+  .list { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .bottom-bar { position: sticky; bottom: 0; }
+}
+@media (min-width: 1180px) {
+  .list { grid-template-columns: repeat(3, minmax(0,1fr)); }
+}
+@media (max-width: 520px) {
+  body { padding-bottom: calc(74px + var(--safe-bottom)); }
+  .topbar { padding: calc(8px + env(safe-area-inset-top, 0px)) 10px 7px; }
+  .top-row { gap: 6px; }
+  .brand strong { font-size: 16px; }
+  .brand span { margin-top: 3px; font-size: 10px; }
+  .pill-btn { height: 31px; padding: 0 8px; }
+  .market-strip { gap: 4px; margin-top: 7px; }
+  .market-pill { padding: 5px 4px; border-radius: 7px; }
+  .market-pill .market-line + .market-line { margin-top: 3px; }
+  .market-pill .name { font-size: 9px; }
+  .market-pill .state { font-size: 10px; }
+  .market-pill .price { display: block; font-size: 10px; }
+  .market-pill .change { font-size: 10px; }
+  .search-wrap { padding: 8px 10px 5px; }
+  .board-head { padding: 7px 10px; }
+  .list { padding: 0 10px; gap: 8px; }
+}
+@media (max-width: 380px) {
+  .action-grid { grid-template-columns: minmax(0,1fr) 72px 56px; }
+  .action-box .action { font-size: 18px; }
+  .position-box .val { font-size: 21px; }
+  .metric-row { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .backtest-row { grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="top-row">
+      <div class="brand">
+        <strong>DailyGlance 极速版</strong>
+        <span id="statusLine">读取本地缓存...</span>
+      </div>
+      <button class="pill-btn" id="summaryBtn">概览</button>
+      <button class="pill-btn strategy-btn" id="strategyToggle">稳健</button>
+      <div class="strategy-menu" id="strategyMenu"></div>
+    </div>
+    <div class="market-strip" id="marketStrip"></div>
+  </header>
+
+  <section class="search-wrap">
+    <div class="search-box">
+      <input id="stockSearchInput" placeholder="输入股票代码或名称" autocomplete="off">
+      <button id="searchBtn">添加</button>
+    </div>
+    <div class="suggest" id="stockSuggest"></div>
+  </section>
+
+  <div class="board-head">
+    <h2>自选策略卡片</h2>
+    <span id="countText">0 只</span>
+  </div>
+  <main class="list" id="watchlist"></main>
+  <div class="empty" id="emptyState">添加自选股后，这里会用 v4.1 风控 SOP 压缩展示操作建议、仓位上限、市场环境和关键防守位。</div>
+</div>
+
+<div class="toast" id="toast"></div>
+<footer class="bottom-bar">
+  <div class="bottom-inner">
+    <button id="scrollTopBtn">回到顶部</button>
+    <button class="primary" id="refreshBottomBtn">刷新全部</button>
+  </div>
+</footer>
+
+<script>
+const SYS_CONFIG = {
+  THROTTLE_MS: 30000,
+  REQ_TIMEOUT: 5000,
+  VOL_SURGE_RATIO: 1.5,
+  VOL_SHRINK_RATIO: 0.9,
+  EX_RIGHT_TOLERANCE: 0.02,
+  RENDER_CACHE_SIZE: 80,
+  DATA_LIMIT: 420
+};
+const DB_NAME = 'QuantProDB_v515', DB_VER = 1, STORE = 'kline';
+const SIGNAL_VERSION = 'v4.1.1-fast';
+const INDEX_CONFIG = {
+  sh: { name:'上证', full:'上证指数', eastmoney:'1.000001', tencent:'sh000001', role:'主板权重' },
+  cy: { name:'创业', full:'创业板指', eastmoney:'0.399006', tencent:'sz399006', role:'成长风险偏好' },
+  zz1000: { name:'中证1000', full:'中证1000', eastmoney:'1.000852', tencent:'sh000852', role:'小盘题材温度' },
+  kc50: { name:'科创50', full:'科创50', eastmoney:'1.000688', tencent:'sh000688', role:'硬科技风险偏好' }
+};
+const INDEX_IDS = Object.keys(INDEX_CONFIG);
+const STOCK_TOKEN = 'D43BF722C8E33BDC906FB84D85E326E8';
+const STOCK_DATABASE = [
+  {Code:'601398',Name:'工商银行'},{Code:'601939',Name:'建设银行'},{Code:'601988',Name:'中国银行'},{Code:'601288',Name:'农业银行'},
+  {Code:'600036',Name:'招商银行'},{Code:'601166',Name:'兴业银行'},{Code:'601318',Name:'中国平安'},{Code:'601628',Name:'中国人寿'},
+  {Code:'600030',Name:'中信证券'},{Code:'600519',Name:'贵州茅台'},{Code:'000858',Name:'五粮液'},{Code:'000568',Name:'泸州老窖'},
+  {Code:'000333',Name:'美的集团'},{Code:'000651',Name:'格力电器'},{Code:'002594',Name:'比亚迪'},{Code:'300750',Name:'宁德时代'},
+  {Code:'601012',Name:'隆基绿能'},{Code:'002371',Name:'北方华创'},{Code:'603501',Name:'韦尔股份'},{Code:'000063',Name:'中兴通讯'},
+  {Code:'002475',Name:'立讯精密'},{Code:'600276',Name:'恒瑞医药'},{Code:'300760',Name:'迈瑞医疗'},{Code:'601899',Name:'紫金矿业'}
+];
+const STRATEGIES = {
+  '稳健趋势型': {
+    short:'稳健',
+    buySignals:['B1','B2','B3','B4','B10','B12','B14','B15'],
+    exitSignals:['L1','L2','L3','L4','L9','L10'],
+    warningSignals:['W1','W2'],
+    scoreGroups:[['B1','B10','B15'], ['B2','B12'], ['B4','B14']],
+    windowDays:12,
+    buyThreshold:5,
+    desc:'关注趋势结构、MACD 动能和突破确认，适合中期趋势跟随'
+  },
+  '波段抄底型': {
+    short:'抄底',
+    buySignals:['B5','B6','B7','B8','B9','B11','B16'],
+    exitSignals:['L3','L5','L7','L8','L10'],
+    warningSignals:['W1','W2','L9'],
+    scoreGroups:[['B5','B6','B11','B16'], ['B7','B8']],
+    windowDays:10,
+    buyThreshold:4,
+    desc:'关注超卖、背离、大级别支撑和回踩企稳，适合回调末端观察'
+  },
+  '突破追涨型': {
+    short:'突破',
+    buySignals:['B3','B4','B14'],
+    exitSignals:['L4','L5','L6','L9'],
+    warningSignals:['W1','W2','L10'],
+    signalWeights:{B3:1, B4:3, B14:4},
+    scoreGroups:[['B4','B14']],
+    windowDays:8,
+    buyThreshold:4,
+    desc:'专注放量突破和平台突破，适合强势行情里的右侧确认'
+  },
+  '综合全能型': {
+    short:'综合',
+    buySignals:['B1','B2','B3','B4','B5','B6','B7','B8','B9','B10','B11','B12','B14','B15','B16'],
+    exitSignals:['L1','L2','L3','L4','L5','L6','L7','L8','L9','L10'],
+    warningSignals:['W1','W2'],
+    scoreGroups:[['B1','B10','B15'], ['B2','B12'], ['B4','B14'], ['B5','B6','B11','B16'], ['B7','B8']],
+    windowDays:12,
+    buyThreshold:6,
+    desc:'全量雷达观察模式，适合看全局信号，不建议直接等同交易指令'
+  }
+};
+const SIGNAL_SCORES = { B1:3,B2:3,B3:2,B4:2,B5:2,B6:2,B7:1,B8:1,B9:4,B10:2,B11:2,B12:3,B13:3,B14:2,B15:2,B16:3 };
+const SIGNAL_DESC = {
+  B1:'均线多头', B2:'MACD金叉', B3:'上穿20日线', B4:'放量突破新高', B5:'阳包阴', B6:'缩量回踩不破', B7:'RSI超卖回升', B8:'KDJ金叉',
+  B9:'MACD底背离', B10:'MA20上穿MA60', B11:'均线回踩不破', B12:'零轴上金叉', B13:'长级别走强', B14:'平台放量突破', B15:'均线二次金叉', B16:'回踩周线支撑企稳',
+  L1:'跌破短期趋势', L2:'均线死叉', L3:'MACD死叉', L4:'跌破20日线', L5:'阴包阳', L6:'连阳后首阴', L7:'RSI超买回落', L8:'布林上轨受阻', L9:'高点回撤破位', L10:'MACD顶背离',
+  W1:'偏离均线过大', W2:'连阳缩量迹象'
+};
+const USER_SIGNAL_TEXT = {
+  B1:'趋势转强', B2:'动能金叉', B3:'重新站上20日线', B4:'放量新高', B5:'反包修复', B6:'缩量回踩企稳', B7:'超卖回升', B8:'短线金叉', B9:'底背离修复',
+  B10:'中期均线转强', B11:'回踩均线企稳', B12:'强势动能金叉', B13:'周线走强', B14:'平台突破', B15:'二次转强', B16:'长周期支撑',
+  L1:'跌破短期趋势', L2:'均线转弱', L3:'动能死叉', L4:'放量跌破20日线', L5:'反包失败', L6:'连涨后转弱', L7:'超买回落', L8:'冲高回落', L9:'高位回撤破位', L10:'顶背离风险',
+  W1:'偏离过大', W2:'缩量上涨'
+};
+
+let DB = null;
+let STRATEGY = {};
+let state = {
+  watchlist: [],
+  stockCache: [],
+  rawData: {},
+  weeklyData: {},
+  period: 'daily',
+  strategy: '稳健趋势型',
+  activeId: '',
+  refreshing: false,
+  lastUpdated: null,
+  searchSeq: 0,
+  suggestItems: [],
+  suggestActive: -1,
+  lastRefreshSummary: null
+};
+const renderCache = new Map();
+const decisionCache = new Map();
+const indicatorCache = new Map();
+const backtestCache = new Map();
+let suggestTimer = null;
+
+const $ = id => document.getElementById(id);
+const escapeHTML = v => String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+const fmt = v => Number.isFinite(v) ? Number(v).toFixed(2) : '--';
+const pct = v => Number.isFinite(v) ? `${v >= 0 ? '+' : ''}${v.toFixed(2)}%` : '--';
+const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+function getCurrentStrategy() { return STRATEGIES[state.strategy] || STRATEGIES['稳健趋势型']; }
+function applyStrategy(name = state.strategy) { state.strategy = STRATEGIES[name] ? name : '稳健趋势型'; STRATEGY = getCurrentStrategy(); decisionCache.clear(); renderCache.clear(); backtestCache.clear(); }
+function normalizeStockCode(code) { const clean = String(code ?? '').trim(); return /^\d{6}$/.test(clean) ? clean : ''; }
+function normalizeStockName(name) { return String(name ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 40) || '股票'; }
+function normalizeWatchlist(list) { return Array.isArray(list) ? list.map(s => ({ code: normalizeStockCode(s?.code), name: normalizeStockName(s?.name) })).filter(s => s.code).slice(0, 10) : []; }
+function normalizeStockCache(list) { return Array.isArray(list) ? list.map(s => ({ Code: normalizeStockCode(s?.Code), Name: normalizeStockName(s?.Name) })).filter(s => s.Code) : []; }
+function codeToSecid(code) { const c = normalizeStockCode(code); return c ? (c.startsWith('6') ? '1.' + c : '0.' + c) : ''; }
+function resolveSecid(id) { return INDEX_CONFIG[id]?.eastmoney || id; }
+function resolveTencentSymbol(id) {
+  const cfg = INDEX_CONFIG[id];
+  if(cfg) return cfg.tencent;
+  const clean = String(id).includes('.') ? String(id).split('.')[1] : String(id);
+  return clean.startsWith('6') ? 'sh' + clean : 'sz' + clean;
+}
+function isValidKline(item) {
+  return !!item && /^\d{4}-\d{2}-\d{2}$/.test(item.date || '') &&
+    [item.open, item.close, item.high, item.low].every(v => Number.isFinite(v) && v > 0) &&
+    item.high >= Math.max(item.open, item.close, item.low) &&
+    item.low <= Math.min(item.open, item.close, item.high) &&
+    Number.isFinite(item.vol || 0) && Number.isFinite(item.amt || 0);
+}
+function isMarketOpen() {
+  const now = new Date(), day = now.getDay(), m = now.getHours() * 60 + now.getMinutes();
+  return day !== 0 && day !== 6 && m >= 9 * 60 + 15 && m <= 15 * 60 + 15;
+}
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.style.display = 'block';
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => el.style.display = 'none', 1800);
+}
+function clearDerivedCaches() { decisionCache.clear(); renderCache.clear(); indicatorCache.clear(); backtestCache.clear(); }
+
+function openDB() {
+  return new Promise(resolve => {
+    const req = indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded = e => { if (!e.target.result.objectStoreNames.contains(STORE)) e.target.result.createObjectStore(STORE, { keyPath: 'id' }); };
+    req.onsuccess = e => { DB = e.target.result; resolve(); };
+    req.onerror = () => resolve();
+  });
+}
+function dbGet(id) {
+  return new Promise(resolve => {
+    if(!DB) return resolve(null);
+    const req = DB.transaction(STORE, 'readonly').objectStore(STORE).get(id);
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror = () => resolve(null);
+  });
+}
+function dbSet(id, data) {
+  return new Promise(resolve => {
+    if(!DB) return resolve();
+    const tx = DB.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).put({ id, data, updated: Date.now() });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => resolve();
+  });
+}
+async function loadLocalState() {
+  const w = await dbGet('watchlist_list');
+  const sc = await dbGet('stock_cache');
+  state.watchlist = normalizeWatchlist(w?.data);
+  state.stockCache = normalizeStockCache(sc?.data);
+}
+async function saveWatchlist() { await dbSet('watchlist_list', state.watchlist); }
+function setRawData(id, data) {
+  if(!Array.isArray(data) || !data.length) return;
+  state.rawData[id] = data.filter(isValidKline).sort((a,b) => a.date.localeCompare(b.date));
+  state.weeklyData[id] = convertDailyToWeekly(state.rawData[id]);
+  clearDerivedCaches();
+}
+
+function jsonpFetchEastmoneyKline(id) {
+  return new Promise(resolve => {
+    const secid = resolveSecid(id);
+    const cb = 'em_fast_v41_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&end=20500101&lmt=${SYS_CONFIG.DATA_LIMIT}&cb=${cb}`;
+    let done = false;
+    const cleanup = () => { if(done) return; done = true; clearTimeout(timer); delete window[cb]; document.getElementById(cb)?.remove(); };
+    const timer = setTimeout(() => { cleanup(); resolve([]); }, 7500);
+    window[cb] = data => {
+      cleanup();
+      const rows = data?.data?.klines || [];
+      resolve(rows.map(l => {
+        const p = l.split(',');
+        return { date:p[0], open:parseFloat(p[1]), close:parseFloat(p[2]), high:parseFloat(p[3]), low:parseFloat(p[4]), vol:parseFloat(p[5]) || 0, amt:parseFloat(p[6]) || 0 };
+      }).filter(isValidKline));
+    };
+    const script = document.createElement('script');
+    script.id = cb;
+    script.src = url;
+    script.onerror = () => { cleanup(); resolve([]); };
+    document.head.appendChild(script);
+  });
+}
+function jsonpFetchTencentKline(id) {
+  return new Promise(resolve => {
+    const symbol = resolveTencentSymbol(id), cb = 'tx_fast_v41_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${symbol},day,,,${SYS_CONFIG.DATA_LIMIT},qfq&_var=${cb}`;
+    let done = false;
+    const cleanup = () => { if(done) return; done = true; clearTimeout(timer); delete window[cb]; document.getElementById(cb)?.remove(); };
+    const timer = setTimeout(() => { cleanup(); resolve([]); }, 5500);
+    window[cb] = undefined;
+    const script = document.createElement('script');
+    script.id = cb;
+    script.src = url;
+    script.onload = () => {
+      const payload = window[cb];
+      cleanup();
+      const rows = payload?.data?.[symbol]?.qfqday || payload?.data?.[symbol]?.day || [];
+      resolve(rows.map(p => {
+        const close = parseFloat(p[2]), vol = parseFloat(p[5]) || 0;
+        return { date:p[0], open:parseFloat(p[1]), close, high:parseFloat(p[3]), low:parseFloat(p[4]), vol, amt:p.length > 6 ? (parseFloat(p[6]) || 0) : vol * close * 100 };
+      }).filter(isValidKline));
+    };
+    script.onerror = () => { cleanup(); resolve([]); };
+    document.head.appendChild(script);
+  });
+}
+function getRealtimePriceJSONP(id) {
+  return new Promise(resolve => {
+    const symbol = resolveTencentSymbol(id), varName = 'v_' + symbol;
+    const script = document.createElement('script');
+    script.src = `https://qt.gtimg.cn/q=${symbol}`;
+    script.charset = 'GBK';
+    let done = false;
+    const cleanup = () => { if(done) return; done = true; clearTimeout(timer); script.remove(); };
+    const timer = setTimeout(() => { cleanup(); resolve(null); }, 4500);
+    script.onload = () => {
+      cleanup();
+      const raw = window[varName];
+      if(typeof raw !== 'string') return resolve(null);
+      const f = raw.split('~'), price = parseFloat(f[3]) || 0;
+      if(price <= 0) return resolve(null);
+      const now = new Date();
+      resolve({
+        date: `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`,
+        open: parseFloat(f[5]) || price,
+        high: parseFloat(f[33]) || price,
+        low: parseFloat(f[34]) || price,
+        close: price,
+        vol: parseFloat(f[36]) || 0,
+        amt: parseFloat(f[37]) || 0
+      });
+    };
+    script.onerror = () => { cleanup(); resolve(null); };
+    document.head.appendChild(script);
+  });
+}
+const requestManager = {
+  limiters: new Map(),
+  async fetchRealtimeWithThrottle(id) {
+    const now = Date.now(), slot = this.limiters.get(id) || { lastCall: 0, isFetching: false };
+    if(slot.isFetching || now - slot.lastCall < SYS_CONFIG.THROTTLE_MS) return null;
+    slot.isFetching = true;
+    this.limiters.set(id, slot);
+    try {
+      const rt = await getRealtimePriceJSONP(id);
+      slot.lastCall = Date.now();
+      return rt;
+    } catch(e) {
+      return null;
+    } finally {
+      slot.isFetching = false;
+      this.limiters.set(id, slot);
+    }
+  }
+};
+async function syncDataWithHistory(id) {
+  let data = await jsonpFetchEastmoneyKline(id);
+  if(data.length >= 30) return data;
+  data = await jsonpFetchTencentKline(id);
+  if(data.length >= 30) return data;
+  return null;
+}
+async function syncDataIncremental(id) {
+  const cached = (await dbGet(id))?.data || null;
+  if(!cached?.length) return { data: await syncDataWithHistory(id), source: 'fresh' };
+  const fresh = await syncDataWithHistory(id);
+  if(!fresh?.length) return { data: cached, source: 'cache' };
+  const lastCached = cached[cached.length - 1];
+  const matchingFresh = fresh.find(d => d.date === lastCached.date);
+  if(matchingFresh && lastCached.close && Math.abs(matchingFresh.close - lastCached.close) / lastCached.close > SYS_CONFIG.EX_RIGHT_TOLERANCE) {
+    return { data: fresh, source: 'fresh' };
+  }
+  const merged = new Map();
+  cached.forEach(item => merged.set(item.date, item));
+  fresh.forEach(item => merged.set(item.date, item));
+  const data = Array.from(merged.values()).filter(isValidKline).sort((a,b) => a.date.localeCompare(b.date));
+  const source = fresh[fresh.length - 1]?.date > lastCached.date || fresh.length !== cached.length ? 'fresh' : 'cache';
+  return { data, source };
+}
+async function syncData(id) {
+  const synced = await syncDataIncremental(id);
+  let data = synced.data;
+  let source = synced.source;
+  if(data?.length && isMarketOpen()) {
+    const rt = await requestManager.fetchRealtimeWithThrottle(id);
+    if(rt && isValidKline(rt)) {
+      data = data.slice();
+      if(data[data.length - 1]?.date === rt.date) data[data.length - 1] = rt;
+      else data.push(rt);
+      source = 'fresh';
+    }
+  }
+  if(data?.length) {
+    await dbSet(id, data);
+    setRawData(id, data);
+    return { data, source };
+  }
+  return { data: [], source: 'fail' };
+}
+
+const Calcs = {
+  ma(data, n) {
+    const r = [];
+    let sum = 0;
+    for(let i = 0; i < data.length; i++) {
+      sum += data[i].close;
+      if(i >= n) sum -= data[i - n].close;
+      r.push(i >= n - 1 ? sum / n : null);
+    }
+    return r;
+  },
+  macd(data) {
+    const e12 = [], e26 = [], diff = [], dea = [], bar = [];
+    for(let i = 0; i < data.length; i++) {
+      const c = data[i].close;
+      if(i === 0) e12[i] = e26[i] = c;
+      else {
+        e12[i] = c * 2 / 13 + e12[i - 1] * 11 / 13;
+        e26[i] = c * 2 / 27 + e26[i - 1] * 25 / 27;
+      }
+      diff[i] = e12[i] - e26[i];
+      dea[i] = i === 0 ? diff[i] : diff[i] * 2 / 11 + dea[i - 1] * 9 / 11;
+      bar[i] = diff[i] - dea[i];
+    }
+    return { diff, dea, bar };
+  },
+  rsi(data, n = 14) {
+    const r = [], g = [0], l = [0], ag = [0], al = [0];
+    for(let i = 1; i < data.length; i++) {
+      const d = data[i].close - data[i - 1].close;
+      g.push(d > 0 ? d : 0);
+      l.push(d < 0 ? -d : 0);
+    }
+    for(let i = 0; i < data.length; i++) {
+      if(i < n) { ag[i] = ag[i - 1] || 0; al[i] = al[i - 1] || 0; r.push(null); }
+      else if(i === n) {
+        ag[i] = g.slice(1, n + 1).reduce((a,b) => a + b, 0) / n;
+        al[i] = l.slice(1, n + 1).reduce((a,b) => a + b, 0) / n;
+        r.push(100 - 100 / (1 + (ag[i] / (al[i] || 0.0001))));
+      } else {
+        ag[i] = (ag[i - 1] * (n - 1) + g[i]) / n;
+        al[i] = (al[i - 1] * (n - 1) + l[i]) / n;
+        r.push(100 - 100 / (1 + (ag[i] / (al[i] || 0.0001))));
+      }
+    }
+    return { val: r };
+  },
+  kdj(data, n = 9) {
+    const k = [], d = [], j = [];
+    let prevK = 50, prevD = 50;
+    for(let i = 0; i < data.length; i++) {
+      if(i < n - 1) { k.push(null); d.push(null); j.push(null); continue; }
+      const slice = data.slice(i - n + 1, i + 1);
+      const hn = Math.max(...slice.map(v => v.high)), ln = Math.min(...slice.map(v => v.low));
+      const rsv = hn === ln ? 50 : (data[i].close - ln) / (hn - ln) * 100;
+      const curK = (2 / 3) * prevK + (1 / 3) * rsv;
+      const curD = (2 / 3) * prevD + (1 / 3) * curK;
+      const curJ = 3 * curK - 2 * curD;
+      k.push(curK); d.push(curD); j.push(curJ);
+      prevK = curK; prevD = curD;
+    }
+    return { k, d, j };
+  }
+};
+function getIndicatorKey(id, data) {
+  const last = data?.[data.length - 1];
+  return last ? `${id}_${data.length}_${last.date}_${last.close}_${last.vol}` : `${id}_empty`;
+}
+function buildIndicators(id, data) {
+  const key = getIndicatorKey(id, data);
+  if(indicatorCache.has(key)) return indicatorCache.get(key);
+  const ind = { ma:{5:Calcs.ma(data,5), 10:Calcs.ma(data,10), 20:Calcs.ma(data,20), 60:Calcs.ma(data,60)}, macd:Calcs.macd(data), rsi:Calcs.rsi(data), kdj:Calcs.kdj(data) };
+  indicatorCache.set(key, ind);
+  return ind;
+}
+function convertDailyToWeekly(dailyData) {
+  if(!dailyData?.length) return [];
+  const weekly = [];
+  let currentKey = null, current = null;
+  for(const d of dailyData) {
+    const dateObj = new Date(d.date);
+    const day = dateObj.getDay() || 7;
+    dateObj.setDate(dateObj.getDate() - day + 1);
+    const key = `${dateObj.getFullYear()}-${String(dateObj.getMonth()+1).padStart(2,'0')}-${String(dateObj.getDate()).padStart(2,'0')}`;
+    if(key !== currentKey) {
+      if(current) weekly.push(current);
+      currentKey = key;
+      current = { date:d.date, open:d.open, high:d.high, low:d.low, close:d.close, vol:d.vol, amt:d.amt };
+    } else {
+      current.date = d.date;
+      current.high = Math.max(current.high, d.high);
+      current.low = Math.min(current.low, d.low);
+      current.close = d.close;
+      current.vol += d.vol;
+      current.amt += d.amt;
+    }
+  }
+  if(current) weekly.push(current);
+  return weekly;
+}
+function calculateBollinger(data, idx) {
+  if(idx < 19) return null;
+  const slice = data.slice(idx - 19, idx + 1);
+  const avg = slice.reduce((s,d) => s + d.close, 0) / 20;
+  const std = Math.sqrt(slice.reduce((s,d) => s + Math.pow(d.close - avg, 2), 0) / 20);
+  return { middle: avg, upper: avg + 2 * std, lower: avg - 2 * std };
+}
+function getCalendarWeeksUntil(full, idx) { return state.period === 'weekly' ? full.slice(0, idx + 1) : convertDailyToWeekly(full.slice(0, idx + 1)); }
+function getWeeklyData(full, idx) {
+  const weeks = getCalendarWeeksUntil(full, idx);
+  if(weeks.length < 6) return null;
+  const cur = weeks[weeks.length - 1], prev = weeks[weeks.length - 2];
+  const ma5w = weeks.slice(-5).reduce((s,w) => s + w.close, 0) / 5;
+  const prevMa5w = weeks.slice(-6, -1).reduce((s,w) => s + w.close, 0) / 5;
+  const avgPrevVol = weeks.slice(-5, -1).reduce((s,w) => s + w.vol, 0) / 4;
+  return { aboveMA5W: cur.close > ma5w && prev.close <= prevMa5w, volUp: avgPrevVol > 0 && cur.vol > avgPrevVol * 1.2 };
+}
+function checkPlatformBreak(full, idx) {
+  if(idx < 20) return false;
+  const pd = full.slice(idx - 20, idx), ph = Math.max(...pd.map(d => d.high)), pl = Math.min(...pd.map(d => d.low));
+  return pl > 0 && (ph - pl) / pl < 0.08 && full[idx].close > ph;
+}
+function checkRecentDeadCross(full, ma5, ma20, idx) {
+  if(idx < 6) return false;
+  for(let i = idx - 5; i < idx; i++) if(ma5[i] && ma20[i] && ma5[i] < ma20[i]) return true;
+  return false;
+}
+function getATR(data, idx, n = 14) {
+  if(!data || idx < 1) return 0;
+  const start = Math.max(1, idx - n + 1);
+  let sum = 0, count = 0;
+  for(let i = start; i <= idx; i++) {
+    const prevClose = data[i - 1].close;
+    sum += Math.max(data[i].high - data[i].low, Math.abs(data[i].high - prevClose), Math.abs(data[i].low - prevClose));
+    count++;
+  }
+  return count ? sum / count : 0;
+}
+function checkConfirmedHighPullback(full, ind, idx, high20, prev) {
+  if(high20 === Infinity || idx < 20) return false;
+  const item = full[idx], atr = getATR(full, idx), atrPct = item.close ? atr / item.close : 0;
+  const threshold = Math.max(0.08, atrPct * 2.5);
+  const pullback = (high20 - item.close) / high20;
+  const prevPullback = prev ? (high20 - prev.close) / high20 : 0;
+  const recentLow = Math.min(...full.slice(Math.max(0, idx - 10), idx).map(d => d.low));
+  const ma20 = ind.ma[20]?.[idx];
+  return pullback >= threshold && prevPullback < threshold && ((ma20 && item.close < ma20) || (recentLow && item.close < recentLow));
+}
+
+class SignalContext {
+  constructor(idx, full, ind, stateRef) {
+    this.idx = idx; this.full = full; this.ind = ind; this.state = stateRef;
+    this.item = full[idx]; this.prev = full[idx - 1]; this.prev2 = full[idx - 2]; this.prev3 = full[idx - 3];
+    this.ma5 = ind.ma[5]?.[idx]; this.ma10 = ind.ma[10]?.[idx]; this.ma20 = ind.ma[20]?.[idx]; this.ma60 = ind.ma[60]?.[idx];
+    this.prevMa5 = ind.ma[5]?.[idx - 1]; this.prevMa10 = ind.ma[10]?.[idx - 1]; this.prevMa20 = ind.ma[20]?.[idx - 1]; this.prevMa60 = ind.ma[60]?.[idx - 1];
+    this.dif = ind.macd.diff[idx]; this.dea = ind.macd.dea[idx]; this.prevDif = ind.macd.diff[idx - 1]; this.prevDea = ind.macd.dea[idx - 1];
+    this.rsiVal = ind.rsi.val[idx] || 50; this.prevRsi = ind.rsi.val[idx - 1] || 50;
+  }
+  get volRatio() {
+    if(this._volRatio !== undefined) return this._volRatio;
+    const volSum = this.full.slice(Math.max(0, this.idx - 4), this.idx + 1).reduce((s,d) => s + d.vol, 0);
+    return (this._volRatio = this.item.vol / ((volSum / 5) || 1));
+  }
+  get isLongToday() { return this.ma5 > this.ma10 && this.ma10 > this.ma20 && this.ma20 > this.ma60; }
+  get isLongPrev() { return this.prevMa5 > this.prevMa10 && this.prevMa10 > this.prevMa20 && this.prevMa20 > this.prevMa60; }
+  get lookback20() { return this._lb20 || (this._lb20 = this.full.slice(Math.max(0, this.idx - 20), this.idx)); }
+  get high20() { return this.lookback20.length ? Math.max(...this.lookback20.map(d => d.high)) : Infinity; }
+  get shadowBelow() { return Math.max(0, Math.min(this.item.open, this.item.close) - this.item.low); }
+  get body() { return Math.abs(this.item.close - this.item.open); }
+  get kdj() { return { K:this.ind.kdj.k[this.idx], D:this.ind.kdj.d[this.idx], J:this.ind.kdj.j[this.idx], prevK:this.ind.kdj.k[this.idx - 1] || 50, prevD:this.ind.kdj.d[this.idx - 1] || 50 }; }
+  get lookback30() { return this._lb30 || (this._lb30 = this.full.slice(Math.max(0, this.idx - 30), this.idx)); }
+  get wd() { return this._wd || (this._wd = getWeeklyData(this.full, this.idx)); }
+  get weeklySeries() { return this._weeks || (this._weeks = getCalendarWeeksUntil(this.full, this.idx)); }
+  get weeklySupport() {
+    if(this._weeklySupport !== undefined) return this._weeklySupport;
+    const recentWeeks = this.weeklySeries.slice(Math.max(0, this.weeklySeries.length - 21), -1);
+    return (this._weeklySupport = recentWeeks.length ? Math.min(...recentWeeks.map(d => d.low)) : 0);
+  }
+  get boll() { return this._boll || (this._boll = calculateBollinger(this.full, this.idx)); }
+  get consecutiveBullish() {
+    if(this._cb !== undefined) return this._cb;
+    let c = 0;
+    for(let i = this.idx - 1; i >= Math.max(0, this.idx - 5); i--) { if(this.full[i].close > this.full[i].open) c++; else break; }
+    return (this._cb = c);
+  }
+}
+const SIGNAL_RULES = [
+  { id:'B1', check:ctx => ctx.isLongToday && !ctx.isLongPrev },
+  { id:'B2', check:ctx => ctx.prevDif <= ctx.prevDea && ctx.dif > ctx.dea },
+  { id:'B3', check:ctx => (ctx.prev && ctx.prev.close <= ctx.prevMa20 && ctx.item.close > ctx.ma20) || (ctx.prevMa5 <= ctx.prevMa20 && ctx.ma5 > ctx.ma20) },
+  { id:'B4', check:ctx => ctx.item.close > ctx.high20 && ctx.volRatio > SYS_CONFIG.VOL_SURGE_RATIO },
+  { id:'B5', check:ctx => ctx.prev && ctx.prev.close < ctx.prev.open && ctx.item.close > ctx.item.open && ctx.item.open < ctx.prev.close && ctx.item.close > ctx.prev.open },
+  { id:'B6', check:ctx => ctx.item.low <= ctx.ma20 && ctx.item.close >= ctx.ma20 && ctx.shadowBelow >= ctx.body * 1.5 && ctx.volRatio < SYS_CONFIG.VOL_SHRINK_RATIO },
+  { id:'B7', check:ctx => ctx.prevRsi <= 30 && ctx.rsiVal > 30 },
+  { id:'B8', check:ctx => ctx.kdj && ctx.kdj.prevK <= ctx.kdj.prevD && ctx.kdj.K > ctx.kdj.D },
+  { id:'B9', check:ctx => ctx.lookback30.length > 0 && ctx.item.low <= Math.min(...ctx.lookback30.map(d => d.low)) && ctx.dif > Math.min(...ctx.ind.macd.diff.slice(Math.max(0, ctx.idx - 30), ctx.idx)) && ctx.dif > ctx.prevDif },
+  { id:'B10', check:ctx => ctx.ma20 > ctx.ma60 && ctx.prevMa20 <= ctx.prevMa60 },
+  { id:'B11', check:ctx => ctx.item.low <= ctx.ma20 && ctx.item.close > ctx.ma20 && ctx.item.close > ctx.item.open && ctx.ma20 > ctx.prevMa20 },
+  { id:'B12', check:ctx => ctx.dif > 0 && ctx.dea > 0 && ctx.prevDif <= ctx.prevDea && ctx.dif > ctx.dea },
+  { id:'B13', check:ctx => ctx.wd && ctx.wd.aboveMA5W && ctx.wd.volUp },
+  { id:'B14', check:ctx => checkPlatformBreak(ctx.full, ctx.idx) && ctx.volRatio > SYS_CONFIG.VOL_SURGE_RATIO },
+  { id:'B15', check:ctx => ctx.prevMa5 <= ctx.prevMa20 && ctx.ma5 > ctx.ma20 && checkRecentDeadCross(ctx.full, ctx.ind.ma[5], ctx.ind.ma[20], ctx.idx) },
+  { id:'B16', check:ctx => ctx.weeklySupport > 0 && ctx.item.low <= ctx.weeklySupport * 1.03 && ctx.item.close > ctx.item.open && ctx.item.close > ctx.weeklySupport },
+  { id:'L1', check:ctx => ctx.prev && ctx.prev.close >= ctx.prevMa10 && ctx.item.close < ctx.ma10 && ctx.ma5 < ctx.prevMa5 },
+  { id:'L2', check:ctx => ctx.prevMa5 >= ctx.prevMa20 && ctx.ma5 < ctx.ma20 },
+  { id:'L3', check:ctx => ctx.prevDif >= ctx.prevDea && ctx.dif < ctx.dea },
+  { id:'L4', check:ctx => ctx.prev && ctx.prev.close >= ctx.prevMa20 && ctx.item.close < ctx.ma20 && ctx.volRatio > SYS_CONFIG.VOL_SURGE_RATIO },
+  { id:'L5', check:ctx => ctx.prev && ctx.prev.close > ctx.prev.open && ctx.item.close < ctx.item.open && ctx.item.open > ctx.prev.close && ctx.item.close < ctx.prev.open },
+  { id:'L6', check:ctx => ctx.consecutiveBullish >= 3 && ctx.item.close < ctx.item.open && ctx.volRatio > 1.2 },
+  { id:'L7', check:ctx => ctx.prevRsi >= 70 && ctx.rsiVal < 70 },
+  { id:'L8', check:ctx => ctx.boll && ctx.item.high >= ctx.boll.upper && ctx.item.close < ctx.boll.upper && ctx.item.close < ctx.item.open },
+  { id:'L9', check:ctx => ctx.state.period !== 'weekly' && checkConfirmedHighPullback(ctx.full, ctx.ind, ctx.idx, ctx.high20, ctx.prev) },
+  { id:'L10', check:ctx => ctx.lookback30.length > 0 && ctx.item.high >= Math.max(...ctx.lookback30.map(d => d.high)) && ctx.dif < Math.max(...ctx.ind.macd.diff.slice(Math.max(0, ctx.idx - 30), ctx.idx)) && ctx.dif < ctx.prevDif },
+  { id:'W1', check:ctx => ctx.ma60 > 0 && (ctx.item.close - ctx.ma60) / ctx.ma60 > 0.25 },
+  { id:'W2', check:ctx => ctx.prev && ctx.prev2 && ctx.prev3 && ctx.prev.close > ctx.prev.open && ctx.prev2.close > ctx.prev2.open && ctx.item.close > ctx.item.open && ctx.prev.vol > ctx.prev2.vol && ctx.item.vol < ctx.prev.vol }
+];
+function calculateDailySignals(idx, full, ind) {
+  if(idx < 60) return [];
+  const ctx = new SignalContext(idx, full, ind, state);
+  const result = [];
+  for(const rule of SIGNAL_RULES) if(rule.check(ctx)) result.push(rule.id);
+  return result;
+}
+function getSignalScore(sig, strategy = STRATEGY) { return strategy.signalWeights?.[sig] ?? SIGNAL_SCORES[sig] ?? 0; }
+function getScoreGroupKey(strategy, sig) {
+  const group = (strategy.scoreGroups || []).find(g => g.includes(sig));
+  return group ? group.join('|') : sig;
+}
+function calculateAllSignals(idx, full, ind) {
+  if(idx < 60) return { buySignals:[], exitSignals:[], allSignals:{}, windowScore:0, windowSignals:[], inCooldown:false, cooldownDays:3, daysSinceExit:Infinity };
+  const rawSigs = full[idx]._signals || calculateDailySignals(idx, full, ind);
+  const signals = {};
+  rawSigs.forEach(s => { signals[s] = { status:true, score:SIGNAL_SCORES[s] || 0 }; });
+  const S = STRATEGY, coreExitSignals = ['L3','L4','L5','L9','L10'];
+  const activeBuySignals = rawSigs.filter(s => S.buySignals.includes(s));
+  const activeExitSignals = rawSigs.filter(s => S.exitSignals.includes(s));
+  let lastExitIdx = -1;
+  for(let i = idx; i >= Math.max(0, idx - 60); i--) {
+    const dSigs = full[i]._signals || [];
+    if(dSigs.some(s => s.startsWith('L') && S.exitSignals.includes(s) && coreExitSignals.includes(s))) { lastExitIdx = i; break; }
+  }
+  let inCooldown = false, daysSinceExit = Infinity;
+  if(lastExitIdx >= 0 && lastExitIdx < idx) {
+    daysSinceExit = idx - lastExitIdx;
+    inCooldown = daysSinceExit <= 3;
+  }
+  const windowSignals = [], usedSignals = new Set(), groupBest = new Map();
+  const windowStart = Math.max(0, idx - S.windowDays + 1);
+  for(let i = windowStart; i <= idx; i++) {
+    const daySigs = full[i]._signals || [];
+    daySigs.forEach(sig => {
+      if(usedSignals.has(sig)) return;
+      if(sig.startsWith('L') && S.exitSignals.includes(sig)) {
+        windowSignals.push({ day:i, signal:sig });
+        usedSignals.add(sig);
+      } else if(sig.startsWith('B') && S.buySignals.includes(sig) && i > lastExitIdx) {
+        if(i < idx && full[idx].close < full[i].low) return;
+        const score = getSignalScore(sig, S), groupKey = getScoreGroupKey(S, sig);
+        const existing = groupBest.get(groupKey);
+        if(!existing || score > existing.score) groupBest.set(groupKey, { score, signal:sig });
+        windowSignals.push({ day:i, signal:sig });
+        usedSignals.add(sig);
+      }
+    });
+  }
+  const windowScore = Array.from(groupBest.values()).reduce((sum, item) => sum + item.score, 0);
+  return { buySignals:activeBuySignals, exitSignals:activeExitSignals, allSignals:signals, windowScore, windowSignals, inCooldown, cooldownDays:3, daysSinceExit };
+}
+function checkUnconditionalExit(idx, full) {
+  if(idx < 5 || !(full[idx]._signals || []).includes('L3')) return false;
+  for(let i = idx - 1; i >= Math.max(0, idx - 4); i--) if((full[i]._signals || []).includes('L10')) return true;
+  return false;
+}
+function getSignalMeta(idx, full, ind) {
+  const sigs = calculateAllSignals(idx, full, ind), S = STRATEGY;
+  const hasUncond = checkUnconditionalExit(idx, full);
+  const warns = Object.keys(sigs.allSignals).filter(s => S.warningSignals?.includes(s));
+  const strongExits = sigs.exitSignals.filter(s => ['L3','L4','L5','L9','L10'].includes(s));
+  let type, detail, logic;
+  if(hasUncond) { type = '清仓规避'; detail = '顶背离后MACD死叉'; logic = '触发高危清仓信号'; }
+  else if(strongExits.length) { type = '趋势破位'; detail = '触发核心破位防守'; logic = '防守: ' + strongExits.join(','); }
+  else if(sigs.inCooldown) { type = '离场观望'; detail = `结构已破位，静默期剩余${Math.max(0, 3 - sigs.daysSinceExit)}天`; logic = '动能清零，需重新积攒'; }
+  else if(sigs.windowScore >= S.buyThreshold && warns.length) { type = '谨慎看多'; detail = '买入积分达标但伴随过热风险'; logic = warns.join(','); }
+  else if(sigs.windowScore >= S.buyThreshold) { type = '明确转强'; detail = `积分:${sigs.windowScore} 达到买入条件`; logic = '做多信号: ' + (sigs.buySignals.join(',') || '历史积分'); }
+  else if(sigs.windowScore >= Math.max(3, S.buyThreshold - 2)) { type = '关注异动'; detail = `当前积分:${sigs.windowScore}，即将达标`; logic = '接近转强，可列入观察'; }
+  else if(full[idx].close > (ind.ma[20]?.[idx] || Infinity)) { type = '趋势抱单'; detail = '依托均线多头结构持仓'; logic = '虽无新买点，但大趋势完好'; }
+  else { type = '弱势震荡'; detail = '积分不足，缺乏上行动能'; logic = '耐心等待放量或信号确认'; }
+  return { ...sigs, type, detail, logic, warningSignals:warns, windowBuyCount:sigs.windowSignals.filter(w => w.signal.startsWith('B')).length, windowExitCount:sigs.windowSignals.filter(w => w.signal.startsWith('L')).length, triggeredSignals:[...sigs.buySignals, ...sigs.exitSignals] };
+}
+function getBasePosition(idx, full, ind, meta) {
+  if(meta.type === '明确转强') return 80;
+  if(meta.type === '谨慎看多') return 50;
+  if(meta.type === '关注异动') return 30;
+  if(meta.type === '趋势抱单') {
+    const ma20 = ind.ma[20]?.[idx], ma60 = ind.ma[60]?.[idx];
+    return ma20 && ma60 && ma20 > ma60 ? 60 : 40;
+  }
+  return 0;
+}
+function findDateIndex(data, date) {
+  if(!data?.length) return -1;
+  const exact = data.findIndex(d => d.date === date);
+  if(exact >= 0) return exact;
+  for(let i = data.length - 1; i >= 0; i--) if(data[i].date <= date) return i;
+  return data.length - 1;
+}
+function getIndexTrend(id, date) {
+  const data = state.rawData[id];
+  if(!data || data.length < 60) return null;
+  const idx = findDateIndex(data, date), ma20 = Calcs.ma(data, 20), ma60 = Calcs.ma(data, 60);
+  if(idx < 60 || !ma20[idx] || !ma60[idx]) return null;
+  const close = data[idx].close, prevClose = data[idx - 1]?.close || close, ma20Prev = ma20[Math.max(0, idx - 5)] || ma20[idx];
+  let label = '震荡', score = 0;
+  if(close > ma20[idx] && ma20[idx] > ma60[idx] && ma20[idx] >= ma20Prev) { label = '多头'; score = 1; }
+  else if(close < ma20[idx] && ma20[idx] < ma60[idx]) { label = '空头'; score = -1; }
+  return { id, name:INDEX_CONFIG[id].name, label, score, close, change:close - prevClose, changePct:prevClose ? (close - prevClose) / prevClose * 100 : 0 };
+}
+function getMarketContext(date) {
+  const trends = INDEX_IDS.map(id => getIndexTrend(id, date)).filter(Boolean);
+  if(!trends.length) return { label:'环境未知', coef:0.8, maxPosition:50, reason:'市场温度数据不足', trends:[] };
+  if(trends.length < INDEX_IDS.length) return { label:'环境待确认', coef:0.65, maxPosition:40, reason:'四指数市场温度尚未补齐', trends };
+  const bull = trends.filter(t => t.score > 0), bear = trends.filter(t => t.score < 0);
+  const smallRiskOn = trends.some(t => ['cy','zz1000','kc50'].includes(t.id) && t.score > 0), mainWeak = trends.some(t => t.id === 'sh' && t.score < 0);
+  if(bull.length >= 3) return { label:'全面多头', coef:1, maxPosition:80, reason:'多数指数走强，市场风险偏好较好', trends };
+  if(bear.length >= 3) return { label:'全面弱势', coef:0.3, maxPosition:20, reason:'多数指数处于空头结构，日线信号明显降权', trends };
+  if(smallRiskOn && mainWeak) return { label:'结构性题材行情', coef:0.75, maxPosition:50, reason:'权重偏弱但成长/小盘仍有活跃度', trends };
+  if(bull.length >= 1 && bear.length === 0) return { label:'温和偏多', coef:0.85, maxPosition:60, reason:'部分指数走强，尚未全面共振', trends };
+  return { label:'震荡分化', coef:0.6, maxPosition:40, reason:'指数间分化明显，信号以过滤优先', trends };
+}
+function getRiskContext(idx, full, ind) {
+  const item = full[idx], close = item.close, atr = getATR(full, idx), atrPct = close ? atr / close : 0;
+  const ma20 = ind.ma[20]?.[idx], ma60 = ind.ma[60]?.[idx];
+  const recent = full.slice(Math.max(0, idx - 19), idx + 1);
+  const high20 = recent.length ? Math.max(...recent.map(d => d.high)) : close;
+  const low20 = recent.length ? Math.min(...recent.map(d => d.low)) : close;
+  const drawdown = high20 ? (high20 - close) / high20 : 0;
+  const distMA20 = ma20 ? (close - ma20) / ma20 : 0;
+  let score = 100;
+  const flags = [];
+  if(atrPct > 0.06) { score -= 25; flags.push('波动过高'); } else if(atrPct > 0.04) { score -= 15; flags.push('波动偏高'); } else if(atrPct > 0.025) score -= 8;
+  if(distMA20 > 0.12) { score -= 20; flags.push('偏离MA20过远'); } else if(distMA20 > 0.08) { score -= 10; flags.push('短线偏热'); }
+  if(distMA20 < -0.05) { score -= 18; flags.push('跌破MA20较深'); }
+  if(drawdown > 0.12) { score -= 20; flags.push('回撤较深'); } else if(drawdown > 0.07) score -= 10;
+  const level = score >= 80 ? '低波动/偏离' : score >= 60 ? '中等波动/偏离' : score >= 40 ? '高偏离风险' : '极端波动风险';
+  const coef = score >= 80 ? 1 : score >= 60 ? 0.75 : score >= 40 ? 0.5 : 0.25;
+  const stop = Math.max(low20, close - atr * 2);
+  return { score:Math.max(0, Math.round(score)), level, coef, flags, atrPct, distMA20, drawdown, support:low20, pressure:high20, watch:ma20 || close, stop:Math.min(stop, close), ma60:ma60 || null };
+}
+function getExitSeverity(meta, idx, full, ind) {
+  const exits = meta.exitSignals || [];
+  const raw = Object.keys(meta.allSignals || {});
+  if(meta.type === '清仓规避' || (raw.includes('L10') && raw.includes('L3'))) return { level:'清仓防守', detail:'顶背离叠加动能死叉，先保护本金' };
+  if(exits.some(s => ['L3','L4','L5','L9','L10'].includes(s))) return { level:'强离场', detail:'今日触发强离场信号，不适合继续加仓' };
+  if(exits.some(s => ['L1','L2','L6','L7','L8'].includes(s)) || (meta.warningSignals || []).length) return { level:'减仓观察', detail:'短线转弱或过热，适合降低仓位等待确认' };
+  if(meta.windowSignals) {
+    const recentExits = meta.windowSignals.filter(w => w.signal.startsWith('L') && (idx - w.day) >= 1 && (idx - w.day) <= 2);
+    if(recentExits.length > 0 && ind.ma[5] && full[idx].close < ind.ma[5][idx]) return { level:'延续防守', detail:'近期触发过防守信号且尚未站回5日线，继续压制仓位' };
+  }
+  return { level:'无明确离场', detail:'暂未看到需要立即防守的核心离场信号' };
+}
+function roundPosition(v) { return clamp(Math.round(v / 10) * 10, 0, 80); }
+function getDecisionContext(idx, full, ind, meta, depth = 0) {
+  const item = full[idx] || {};
+  const cacheKey = `${state.activeId}_${state.period}_${idx}_${item.date}_${item.close}_${item.vol}_${state.strategy}_${SIGNAL_VERSION}`;
+  if(depth > 0 && decisionCache.has(cacheKey)) return decisionCache.get(cacheKey);
+  const base = getBasePosition(idx, full, ind, meta);
+  const market = getMarketContext(full[idx]?.date);
+  const risk = getRiskContext(idx, full, ind);
+  const exit = getExitSeverity(meta, idx, full, ind);
+  let position = roundPosition(Math.min(base * market.coef * risk.coef, market.maxPosition));
+  if(exit.level === '清仓防守' || exit.level === '强离场' || meta.inCooldown || meta.type.includes('离场') || meta.type.includes('破位')) position = 0;
+  else if(exit.level === '减仓观察' || exit.level === '延续防守') position = Math.min(position, 30);
+  if(meta.warningSignals?.length) position = Math.min(position, 40);
+  if(risk.score < 40) position = Math.min(position, 20);
+  let prevAdv = 0;
+  if(depth < 40 && idx > 0) {
+    const prevMeta = getSignalMeta(idx - 1, full, ind);
+    prevAdv = getDecisionContext(idx - 1, full, ind, prevMeta, depth + 1).position;
+  }
+  if(prevAdv === 0 && position > 0 && meta.type === '趋势抱单') position = 0;
+  const signalReady = meta.windowScore >= STRATEGY.buyThreshold;
+  let simpleAction = '持币观望', tone = 'safe';
+  if(position === 0) {
+    if(exit.level === '清仓防守' || exit.level === '强离场' || meta.type.includes('规避') || meta.type.includes('破位')) { simpleAction = '清仓离场'; tone = 'safe'; }
+  } else if(position <= 30) {
+    if(exit.level === '减仓观察' || exit.level === '延续防守' || meta.warningSignals?.length) { simpleAction = prevAdv === 0 ? '谨慎试探' : '防守减仓'; tone = 'watch'; }
+    else { simpleAction = '轻仓试探'; tone = 'watch'; }
+  } else {
+    if(meta.type === '趋势抱单' && meta.buySignals.length === 0) simpleAction = '顺势持有';
+    else simpleAction = prevAdv === 0 ? '试探建仓' : '积极持有';
+    tone = 'hot';
+  }
+  const result = { basePosition:base, position, prevAdv, market, risk, exit, signalReady, simpleAction, tone };
+  if(idx < full.length - 1) decisionCache.set(cacheKey, result);
+  return result;
+}
+
+function ensureSignalsForData(id, data, ind) {
+  if(!data?.length) return;
+  const key = `${id}_${data.length}_${data[data.length - 1].date}_${data[data.length - 1].close}_${data[data.length - 1].vol}_${SIGNAL_VERSION}`;
+  if(data._signalKey === key) return;
+  for(let i = 0; i < data.length; i++) data[i]._signals = calculateDailySignals(i, data, ind);
+  data._signalKey = key;
+}
+
+function runBacktestSummary(id, data, ind) {
+  if(!data || data.length < 90) return { status:'short', label:'样本不足', trades:0, winRate:null, totalReturn:null, maxDrawdown:null, days: data?.length || 0 };
+  const last = data[data.length - 1];
+  const cacheKey = `${id}_${state.strategy}_${data.length}_${last.date}_${last.close}_${last.vol}_${SIGNAL_VERSION}`;
+  if(backtestCache.has(cacheKey)) return backtestCache.get(cacheKey);
+
+  const startIdx = Math.max(60, data.length - 180);
+  const feeRate = 0.001;
+  let cash = 1, shares = 0, lastValue = 1, peak = 1, maxDrawdown = 0;
+  let entryValue = 1, trades = 0, wins = 0;
+  const savedActiveId = state.activeId;
+  state.activeId = id;
+  try {
+    for(let i = startIdx + 1; i < data.length; i++) {
+      const signalIdx = i - 1;
+      const meta = getSignalMeta(signalIdx, data, ind);
+      const decision = getDecisionContext(signalIdx, data, ind, meta);
+      const target = decision.position / 100;
+      const price = data[i].open || data[i].close;
+      const value = cash + shares * price;
+      if(value > peak) peak = value;
+      maxDrawdown = Math.max(maxDrawdown, peak ? (peak - value) / peak : 0);
+      const currentExposure = value ? (shares * price) / value : 0;
+      if(target > 0 && currentExposure === 0) entryValue = value;
+      if(target === 0 && currentExposure > 0) {
+        trades++;
+        if(value > entryValue) wins++;
+      }
+      const targetShares = value * target / price;
+      const tradeValue = Math.abs(targetShares - shares) * price;
+      cash = value - targetShares * price - tradeValue * feeRate;
+      shares = targetShares;
+      lastValue = cash + shares * price;
+    }
+    if(shares > 0) {
+      trades++;
+      if(lastValue > entryValue) wins++;
+    }
+  } finally {
+    state.activeId = savedActiveId;
+  }
+  const result = {
+    status:'ready',
+    label:'近180日模拟',
+    assumption:'次日开盘调仓/单边0.1%成本',
+    trades,
+    winRate: trades ? wins / trades * 100 : null,
+    totalReturn: (lastValue - 1) * 100,
+    maxDrawdown: maxDrawdown * 100,
+    days: data.length - startIdx - 1
+  };
+  backtestCache.set(cacheKey, result);
+  return result;
+}
+
+function getSparkline(data) {
+  const points = (data || []).slice(-34);
+  if(points.length < 2) return '';
+  const closes = points.map(d => d.close);
+  const min = Math.min(...closes), max = Math.max(...closes), span = max - min || 1;
+  const coords = closes.map((c, i) => `${(i / (closes.length - 1) * 100).toFixed(2)},${(30 - (c - min) / span * 26).toFixed(2)}`).join(' ');
+  const stroke = closes[closes.length - 1] >= closes[0] ? 'var(--red)' : 'var(--green)';
+  return `<svg class="spark" viewBox="0 0 100 34" preserveAspectRatio="none" aria-hidden="true"><polyline points="${coords}" fill="none" stroke="${stroke}" stroke-width="1.8" vector-effect="non-scaling-stroke"/><line x1="0" y1="31" x2="100" y2="31" stroke="rgba(255,255,255,.08)" stroke-width="1"/></svg>`;
+}
+function buildReason(meta, decision, sampleDays) {
+  if(sampleDays < 60) return `样本仅 ${sampleDays} 根K线，已启用新股/短样本保护，暂不放大仓位。`;
+  if(decision.simpleAction === '清仓离场') return `${decision.exit.detail}；已有仓位先清仓，空仓继续观望，核心破位后进入 3 天静默期。`;
+  if(meta.inCooldown) return `${meta.detail}；等待重新积累真实动能积分。`;
+  if(decision.exit.level === '延续防守') return `${decision.exit.detail}。`;
+  if(decision.simpleAction === '谨慎试探') return `原本无仓位且伴随预警/防守压制，只允许小仓位验证，不当作恢复持仓。`;
+  if(decision.simpleAction === '轻仓试探') return `策略积分 ${meta.windowScore} 分，接近阈值但还未完全确认，适合试错观察。`;
+  if(decision.simpleAction === '试探建仓') return `空仓状态下首次达到动能阈值，按市场与风险过滤后的上限试探建仓。`;
+  if(decision.signalReady) return `积分达标后经市场(${decision.market.label})与风险(${decision.risk.level})过滤，仓位上限压到 ${decision.position}%。`;
+  if(decision.simpleAction === '顺势持有') return `前序仓位仍在，趋势结构未破；非空手情况下可以抱单。`;
+  return `策略积分 ${meta.windowScore} 分，缺乏足够动能确认，继续等待放量或结构修复。`;
+}
+function analyzeStock(stock) {
+  const code = normalizeStockCode(stock.code), name = normalizeStockName(stock.name), id = codeToSecid(code);
+  const data = state.rawData[id] || [];
+  if(!data.length) return { code, name, status:'loading', action:'等待数据', tone:'wait', position:0, score:0, reason:'正在读取或下载行情数据。', tags:[] };
+  const item = data[data.length - 1], prev = data[data.length - 2] || item;
+  const change = item.close - prev.close, changePct = prev.close ? change / prev.close * 100 : 0;
+  if(data.length < 60) {
+    return { code, name, status:'short', item, prev, change, changePct, action:'持币观望', tone:'wait', position:0, score:0, reason:buildReason({}, {}, data.length), tags:[], risk:null, market:getMarketContext(item.date), meta:null };
+  }
+  state.activeId = id;
+  STRATEGY = getCurrentStrategy();
+  const ind = buildIndicators(id, data);
+  ensureSignalsForData(id, data, ind);
+  const idx = data.length - 1;
+  const meta = getSignalMeta(idx, data, ind);
+  const decision = getDecisionContext(idx, data, ind, meta);
+  const backtest = runBacktestSummary(id, data, ind);
+  const allTags = [...new Set([...(data[idx]._signals || []), ...meta.windowSignals.map(w => w.signal)])];
+  const tags = allTags.slice(0, 3);
+  if(allTags.length > tags.length) tags.push(`+${allTags.length - tags.length}`);
+  return {
+    code, name, id, status:'ready', item, prev, change, changePct,
+    action:decision.simpleAction, tone:decision.tone, position:decision.position, score:meta.windowScore,
+    reason:buildReason(meta, decision, data.length), tags, risk:decision.risk, market:decision.market, meta, decision,
+    backtest, spark:getSparkline(data)
+  };
+}
+function actionColor(action) {
+  if(action === '清仓离场') return 'var(--danger)';
+  if(action === '积极持有' || action === '顺势持有') return 'var(--teal)';
+  if(action === '试探建仓') return 'var(--blue)';
+  if(action === '轻仓试探') return 'var(--blue)';
+  if(action === '谨慎试探' || action === '防守减仓') return 'var(--yellow)';
+  return 'var(--muted)';
+}
+function renderCard(a) {
+  const priceClass = (a.change || 0) > 0 ? 'up' : (a.change || 0) < 0 ? 'down' : 'flat';
+  const key = [
+    a.code, state.strategy, a.item?.date, a.item?.close, a.item?.vol, a.action, a.position, a.score,
+    a.market?.label, a.risk?.level, a.risk?.stop, a.risk?.pressure,
+    a.backtest?.totalReturn, a.backtest?.maxDrawdown, a.backtest?.winRate, a.backtest?.trades,
+    a.reason, a.tags?.join('|')
+  ].join('_');
+  if(renderCache.has(key)) return renderCache.get(key);
+  const tags = a.tags?.length ? a.tags.map(t => {
+    const raw = String(t);
+    const cls = raw.startsWith('B') ? 'buy' : raw.startsWith('L') ? 'exit' : raw.startsWith('W') ? 'warn' : '';
+    return `<span class="tag ${cls}">${escapeHTML(USER_SIGNAL_TEXT[raw] || SIGNAL_DESC[raw] || raw)}</span>`;
+  }).join('') : '<span class="tag">暂无有效信号</span>';
+  const bt = a.backtest || {};
+  const btRetCls = Number.isFinite(bt.totalReturn) ? (bt.totalReturn > 0 ? 'good' : bt.totalReturn < 0 ? 'bad' : 'mid') : 'mid';
+  const btDdCls = Number.isFinite(bt.maxDrawdown) ? (bt.maxDrawdown <= 8 ? 'good' : bt.maxDrawdown <= 15 ? 'mid' : 'bad') : 'mid';
+  const btWinCls = Number.isFinite(bt.winRate) ? (bt.winRate >= 55 ? 'good' : bt.winRate >= 40 ? 'mid' : 'bad') : 'mid';
+  const html = `<article class="card ${a.tone}" data-code="${escapeHTML(a.code)}">
+    <div class="card-head">
+      <div class="stock-title"><div class="name">${escapeHTML(a.name)}</div><div class="meta">${escapeHTML(a.code)} · ${escapeHTML(a.item?.date || '--')}</div></div>
+      <div class="price"><div class="num ${priceClass}">${fmt(a.item?.close)}</div><div class="chg ${priceClass}">${fmt(a.change)} / ${pct(a.changePct)}</div></div>
+    </div>
+    <div class="action-grid">
+      <div class="action-box"><div class="tiny-label">操作建议</div><div class="action" style="color:${actionColor(a.action)}">${escapeHTML(a.action)}</div></div>
+      <div class="position-box"><div class="tiny-label">建议上限</div><div class="val">${a.position}%</div></div>
+      <div class="score-box"><div class="tiny-label">积分</div><div class="val">${a.score}</div></div>
+    </div>
+    <div class="metric-row">
+      <div class="metric"><div class="k">市场</div><div class="v">${escapeHTML(a.market?.label || '待确认')}</div></div>
+      <div class="metric"><div class="k">风险</div><div class="v">${escapeHTML(a.risk?.level || '样本不足')}</div></div>
+      <div class="metric"><div class="k">防守</div><div class="v">${fmt(a.risk?.stop)}</div></div>
+      <div class="metric"><div class="k">压力</div><div class="v">${fmt(a.risk?.pressure)}</div></div>
+    </div>
+    <div class="reason">${escapeHTML(a.reason)}</div>
+    <div class="backtest-row">
+      <div class="bt ${btRetCls}"><div class="k">${escapeHTML(bt.label || '回测')}</div><div class="v">${Number.isFinite(bt.totalReturn) ? pct(bt.totalReturn) : '--'}</div></div>
+      <div class="bt ${btDdCls}"><div class="k">最大回撤</div><div class="v">${Number.isFinite(bt.maxDrawdown) ? bt.maxDrawdown.toFixed(1) + '%' : '--'}</div></div>
+      <div class="bt ${btWinCls}"><div class="k">胜率</div><div class="v">${Number.isFinite(bt.winRate) ? bt.winRate.toFixed(0) + '%' : '--'}</div></div>
+      <div class="bt"><div class="k">交易</div><div class="v">${Number.isFinite(bt.trades) ? bt.trades : '--'}次</div></div>
+    </div>
+    <div class="signals">${tags}</div>
+    ${a.spark || ''}
+    <div class="card-foot"><span>${escapeHTML(a.meta?.type || a.status || '待分析')} · ${escapeHTML(a.meta?.detail || '极速卡片')} · ${escapeHTML(bt.assumption || '回测样本不足')}</span><button data-remove="${escapeHTML(a.code)}">移除</button></div>
+  </article>`;
+  if(renderCache.size >= SYS_CONFIG.RENDER_CACHE_SIZE) renderCache.delete(renderCache.keys().next().value);
+  renderCache.set(key, html);
+  return html;
+}
+function renderMarket() {
+  const strip = $('marketStrip');
+  const dates = INDEX_IDS.flatMap(id => (state.rawData[id] || []).slice(-1).map(d => d.date)).sort();
+  const latestDate = dates[dates.length - 1];
+  const trends = latestDate ? getMarketContext(latestDate).trends : [];
+  strip.innerHTML = INDEX_IDS.map(id => {
+    const t = trends.find(x => x.id === id);
+    const cls = !t ? 'neutral' : t.score > 0 ? 'bull' : t.score < 0 ? 'bear' : 'neutral';
+    const chCls = (t?.change || 0) > 0 ? 'up' : (t?.change || 0) < 0 ? 'down' : 'flat';
+    return `<div class="market-pill ${cls}">
+      <div class="market-line"><span class="name">${INDEX_CONFIG[id].name}</span><span class="state">${t?.label || '待更新'}</span></div>
+      <div class="market-line"><span class="change ${chCls}">${t ? pct(t.changePct) : '--'}</span><span class="price">${t ? fmt(t.close) : '--'}</span></div>
+    </div>`;
+  }).join('');
+}
+function renderStrategies() {
+  $('strategyToggle').textContent = getCurrentStrategy().short;
+  $('strategyMenu').innerHTML = Object.entries(STRATEGIES).map(([name, cfg]) => (
+    `<button class="strategy-option ${state.strategy === name ? 'active' : ''}" data-strategy="${escapeHTML(name)}"><strong>${escapeHTML(cfg.short)} · ${escapeHTML(name)}</strong><span>${escapeHTML(cfg.desc)}</span></button>`
+  )).join('');
+}
+function getRank(a) {
+  if(a.action === '清仓离场') return 0;
+  if(a.action === '谨慎试探' || a.action === '防守减仓') return 1;
+  if(a.action === '积极持有' || a.action === '试探建仓') return 2;
+  if(a.action === '轻仓试探' || a.action === '顺势持有') return 3;
+  return 4;
+}
+function renderCards() {
+  const list = $('watchlist'), empty = $('emptyState');
+  $('countText').textContent = `${state.watchlist.length} 只 · ${state.strategy}`;
+  if(!state.watchlist.length) {
+    list.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  const analyses = state.watchlist.map(analyzeStock).sort((a,b) => getRank(a) - getRank(b) || b.position - a.position || (b.score || 0) - (a.score || 0));
+  list.innerHTML = analyses.map(renderCard).join('');
+}
+function updateStatus() {
+  const time = state.lastUpdated ? new Date(state.lastUpdated).toLocaleTimeString('zh-CN', { hour12:false, hour:'2-digit', minute:'2-digit' }) : '未刷新';
+  const extra = state.lastRefreshSummary ? ` · ${state.lastRefreshSummary}` : '';
+  $('statusLine').textContent = `${time} · ${getCurrentStrategy().short}策略 · ${isMarketOpen() ? '盘中盯盘' : '非盘中'} · 8类建议${extra}`;
+}
+function renderAll() { renderStrategies(); renderMarket(); renderCards(); updateStatus(); }
+
+function showActionSummary() {
+  if(!state.watchlist.length) { toast('暂无自选股'); return; }
+  const analyses = state.watchlist.map(analyzeStock);
+  const groups = [
+    ['清仓', a => a.action === '清仓离场'],
+    ['减仓', a => a.action === '防守减仓'],
+    ['试探', a => a.action === '谨慎试探' || a.action === '轻仓试探' || a.action === '试探建仓'],
+    ['持有', a => a.action === '积极持有' || a.action === '顺势持有'],
+    ['观望', a => a.action === '持币观望']
+  ].map(([label, fn]) => `${label}${analyses.filter(fn).length}`).join(' / ');
+  const first = analyses.sort((a,b) => getRank(a) - getRank(b) || b.score - a.score)[0];
+  toast(`${groups}；优先看 ${first?.name || '自选股'}：${first?.action || '--'}`);
+}
+
+async function refreshAll(force = false) {
+  if(state.refreshing) return;
+  state.refreshing = true;
+  $('refreshBottomBtn').disabled = true;
+  $('refreshBottomBtn').textContent = '刷新中';
+  let ok = 0, cachedOnly = 0, fail = 0;
+  try {
+    const targets = [...INDEX_IDS, ...state.watchlist.map(s => codeToSecid(s.code)).filter(Boolean)];
+    for(const id of targets) {
+      const cached = (await dbGet(id))?.data;
+      if(cached?.length && !state.rawData[id]) setRawData(id, cached);
+    }
+    renderAll();
+    for(const id of targets) {
+      const result = await syncData(id);
+      if(result.source === 'fresh') ok++;
+      else if(result.data?.length) cachedOnly++;
+      else fail++;
+      renderAll();
+    }
+    if(ok > 0) state.lastUpdated = Date.now();
+    state.lastRefreshSummary = cachedOnly || fail ? `${ok}/${targets.length}更新·${cachedOnly}缓存` : `${ok}/${targets.length}更新`;
+    if(ok === targets.length) toast(force ? `刷新完成：${ok}/${targets.length}` : `已同步：${ok}/${targets.length}`);
+    else if(ok > 0) toast(`部分更新：${ok}/${targets.length}，${cachedOnly + fail} 个使用缓存`);
+    else toast('行情接口未更新，已使用本地缓存');
+  } finally {
+    state.refreshing = false;
+    $('refreshBottomBtn').disabled = false;
+    $('refreshBottomBtn').textContent = '刷新全部';
+    renderAll();
+  }
+}
+function searchLocalStocks(q) {
+  const qt = q.toLowerCase();
+  const fb = STOCK_DATABASE.filter(s => s.Name.toLowerCase().includes(qt) || s.Code.includes(qt));
+  const fc = state.stockCache.filter(s => !fb.some(b => b.Code === s.Code) && (s.Name.toLowerCase().includes(qt) || s.Code.includes(qt)));
+  return fb.concat(fc);
+}
+function jsonpSearchEastmoney(query) {
+  return new Promise(resolve => {
+    const cb = 'em_search_fast_v41_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    const url = `https://searchadapter.eastmoney.com/api/suggest/get?input=${encodeURIComponent(query)}&type=14&token=${STOCK_TOKEN}&cb=${cb}`;
+    let done = false;
+    const cleanup = () => { if(done) return; done = true; clearTimeout(timer); delete window[cb]; document.getElementById('jq_' + cb)?.remove(); };
+    const timer = setTimeout(() => { cleanup(); resolve([]); }, 5000);
+    window[cb] = data => {
+      cleanup();
+      resolve((data?.QuotationCodeTable?.Data || []).map(x => ({ Code:normalizeStockCode(x.Code), Name:normalizeStockName(x.Name) })).filter(x => x.Code));
+    };
+    const script = document.createElement('script');
+    script.id = 'jq_' + cb;
+    script.src = url;
+    script.onerror = () => { cleanup(); resolve([]); };
+    document.head.appendChild(script);
+  });
+}
+async function searchStocks(q) {
+  const local = searchLocalStocks(q);
+  const exact = normalizeStockCode(q);
+  let res = local.slice();
+  if(res.length < 16) {
+    const remote = await jsonpSearchEastmoney(q);
+    for(const item of remote) if(!res.some(x => x.Code === item.Code)) res.push(item);
+  }
+  if(exact) res.sort((a,b) => (b.Code === exact) - (a.Code === exact));
+  return res.slice(0, 16);
+}
+function renderSuggest(items) {
+  const sug = $('stockSuggest');
+  state.suggestItems = items || [];
+  state.suggestActive = state.suggestItems.length ? 0 : -1;
+  if(!items.length) {
+    sug.innerHTML = '<button class="suggest-item" type="button" disabled><span class="name">没有找到匹配</span><span class="code">--</span></button>';
+    sug.style.display = 'block';
+    return;
+  }
+  sug.innerHTML = items.map((x, i) => `<button class="suggest-item ${i === state.suggestActive ? 'active' : ''}" type="button" data-idx="${i}" data-code="${escapeHTML(x.Code)}" data-name="${escapeHTML(x.Name)}"><span class="name">${escapeHTML(x.Name)}</span><span class="code">${escapeHTML(x.Code)}</span></button>`).join('');
+  sug.style.display = 'block';
+}
+function closeSuggest() {
+  $('stockSuggest').style.display = 'none';
+  state.suggestActive = -1;
+}
+function setSuggestActive(next) {
+  if(!state.suggestItems.length) return;
+  state.suggestActive = (next + state.suggestItems.length) % state.suggestItems.length;
+  $('stockSuggest').querySelectorAll('.suggest-item[data-idx]').forEach(btn => {
+    btn.classList.toggle('active', Number(btn.dataset.idx) === state.suggestActive);
+  });
+}
+async function addStock(code, name) {
+  const safeCode = normalizeStockCode(code), safeName = normalizeStockName(name);
+  if(!safeCode) { toast('请输入 6 位股票代码'); return; }
+  if(state.watchlist.some(s => s.code === safeCode)) { toast('已在自选股'); closeSuggest(); return; }
+  if(state.watchlist.length >= 10) { toast('最多添加 10 只自选股'); return; }
+  state.watchlist.push({ code:safeCode, name:safeName });
+  await saveWatchlist();
+  if(!STOCK_DATABASE.some(s => s.Code === safeCode) && !state.stockCache.some(s => s.Code === safeCode)) {
+    state.stockCache.push({ Code:safeCode, Name:safeName });
+    await dbSet('stock_cache', state.stockCache);
+  }
+  $('stockSearchInput').value = '';
+  closeSuggest();
+  renderAll();
+  await refreshAll(true);
+}
+async function removeStock(code) {
+  const safeCode = normalizeStockCode(code);
+  state.watchlist = state.watchlist.filter(s => s.code !== safeCode);
+  await saveWatchlist();
+  renderAll();
+}
+function bindEvents() {
+  $('strategyToggle').addEventListener('click', e => {
+    e.stopPropagation();
+    closeSuggest();
+    $('strategyMenu').classList.toggle('show');
+  });
+  $('strategyMenu').addEventListener('click', e => {
+    const btn = e.target.closest('[data-strategy]');
+    if(!btn) return;
+    const name = btn.dataset.strategy;
+    if(!STRATEGIES[name] || state.strategy === name) return;
+    applyStrategy(name);
+    localStorage.setItem('quant_strategy', name);
+    $('strategyMenu').classList.remove('show');
+    renderAll();
+    toast(`已切换：${name}`);
+  });
+  $('summaryBtn').addEventListener('click', showActionSummary);
+  $('refreshBottomBtn').addEventListener('click', () => refreshAll(true));
+  $('scrollTopBtn').addEventListener('click', () => scrollTo({ top:0, behavior:'smooth' }));
+  $('searchBtn').addEventListener('click', async () => {
+    const q = $('stockSearchInput').value.trim();
+    if(!q) return toast('先输入代码或名称');
+    const local = searchLocalStocks(q);
+    if(local.length === 1) return addStock(local[0].Code, local[0].Name);
+    $('strategyMenu').classList.remove('show');
+    $('stockSuggest').innerHTML = '<button class="suggest-item" type="button" disabled><span class="name">搜索中...</span><span class="code">--</span></button>';
+    $('stockSuggest').style.display = 'block';
+    renderSuggest(await searchStocks(q));
+  });
+  $('stockSearchInput').addEventListener('input', e => {
+    clearTimeout(suggestTimer);
+    const q = e.target.value.trim();
+    const seq = ++state.searchSeq;
+    if(!q) { closeSuggest(); return; }
+    $('strategyMenu').classList.remove('show');
+    $('stockSuggest').innerHTML = '<button class="suggest-item" type="button" disabled><span class="name">搜索中...</span><span class="code">--</span></button>';
+    $('stockSuggest').style.display = 'block';
+    suggestTimer = setTimeout(async () => {
+      const items = await searchStocks(q);
+      if(seq === state.searchSeq) renderSuggest(items);
+    }, 180);
+  });
+  $('stockSearchInput').addEventListener('keydown', e => {
+    if(e.key === 'ArrowDown') { e.preventDefault(); setSuggestActive(state.suggestActive + 1); }
+    else if(e.key === 'ArrowUp') { e.preventDefault(); setSuggestActive(state.suggestActive - 1); }
+    else if(e.key === 'Enter') {
+      const item = state.suggestActive >= 0 ? state.suggestItems[state.suggestActive] : null;
+      if(item) { e.preventDefault(); addStock(item.Code, item.Name); }
+      else $('searchBtn').click();
+    }
+    else if(e.key === 'Escape') closeSuggest();
+  });
+  $('stockSuggest').addEventListener('click', e => {
+    const item = e.target.closest('.suggest-item[data-code]');
+    if(item) addStock(item.dataset.code, item.dataset.name);
+  });
+  $('watchlist').addEventListener('click', e => {
+    const btn = e.target.closest('[data-remove]');
+    if(btn) removeStock(btn.dataset.remove);
+  });
+  document.addEventListener('click', e => {
+    if(!e.target.closest('.top-row')) $('strategyMenu').classList.remove('show');
+    if(!e.target.closest('.search-wrap')) closeSuggest();
+  });
+}
+async function hydrateCachedTargets() {
+  const targets = [...INDEX_IDS, ...state.watchlist.map(s => codeToSecid(s.code)).filter(Boolean)];
+  for(const id of targets) {
+    const cached = (await dbGet(id))?.data;
+    if(cached?.length) setRawData(id, cached);
+  }
+}
+async function init() {
+  bindEvents();
+  await openDB();
+  await loadLocalState();
+  applyStrategy(localStorage.getItem('quant_strategy') || '稳健趋势型');
+  await hydrateCachedTargets();
+  renderAll();
+  refreshAll();
+}
+window.addEventListener('load', init);
+</script>
+</body>
+</html>
