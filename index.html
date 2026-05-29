@@ -755,67 +755,94 @@ function checkConfirmedHighPullback(full, ind, idx, high20, prev) {
     return pullback >= threshold && prevPullback < threshold && (brokeMA20 || brokeRecentLow);
 }
 
-function calculateDailySignals(idx, full, ind) {
-    if(idx<60) return [];
-    const item=full[idx], prev=full[idx-1], prev2=full[idx-2], prev3=full[idx-3];
-    const ma5=ind.ma[5][idx], ma10=ind.ma[10][idx], ma20=ind.ma[20][idx], ma60=ind.ma[60][idx];
-    const prevMa5=ind.ma[5][idx-1], prevMa10=ind.ma[10][idx-1], prevMa20=ind.ma[20][idx-1], prevMa60=ind.ma[60][idx-1];
-    const prev2Ma5=ind.ma[5][idx-2], prev2Ma20=ind.ma[20][idx-2];
-    const macd=ind.macd, dif=macd.diff[idx], dea=macd.dea[idx], prevDif=macd.diff[idx-1], prevDea=macd.dea[idx-1];
-    const rsiVal=ind.rsi[idx]||50, prevRsi=ind.rsi[idx-1]||50;
-    const volSum=full.slice(Math.max(0,idx-4),idx+1).reduce((s,d)=>s+d.vol,0), volRatio=item.vol/(volSum/5);
-    
-    const result = [];
-    const isLongToday = ma5>ma10 && ma10>ma20 && ma20>ma60; const isLongPrev = prevMa5>prevMa10 && prevMa10>prevMa20 && prevMa20>prevMa60;
-    if(isLongToday && !isLongPrev) result.push('B1'); 
-    if(prevDif<=prevDea && dif>dea) result.push('B2'); 
-    if((prev.close<=prevMa20 && item.close>ma20) || (prevMa5<=prevMa20 && ma5>ma20)) result.push('B3'); 
-    
-    const lookback20 = full.slice(Math.max(0, idx-20), idx); const high20 = lookback20.length ? Math.max(...lookback20.map(d=>d.high)) : Infinity;
-    if(item.close > high20 && volRatio > 1.5) result.push('B4'); 
-    if(prev&&prev.close<prev.open && item.close>item.open && item.open<prev.close && item.close>prev.open) result.push('B5'); 
-    
-    const shadowBelow = ma20 ? Math.max(0, Math.min(item.open, item.close) - item.low) : 0, body = Math.abs(item.close - item.open);
-    if(item.low <= ma20 && item.close >= ma20 && shadowBelow >= body * 1.5 && volRatio < 0.9) result.push('B6'); 
-    if(prevRsi<=30 && rsiVal>30) result.push('B7'); 
-    
-    const kdj = calculateKDJ(full, idx);
-    if(kdj && kdj.prevK <= kdj.prevD && kdj.K > kdj.D) result.push('B8'); 
-    
-    const lookback30 = full.slice(Math.max(0, idx-30), idx);
-    if(lookback30.length>0) {
-        if(item.low <= Math.min(...lookback30.map(d=>d.low)) && dif > Math.min(...macd.diff.slice(Math.max(0,idx-30),idx)) && dif > prevDif) result.push('B9'); 
-        if(item.high >= Math.max(...lookback30.map(d=>d.high)) && dif < Math.max(...macd.diff.slice(Math.max(0,idx-30),idx)) && dif < prevDif) result.push('L10'); 
+// 🚀 第二期重构核心：引入量化信号上下文对象 (Lazy Evaluation 懒加载机制)
+class SignalContext {
+    constructor(idx, full, ind, state) {
+        this.idx = idx; this.full = full; this.ind = ind; this.state = state;
+        this.item = full[idx]; this.prev = full[idx-1]; 
+        this.prev2 = full[idx-2]; this.prev3 = full[idx-3];
+        
+        // 基础均线直读
+        this.ma5 = ind.ma[5]?.[idx]; this.ma10 = ind.ma[10]?.[idx]; this.ma20 = ind.ma[20]?.[idx]; this.ma60 = ind.ma[60]?.[idx];
+        this.prevMa5 = ind.ma[5]?.[idx-1]; this.prevMa10 = ind.ma[10]?.[idx-1]; this.prevMa20 = ind.ma[20]?.[idx-1]; this.prevMa60 = ind.ma[60]?.[idx-1];
+        
+        // MACD 与 RSI 直读
+        this.dif = ind.macd.diff[idx]; this.dea = ind.macd.dea[idx];
+        this.prevDif = ind.macd.diff[idx-1]; this.prevDea = ind.macd.dea[idx-1];
+        this.rsiVal = ind.rsi[idx] || 50; this.prevRsi = ind.rsi[idx-1] || 50;
     }
+
+    // 💡 以下属性全部采用 getter 懒加载：不触发对应规则，就绝对不计算！
+    get volRatio() {
+        if(this._volRatio !== undefined) return this._volRatio;
+        const volSum = this.full.slice(Math.max(0, this.idx-4), this.idx+1).reduce((s,d)=>s+d.vol,0);
+        return (this._volRatio = this.item.vol / (volSum / 5));
+    }
+    get isLongToday() { return this.ma5 > this.ma10 && this.ma10 > this.ma20 && this.ma20 > this.ma60; }
+    get isLongPrev() { return this.prevMa5 > this.prevMa10 && this.prevMa10 > this.prevMa20 && this.prevMa20 > this.prevMa60; }
+    get lookback20() { return this._lb20 || (this._lb20 = this.full.slice(Math.max(0, this.idx-20), this.idx)); }
+    get high20() { return this.lookback20.length ? Math.max(...this.lookback20.map(d=>d.high)) : Infinity; }
+    get shadowBelow() { return this.ma20 ? Math.max(0, Math.min(this.item.open, this.item.close) - this.item.low) : 0; }
+    get body() { return Math.abs(this.item.close - this.item.open); }
+    get kdj() { return this._kdj || (this._kdj = calculateKDJ(this.full, this.idx)); }
+    get lookback30() { return this._lb30 || (this._lb30 = this.full.slice(Math.max(0, this.idx-30), this.idx)); }
+    get wd() { return this._wd || (this._wd = getWeeklyData(this.full, this.idx)); }
+    get lookback100() { return this._lb100 || (this._lb100 = this.full.slice(Math.max(0, this.idx-100), this.idx)); }
+    get weeklySupport() { return this.lookback100.length ? Math.min(...this.lookback100.map(d=>d.low)) : 0; }
+    get boll() { return this._boll || (this._boll = calculateBollinger(this.full, this.idx)); }
+    get consecutiveBullish() {
+        if(this._cb !== undefined) return this._cb;
+        let c = 0;
+        for(let i = this.idx-1; i >= Math.max(0, this.idx-5); i--) { if(this.full[i].close > this.full[i].open) c++; else break; }
+        return (this._cb = c);
+    }
+}
+
+// 🚀 将“面条代码”解耦为规则配置表，彻底符合“开闭原则”
+const SIGNAL_RULES = [
+    { id: 'B1', check: ctx => ctx.isLongToday && !ctx.isLongPrev },
+    { id: 'B2', check: ctx => ctx.prevDif <= ctx.prevDea && ctx.dif > ctx.dea },
+    { id: 'B3', check: ctx => (ctx.prev && ctx.prev.close <= ctx.prevMa20 && ctx.item.close > ctx.ma20) || (ctx.prevMa5 <= ctx.prevMa20 && ctx.ma5 > ctx.ma20) },
+    { id: 'B4', check: ctx => ctx.item.close > ctx.high20 && ctx.volRatio > SYS_CONFIG.VOL_SURGE_RATIO },
+    { id: 'B5', check: ctx => ctx.prev && ctx.prev.close < ctx.prev.open && ctx.item.close > ctx.item.open && ctx.item.open < ctx.prev.close && ctx.item.close > ctx.prev.open },
+    { id: 'B6', check: ctx => ctx.item.low <= ctx.ma20 && ctx.item.close >= ctx.ma20 && ctx.shadowBelow >= ctx.body * 1.5 && ctx.volRatio < SYS_CONFIG.VOL_SHRINK_RATIO },
+    { id: 'B7', check: ctx => ctx.prevRsi <= 30 && ctx.rsiVal > 30 },
+    { id: 'B8', check: ctx => ctx.kdj && ctx.kdj.prevK <= ctx.kdj.prevD && ctx.kdj.K > ctx.kdj.D },
+    { id: 'B9', check: ctx => ctx.lookback30.length > 0 && ctx.item.low <= Math.min(...ctx.lookback30.map(d=>d.low)) && ctx.dif > Math.min(...ctx.ind.macd.diff.slice(Math.max(0,ctx.idx-30),ctx.idx)) && ctx.dif > ctx.prevDif },
+    { id: 'B10', check: ctx => ctx.ma20 > ctx.ma60 && ctx.prevMa20 <= ctx.prevMa60 },
+    { id: 'B11', check: ctx => ctx.item.low <= ctx.ma20 && ctx.item.close > ctx.ma20 && ctx.item.close > ctx.item.open && ctx.ma20 > ctx.prevMa20 },
+    { id: 'B12', check: ctx => ctx.dif > 0 && ctx.dea > 0 && ctx.prevDif <= ctx.prevDea && ctx.dif > ctx.dea },
+    { id: 'B13', check: ctx => ctx.wd && ctx.wd.aboveMA5W && ctx.wd.volUp },
+    { id: 'B14', check: ctx => checkPlatformBreak(ctx.full, ctx.idx) && ctx.volRatio > SYS_CONFIG.VOL_SURGE_RATIO },
+    { id: 'B15', check: ctx => ctx.prevMa5 <= ctx.prevMa20 && ctx.ma5 > ctx.ma20 && checkRecentDeadCross(ctx.full, ctx.ind.ma[5], ctx.ind.ma[20], ctx.idx) },
+    { id: 'B16', check: ctx => ctx.weeklySupport > 0 && ctx.item.low <= ctx.weeklySupport * 1.03 && ctx.item.close > ctx.item.open && ctx.item.close > ctx.weeklySupport },
     
-    if(ma20>ma60 && prevMa20<=prevMa60) result.push('B10'); 
-    if(item.low<=ma20 && item.close>ma20 && item.close>item.open && ma20>prevMa20) result.push('B11'); 
-    if(dif>0 && dea>0 && prevDif<=prevDea && dif>dea) result.push('B12'); 
+    { id: 'L1', check: ctx => ctx.prev && ctx.prev.close >= ctx.prevMa10 && ctx.item.close < ctx.ma10 && ctx.ma5 < ctx.prevMa5 },
+    { id: 'L2', check: ctx => ctx.prevMa5 >= ctx.prevMa20 && ctx.ma5 < ctx.ma20 },
+    { id: 'L3', check: ctx => ctx.prevDif >= ctx.prevDea && ctx.dif < ctx.dea },
+    { id: 'L4', check: ctx => ctx.prev && ctx.prev.close >= ctx.prevMa20 && ctx.item.close < ctx.ma20 && ctx.volRatio > SYS_CONFIG.VOL_SURGE_RATIO },
+    { id: 'L5', check: ctx => ctx.prev && ctx.prev.close > ctx.prev.open && ctx.item.close < ctx.item.open && ctx.item.open > ctx.prev.close && ctx.item.close < ctx.prev.open },
+    { id: 'L6', check: ctx => ctx.consecutiveBullish >= 3 && ctx.item.close < ctx.item.open && ctx.volRatio > 1.2 },
+    { id: 'L7', check: ctx => ctx.prevRsi >= 70 && ctx.rsiVal < 70 },
+    { id: 'L8', check: ctx => ctx.boll && ctx.item.high >= ctx.boll.upper && ctx.item.close < ctx.boll.upper && ctx.item.close < ctx.item.open },
+    { id: 'L9', check: ctx => ctx.state.period !== 'weekly' && checkConfirmedHighPullback(ctx.full, ctx.ind, ctx.idx, ctx.high20, ctx.prev) },
+    { id: 'L10', check: ctx => ctx.lookback30.length > 0 && ctx.item.high >= Math.max(...ctx.lookback30.map(d=>d.high)) && ctx.dif < Math.max(...ctx.ind.macd.diff.slice(Math.max(0,ctx.idx-30),ctx.idx)) && ctx.dif < ctx.prevDif },
     
-    const wd = getWeeklyData(full, idx); if(wd && wd.aboveMA5W && wd.volUp) result.push('B13'); 
-    if(checkPlatformBreak(full, idx) && volRatio > 1.5) result.push('B14'); 
-    if(prevMa5<=prevMa20 && ma5>ma20 && checkRecentDeadCross(full, ind.ma[5], ind.ma[20], idx)) result.push('B15'); 
+    { id: 'W1', check: ctx => ctx.ma60 > 0 && (ctx.item.close - ctx.ma60) / ctx.ma60 > 0.25 },
+    { id: 'W2', check: ctx => ctx.prev && ctx.prev2 && ctx.prev3 && ctx.prev.close > ctx.prev.open && ctx.prev2.close > ctx.prev2.open && ctx.item.close > ctx.item.open && ctx.prev.vol > ctx.prev2.vol }
+];
+
+// 🚀 重构后的上帝函数：优雅的遍历分发，性能提升
+function calculateDailySignals(idx, full, ind) {
+    if(idx < 60) return [];
+    const ctx = new SignalContext(idx, full, ind, state);
+    const result = [];
     
-    const lookback100 = full.slice(Math.max(0, idx-100), idx); 
-    const weeklySupport = lookback100.length ? Math.min(...lookback100.map(d=>d.low)) : 0;
-    if(weeklySupport > 0 && item.low <= weeklySupport * 1.03 && item.close > item.open && item.close > weeklySupport) result.push('B16');
-    
-    if(prev.close>=prevMa10 && item.close<ma10 && ma5<prevMa5) result.push('L1'); 
-    if(prevMa5>=prevMa20 && ma5<ma20) result.push('L2'); 
-    if(prevDif>=prevDea && dif<dea) result.push('L3'); 
-    if(prev.close>=prevMa20 && item.close<ma20 && volRatio>1.5) result.push('L4'); 
-    if(prev&&prev.close>prev.open && item.close<item.open && item.open>prev.close && item.close<prev.open) result.push('L5'); 
-    
-    let consecutiveBullish = 0; for(let i=idx-1; i>=Math.max(0,idx-5); i--) { if(full[i].close>full[i].open) consecutiveBullish++; else break; }
-    if(consecutiveBullish>=3 && item.close<item.open && volRatio>1.2) result.push('L6'); 
-    if(prevRsi>=70 && rsiVal<70) result.push('L7'); 
-    
-    const boll = calculateBollinger(full, idx);
-    if(boll && item.high>=boll.upper && item.close<boll.upper && item.close<item.open) result.push('L8'); 
-    if(state.period !== 'weekly' && checkConfirmedHighPullback(full, ind, idx, high20, prev)) result.push('L9'); 
-    if(ma60>0 && (item.close-ma60)/ma60 > 0.25) result.push('W1'); 
-    if(prev&&prev2&&prev3 && prev.close>prev.open && prev2.close>prev2.open && item.close>item.open && prev.vol>prev2.vol) result.push('W2'); 
-    
+    for (let i = 0; i < SIGNAL_RULES.length; i++) {
+        if (SIGNAL_RULES[i].check(ctx)) {
+            result.push(SIGNAL_RULES[i].id);
+        }
+    }
     return result;
 }
 
