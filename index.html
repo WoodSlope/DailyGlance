@@ -962,7 +962,7 @@ function getRiskContext(idx, full, ind) {
     };
 }
 
-function getExitSeverity(meta) {
+function getExitSeverity(meta, idx, full, ind) {
     const exits = meta.exitSignals || [];
     const raw = Object.keys(meta.allSignals || {});
     
@@ -970,23 +970,30 @@ function getExitSeverity(meta) {
     if(exits.some(s => ['L3', 'L4', 'L5', 'L9', 'L10'].includes(s))) return { level:'强离场', detail:'今日触发强离场信号，不适合继续加仓' };
     if(exits.some(s => ['L1', 'L2', 'L6', 'L7', 'L8'].includes(s)) || (meta.warningSignals || []).length) return { level:'减仓观察', detail:'短线转弱或过热，适合降低仓位等待确认' };
     
+    // 🚀 核心修复：引入“防守记忆”。若近2日触发过防守信号，且股价仍受压于5日线，则延续防守状态！
+    if (meta.windowSignals) {
+        const recentExits = meta.windowSignals.filter(w => w.signal.startsWith('L') && (idx - w.day) >= 1 && (idx - w.day) <= 2);
+        if (recentExits.length > 0 && ind.ma[5] && full[idx].close < ind.ma[5][idx]) {
+            return { level:'延续防守', detail:'近期触发过防守信号且尚未站回5日线，继续压制仓位' };
+        }
+    }
+
     return { level:'无明确离场', detail:'暂未看到需要立即防守的核心离场信号' };
 }
 
 function roundPosition(v) { return Math.max(0, Math.min(80, Math.round(v / 10) * 10)); }
 
-// 🚀 核心修复：引入 isPrev 计算标志，安全获取前置仓位
 function getDecisionContext(idx, full, ind, meta, isPrev = false) {
-    const base = getBasePosition(idx, full, ind, meta), market = getMarketContext(full[idx]?.date), risk = getRiskContext(idx, full, ind), exit = getExitSeverity(meta);
+    const base = getBasePosition(idx, full, ind, meta), market = getMarketContext(full[idx]?.date), risk = getRiskContext(idx, full, ind);
+    const exit = getExitSeverity(meta, idx, full, ind);
     let position = roundPosition(Math.min(base * market.coef * risk.coef, market.maxPosition));
     
     if(exit.level === '清仓防守' || exit.level === '强离场' || meta.inCooldown || meta.type.includes('离场') || meta.type.includes('破位')) position = 0;
-    else if(exit.level === '减仓观察') position = Math.min(position, 30);
+    else if(exit.level === '减仓观察' || exit.level === '延续防守') position = Math.min(position, 30);
     
     if(meta.warningSignals?.length) position = Math.min(position, 40);
     if(risk.score < 40) position = Math.min(position, 20);
     
-    // 💡 获取前置仓位 (避免死循环，isPrev 标志位阻断)
     let prevAdv = 0;
     if (!isPrev && idx > 0) {
         const prevMeta = getSignalMeta(idx - 1, full, ind);
@@ -1006,7 +1013,6 @@ function getDecisionContext(idx, full, ind, meta, isPrev = false) {
     let simpleAction = '持币观望';
     let simpleColor = 'var(--text-dim)';
     
-    // 🚀 核心修复：根据 prevAdv 修正“减仓”和“试探”的文案逻辑
     if (position === 0) {
         if (exit.level !== '无明确离场' || meta.type.includes('规避') || meta.type.includes('破位')) {
             simpleAction = '清仓离场';
@@ -1016,10 +1022,13 @@ function getDecisionContext(idx, full, ind, meta, isPrev = false) {
             simpleColor = 'var(--text-dim)';
         }
     } else if (position <= 30) {
-        if (exit.level === '减仓观察' || meta.warningSignals?.length) {
-            // 如果原本空仓，遇到预警只叫“谨慎试探”，不叫“减仓”
+        if (exit.level === '减仓观察' || exit.level === '延续防守' || meta.warningSignals?.length) {
             if (prevAdv === 0) {
                 simpleAction = '谨慎试探';
+                simpleColor = 'var(--yellow)';
+            } else if (prevAdv > 0 && position === prevAdv) {
+                // 🚀 核心文案优化：如果前一天是减仓，今天仍被压制在 30%，显示为“维持防守”
+                simpleAction = '维持防守';
                 simpleColor = 'var(--yellow)';
             } else {
                 simpleAction = '防守减仓';
@@ -1393,7 +1402,7 @@ function generateAnalysisHTML(idx, full, meta) {
     let topCardBg = '', topBorder = '';
     // 使用 simpleAction 来判断边框颜色
     if (decision.simpleAction === '清仓离场') { topCardBg = 'rgba(239, 68, 68, 0.12)'; topBorder = 'rgba(239, 68, 68, 0.3)'; }
-    else if (decision.simpleAction === '防守减仓' || decision.simpleAction === '谨慎试探') { topCardBg = 'rgba(245, 158, 11, 0.12)'; topBorder = 'rgba(245, 158, 11, 0.3)'; }
+    else if (decision.simpleAction === '防守减仓' || decision.simpleAction === '谨慎试探' || decision.simpleAction === '维持防守') { topCardBg = 'rgba(245, 158, 11, 0.12)'; topBorder = 'rgba(245, 158, 11, 0.3)'; }
     else if (decision.simpleAction === '轻仓试探') { topCardBg = 'rgba(59, 130, 246, 0.12)'; topBorder = 'rgba(59, 130, 246, 0.3)'; }
     else if (decision.simpleAction === '积极持有' || decision.simpleAction === '顺势持有') { topCardBg = 'rgba(34, 197, 94, 0.12)'; topBorder = 'rgba(34, 197, 94, 0.3)'; }
     else { topCardBg = 'rgba(255, 255, 255, 0.04)'; topBorder = 'rgba(255, 255, 255, 0.1)'; }
