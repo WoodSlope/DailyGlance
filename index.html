@@ -161,7 +161,7 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 
 /* Custom Modal Styles */
 #customModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px); z-index:10000; align-items:center; justify-content:center; }
-.custom-modal-box { background:#0f172a; padding:24px; border-radius:12px; border:1px solid #334155; min-width:320px; max-width: 90%; box-shadow:0 20px 40px rgba(0,0,0,0.4); text-align:center; }
+.custom-modal-box { background:#0f172a; padding:24px; border-radius:12px; border:1px solid #334155; min-width:320px; max-width: 90%; max-height: 90vh; overflow-y: auto; box-shadow:0 20px 40px rgba(0,0,0,0.4); text-align:center; }
 .custom-modal-msg { margin-bottom:24px; color:#f1f5f9; font-size:14px; line-height:1.6; text-align: left;}
 .custom-modal-btns { display:flex; gap:12px; justify-content:center; }
 .custom-modal-btn { padding:8px 20px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; transition:all .2s; }
@@ -1149,7 +1149,8 @@ const SIGNAL_RULES = [
     { id: 'L10', check: ctx => ctx.lookback30.length > 0 && ctx.item.high >= Math.max(...ctx.lookback30.map(d=>d.high)) && ctx.dif < Math.max(...ctx.ind.macd.diff.slice(Math.max(0,ctx.idx-30),ctx.idx)) && ctx.dif < ctx.prevDif },
     
     { id: 'W1', check: ctx => ctx.ma60 > 0 && (ctx.item.close - ctx.ma60) / ctx.ma60 > 0.25 },
-    { id: 'W2', check: ctx => ctx.prev && ctx.prev2 && ctx.prev3 && ctx.prev.close > ctx.prev.open && ctx.prev2.close > ctx.prev2.open && ctx.item.close > ctx.item.open && ctx.prev.vol > ctx.prev2.vol }
+    // 🚀 核心修复1：W2 增加真正的缩量逻辑 ctx.item.vol < ctx.prev.vol
+    { id: 'W2', check: ctx => ctx.prev && ctx.prev2 && ctx.prev3 && ctx.prev.close > ctx.prev.open && ctx.prev2.close > ctx.prev2.open && ctx.item.close > ctx.item.open && ctx.prev.vol > ctx.prev2.vol && ctx.item.vol < ctx.prev.vol }
 ];
 
 function calculateDailySignals(idx, full, ind) {
@@ -1347,8 +1348,22 @@ function getExitSeverity(meta, idx, full, ind) {
 
 function roundPosition(v) { return Math.max(0, Math.min(80, Math.round(v / 10) * 10)); }
 
+// 🚀 核心修复2：回测引擎 O(N²) 雪崩终极护盾 (决策缓存)
+const decisionCache = new Map();
+
 function getDecisionContext(idx, full, ind, meta, depth = 0) {
-    const base = getBasePosition(idx, full, ind, meta), market = getMarketContext(full[idx]?.date), risk = getRiskContext(idx, full, ind), exit = getExitSeverity(meta, idx, full, ind);
+    const cacheKey = `${state.id}_${idx}_${state.strategy}`;
+    
+    // 如果是溯源历史且已有缓存，直接 O(1) 返回，打破 O(N^2) 雪崩魔咒！
+    if (depth > 0 && decisionCache.has(cacheKey)) {
+        return decisionCache.get(cacheKey);
+    }
+
+    const base = getBasePosition(idx, full, ind, meta);
+    const market = getMarketContext(full[idx]?.date);
+    const risk = getRiskContext(idx, full, ind);
+    const exit = getExitSeverity(meta, idx, full, ind);
+    
     let position = roundPosition(Math.min(base * market.coef * risk.coef, market.maxPosition));
     
     if(exit.level === '清仓防守' || exit.level === '强离场' || meta.inCooldown || meta.type.includes('离场') || meta.type.includes('破位')) position = 0;
@@ -1358,7 +1373,6 @@ function getDecisionContext(idx, full, ind, meta, depth = 0) {
     if(risk.score < 40) position = Math.min(position, 20);
     
     let prevAdv = 0;
-    // 🚀 核心修复：允许状态溯源，深度达到 40 天，打破“隔代失忆”现象
     if (depth < 40 && idx > 0) {
         const prevMeta = getSignalMeta(idx - 1, full, ind);
         prevAdv = getDecisionContext(idx - 1, full, ind, prevMeta, depth + 1).position;
@@ -1370,14 +1384,21 @@ function getDecisionContext(idx, full, ind, meta, depth = 0) {
     
     let simpleAction = '持币观望', simpleColor = 'var(--text-dim)';
     if (position === 0) {
-        if (exit.level === '清仓防守' || exit.level === '强离场' || meta.type.includes('规避') || meta.type.includes('破位')) { simpleAction = '清仓离场'; simpleColor = 'var(--red)'; }
+        if (exit.level === '清仓防守' || exit.level === '强离场' || meta.type.includes('规避') || meta.type.includes('破位')) { 
+            simpleAction = '清仓离场'; simpleColor = 'var(--red)'; 
+        }
     } else if (position <= 30) {
         if (exit.level === '减仓观察' || exit.level === '延续防守' || meta.warningSignals?.length) {
             simpleAction = prevAdv === 0 ? '谨慎试探' : '防守减仓'; simpleColor = 'var(--yellow)';
-        } else { simpleAction = '轻仓试探'; simpleColor = 'var(--blue)'; }
+        } else { 
+            simpleAction = '轻仓试探'; simpleColor = 'var(--blue)'; 
+        }
     } else {
-        if (meta.type === '📈 趋势抱单' && meta.buySignals.length === 0) { simpleAction = '顺势持有'; simpleColor = 'var(--green)'; }
-        else { simpleAction = '积极持有'; simpleColor = 'var(--green)'; }
+        if (meta.type === '📈 趋势抱单' && meta.buySignals.length === 0) { 
+            simpleAction = '顺势持有'; simpleColor = 'var(--green)'; 
+        } else { 
+            simpleAction = '积极持有'; simpleColor = 'var(--green)'; 
+        }
     }
 
     let regimeName = '震荡分化', stance = '中性观察', recommended = '综合全能型', reason = '市场缺乏明确主线';
@@ -1385,7 +1406,18 @@ function getDecisionContext(idx, full, ind, meta, depth = 0) {
     else if (market.label === '温和偏多' || market.label === '结构性题材行情') { regimeName = '震荡上行'; stance = '低吸高抛'; recommended = '稳健趋势型'; reason = '存在结构机会，适合趋势跟随'; }
     else if (market.label === '全面弱势') { regimeName = '单边空头'; stance = '空仓防守'; recommended = '波段抄底型'; reason = '市场走弱，适合左侧抄底或空仓'; }
 
-    return { basePosition: base, position, prevAdv, market, risk, exit, signalReady, regime: { regime: regimeName, stance, recommended, reason }, simpleAction, simpleColor };
+    const result = { 
+        basePosition: base, position, prevAdv, market, risk, exit, signalReady, 
+        regime: { regime: regimeName, stance, recommended, reason }, 
+        simpleAction, simpleColor 
+    };
+
+    // 缓存绝对收盘的确切历史结论 (排除今日实时波动的K线)
+    if (idx < full.length - 1) {
+        decisionCache.set(cacheKey, result);
+    }
+
+    return result;
 }
 
 function getWeeklyDirectionContext(idx, full, ind) {
@@ -1413,7 +1445,8 @@ function getWeeklyDirectionContext(idx, full, ind) {
 function updateAllIndicators(incrementalIdx = -1) {
     const full = getActiveData(); if(!full) return;
     
-    if (incrementalIdx === -1 || !state.indicators.macd) {
+    // 🚀 核心修复3：流式更新前加入降级保护。如果是刚上市的新股数据不足，直接全量计算防止越界
+    if (incrementalIdx === -1 || !state.indicators.macd || full.length < 60) {
         MA_OPTIONS.forEach(n => state.indicators.ma[n] = Calcs.ma(full, n));
         state.indicators.macd = Calcs.macd(full); 
         state.indicators.rsi = Calcs.rsi(full); 
@@ -1775,6 +1808,8 @@ async function runBacktest() {
     document.getElementById('loading').innerText = "沙盘推演中...";
     document.getElementById('loading').style.display = 'flex';
     
+    // 🚀 清空决策缓存，确保回测始终保持最新鲜的环境推演
+    decisionCache.clear();
     await new Promise(r => setTimeout(r, 100)); 
     
     let capital = 10000, peakCapital = 10000, maxDrawdown = 0;
@@ -1793,7 +1828,7 @@ async function runBacktest() {
         }
         
         const meta = getSignalMeta(i, full, state.indicators);
-        const decision = getDecisionContext(i, full, state.indicators, meta);
+        const decision = getDecisionContext(i, full, state.indicators, meta, 0);
         
         if (prevAdv === 0 && decision.position > 0) {
             entryPrice = item.close;
@@ -1946,6 +1981,9 @@ async function selectStock(code, name) {
     
     document.querySelectorAll('#indexTabs .nav-btn').forEach(b=>b.classList.remove('active')); 
     document.querySelector('#indexTabs .nav-btn[data-id="stock"]').classList.add('active');
+    
+    // 切换股票时，清理沙盘缓存，确保不串数据
+    decisionCache.clear();
     renderWatchlist(); clearCharts(); 
     
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -2027,6 +2065,10 @@ async function switchStrategy(name) {
     if(!STRATEGIES[name]) return;
     const confirmed = await customConfirm(`确定切换到「${name}」？\n${STRATEGIES[name].desc}`);
     if(!confirmed) return;
+    
+    // 🚀 清除决策缓存，因为策略改变会导致逻辑彻底变化
+    decisionCache.clear();
+    
     state.strategy=name; Object.assign(STRATEGY, STRATEGIES[name]); localStorage.setItem('quant_strategy', name); renderSettings(); 
     if(getActiveData()){ updateAllIndicators(); draw(); safeUpdateSidebar(); } 
 }
@@ -2114,7 +2156,12 @@ async function init() {
             } else await selectStock(state.stockId, state.watchlist.find(s=>s.code===state.stockId)?.name || '股票');
             return;
         }
-        state.mode='index'; state.id=e.target.dataset.id; renderWatchlist(); clearCharts(); 
+        state.mode='index'; state.id=e.target.dataset.id; 
+        
+        // 🚀 切回大盘时清理缓存防止串数据
+        decisionCache.clear();
+        renderWatchlist(); clearCharts(); 
+        
         await new Promise(r => setTimeout(r, 0)); await cachedFetch(state.id);
     });
 
