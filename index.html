@@ -462,12 +462,13 @@ let STRATEGY = {};
 let state = { 
     id:'sh', mode:'index', range:180, lockIdx:-1, periodLocks:{daily:-1, weekly:-1}, 
     charts:{}, rawData:{}, weeklyData:{}, period: 'daily', activeMAs:[5,20,60], 
-    indicators:{ma:{}, macd:null, rsi:null, kdj:null}, watchlist:[], stockId:null, strategy: '稳健趋势型' 
+    indicators:{ma:{}, macd:null, rsi:null, kdj:null}, indicatorKey:'', watchlist:[], stockId:null, strategy: '稳健趋势型' 
 };
 let stockSelectionSeq = 0;
 Object.assign(STRATEGY, STRATEGIES['稳健趋势型']);
 
 const SIGNAL_ORDER = ['B1','B2','B3','B4','B5','B6','B7','B8','B9','B10','B11','B12','B13','B14','B15','B16','L1','L2','L3','L4','L5','L6','L7','L8','L9','L10','W1','W2'];
+const SIGNAL_VERSION = 'v4.1.1';
 const SIGNAL_SCORES = { 'B1':3,'B2':3,'B3':2,'B4':2,'B5':2,'B6':2,'B7':1,'B8':1,'B9':4,'B10':2,'B11':2,'B12':3,'B13':3,'B14':2,'B15':2,'B16':3 };
 const SIGNAL_DESC = {
     'B1':{desc:'均线多头'}, 'B2':{desc:'MACD金叉'}, 'B3':{desc:'上穿20日线'}, 'B4':{desc:'放量突破新高'},
@@ -590,6 +591,8 @@ function setRawData(id, data) {
     state.rawData[id] = data;
     if (data) { state.weeklyData[id] = convertDailyToWeekly(data); } 
     else { state.weeklyData[id] = null; }
+    if (id === state.id) markIndicatorsDirty();
+    clearDerivedCaches();
 }
 
 const requestManager = {
@@ -1039,24 +1042,25 @@ function calculateBollinger(data, idx) {
     return { middle: avg, upper: avg+2*std, lower: avg-2*std }; 
 }
 
+function getCalendarWeeksUntil(full, idx) {
+    if(!full || idx < 0) return [];
+    return state.period === 'weekly' ? full.slice(0, idx + 1) : convertDailyToWeekly(full.slice(0, idx + 1));
+}
+
 function getWeeklyData(full, idx) { 
-    if(idx<24) return null; 
-    const weeks=[]; 
-    for(let i=0;i<=idx;i+=5){ 
-        const wd=full.slice(i, Math.min(i+5, idx+1)); 
-        if(wd.length) weeks.push({ close:wd[wd.length-1].close, vol:wd.reduce((s,d)=>s+d.vol,0) }); 
-    } 
-    if(weeks.length<5) return null; 
+    const weeks = getCalendarWeeksUntil(full, idx);
+    if(weeks.length<6) return null; 
     const cur=weeks[weeks.length-1], prev=weeks[weeks.length-2]; 
     const ma5w=weeks.slice(-5).reduce((s,w)=>s+w.close,0)/5; 
-    const avgPrevVol=weeks.slice(Math.max(0,weeks.length-5),weeks.length-1).reduce((s,w)=>s+w.vol,0)/Math.min(4,weeks.length-1); 
-    return { aboveMA5W: cur.close>ma5w && prev.close<=ma5w, volUp: avgPrevVol>0 && cur.vol>avgPrevVol*1.2 }; 
+    const prevMa5w=weeks.slice(-6,-1).reduce((s,w)=>s+w.close,0)/5; 
+    const avgPrevVol=weeks.slice(-5,-1).reduce((s,w)=>s+w.vol,0)/4; 
+    return { aboveMA5W: cur.close>ma5w && prev.close<=prevMa5w, volUp: avgPrevVol>0 && cur.vol>avgPrevVol*1.2 }; 
 }
 
 function checkPlatformBreak(full, idx) { 
     if(idx<20) return false; 
-    const pd=full.slice(idx-19,idx+1), ph=Math.max(...pd.map(d=>d.high)), pl=Math.min(...pd.map(d=>d.low)); 
-    return (ph-pl)/pl < 0.08 && full[idx].close>=ph; 
+    const pd=full.slice(idx-20,idx), ph=Math.max(...pd.map(d=>d.high)), pl=Math.min(...pd.map(d=>d.low)); 
+    return pl > 0 && (ph-pl)/pl < 0.08 && full[idx].close > ph; 
 }
 
 function checkRecentDeadCross(full, ma5, ma20, idx) { 
@@ -1108,8 +1112,12 @@ class SignalContext {
     get kdj() { return {K: this.ind.kdj.k[this.idx], D: this.ind.kdj.d[this.idx], J: this.ind.kdj.j[this.idx], prevK: this.ind.kdj.k[this.idx-1]||50, prevD: this.ind.kdj.d[this.idx-1]||50}; }
     get lookback30() { return this._lb30 || (this._lb30 = this.full.slice(Math.max(0, this.idx-30), this.idx)); }
     get wd() { return this._wd || (this._wd = getWeeklyData(this.full, this.idx)); }
-    get lookback100() { return this._lb100 || (this._lb100 = this.full.slice(Math.max(0, this.idx-100), this.idx)); }
-    get weeklySupport() { return this.lookback100.length ? Math.min(...this.lookback100.map(d=>d.low)) : 0; }
+    get weeklySeries() { return this._weeks || (this._weeks = getCalendarWeeksUntil(this.full, this.idx)); }
+    get weeklySupport() {
+        if(this._weeklySupport !== undefined) return this._weeklySupport;
+        const recentWeeks = this.weeklySeries.slice(Math.max(0, this.weeklySeries.length - 21), -1);
+        return (this._weeklySupport = recentWeeks.length ? Math.min(...recentWeeks.map(d=>d.low)) : 0);
+    }
     get boll() { return this._boll || (this._boll = calculateBollinger(this.full, this.idx)); }
     get consecutiveBullish() {
         if(this._cb !== undefined) return this._cb;
@@ -1164,7 +1172,7 @@ function calculateDailySignals(idx, full, ind) {
 }
 
 function calculateAllSignals(idx, full, ind) {
-    if(idx<60) return { buySignals:[], exitSignals:[], allSignals:{}, windowScore:0 };
+    if(idx<60) return { buySignals:[], exitSignals:[], allSignals:{}, windowScore:0, windowSignals:[], inCooldown:false, cooldownDays:3, daysSinceExit:Infinity };
     const rawSigs = full[idx]._signals || calculateDailySignals(idx, full, ind);
     const signals = {}; 
     rawSigs.forEach(s => { signals[s] = {status:true, score:SIGNAL_SCORES[s]||0}; });
@@ -1232,6 +1240,7 @@ function checkUnconditionalExit(idx, full, ind) {
 
 function getSignalMeta(idx, full, ind) {
     const sigs = calculateAllSignals(idx, full, ind), S = STRATEGY;
+    const windowSignals = sigs.windowSignals || [];
     const hasUncond = checkUnconditionalExit(idx, full, ind);
     const warns = Object.keys(sigs.allSignals).filter(s=>S.warningSignals?.includes(s));
     const strongExits = sigs.exitSignals.filter(s => ['L3', 'L4', 'L5', 'L9', 'L10'].includes(s));
@@ -1246,7 +1255,7 @@ function getSignalMeta(idx, full, ind) {
     else if(full[idx].close > (ind.ma[20]?.[idx] || Infinity)) { type='📈 趋势抱单'; cls='regular'; detail='依托均线多头结构持仓'; logic='虽无新买点，但大趋势完好'; }
     else { type='👀 弱势震荡'; cls='regular'; detail='积分不足，缺乏上行动能'; logic='耐心等待放量或信号确认'; }
     
-    return { ...sigs, type, cls, detail, logic, warningSignals:warns, windowBuyCount:sigs.windowSignals.filter(w=>w.signal.startsWith('B')).length, windowExitCount:sigs.windowSignals.filter(w=>w.signal.startsWith('L')).length, triggeredSignals:[...sigs.buySignals, ...sigs.exitSignals] };
+    return { ...sigs, windowSignals, type, cls, detail, logic, warningSignals:warns, windowBuyCount:windowSignals.filter(w=>w.signal.startsWith('B')).length, windowExitCount:windowSignals.filter(w=>w.signal.startsWith('L')).length, triggeredSignals:[...sigs.buySignals, ...sigs.exitSignals] };
 }
 
 function getBasePosition(idx, full, ind, meta) {
@@ -1348,11 +1357,22 @@ function getExitSeverity(meta, idx, full, ind) {
 
 function roundPosition(v) { return Math.max(0, Math.min(80, Math.round(v / 10) * 10)); }
 
+function getIndicatorKey(data = getActiveData()) {
+    if(!data || !data.length) return '';
+    const last = data[data.length - 1];
+    return `${state.id}_${state.period}_${data.length}_${last.date}_${last.open}_${last.high}_${last.low}_${last.close}_${last.vol}_${last.amt}`;
+}
+
+function markIndicatorsDirty() {
+    state.indicatorKey = '';
+}
+
 // 🚀 核心修复2：回测引擎 O(N²) 雪崩终极护盾 (决策缓存)
 const decisionCache = new Map();
 
 function getDecisionContext(idx, full, ind, meta, depth = 0) {
-    const cacheKey = `${state.id}_${idx}_${state.strategy}`;
+    const item = full[idx] || {};
+    const cacheKey = `${state.id}_${state.period}_${idx}_${item.date}_${item.close}_${item.vol}_${state.strategy}`;
     
     // 如果是溯源历史且已有缓存，直接 O(1) 返回，打破 O(N^2) 雪崩魔咒！
     if (depth > 0 && decisionCache.has(cacheKey)) {
@@ -1444,6 +1464,8 @@ function getWeeklyDirectionContext(idx, full, ind) {
 
 function updateAllIndicators(incrementalIdx = -1) {
     const full = getActiveData(); if(!full) return;
+    const nextKey = getIndicatorKey(full);
+    if (incrementalIdx === -1 && state.indicatorKey === nextKey && state.indicators.macd && state.indicators.rsi && state.indicators.kdj) return;
     
     // 🚀 核心修复3：流式更新前加入降级保护。如果是刚上市的新股数据不足，直接全量计算防止越界
     if (incrementalIdx === -1 || !state.indicators.macd || full.length < 60) {
@@ -1452,8 +1474,9 @@ function updateAllIndicators(incrementalIdx = -1) {
         state.indicators.rsi = Calcs.rsi(full); 
         state.indicators.kdj = Calcs.kdj(full);
         for(let i=0; i<full.length; i++) {
-            if (full[i]._signals && i !== full.length - 1) continue; 
+            if (full[i]._signals && full[i]._signalVersion === SIGNAL_VERSION && i !== full.length - 1) continue; 
             full[i]._signals = calculateDailySignals(i, full, state.indicators);
+            full[i]._signalVersion = SIGNAL_VERSION;
         }
     } else {
         const i = incrementalIdx;
@@ -1493,7 +1516,9 @@ function updateAllIndicators(incrementalIdx = -1) {
         }
         
         full[i]._signals = calculateDailySignals(i, full, state.indicators);
+        full[i]._signalVersion = SIGNAL_VERSION;
     }
+    state.indicatorKey = nextKey;
 }
 
 function clearCharts(){
@@ -1734,6 +1759,11 @@ function generateAnalysisHTML(idx, full, meta) {
 
 const renderCache = new Map();
 
+function clearDerivedCaches() {
+    decisionCache.clear();
+    renderCache.clear();
+}
+
 function safeUpdateSidebar() {
     const rd = getActiveData();
     if (rd && rd.length > 0) {
@@ -1748,7 +1778,7 @@ function safeUpdateSidebar() {
         const prev = safeIdx > 0 ? rd[safeIdx - 1] : null;
         const htmlBundle = generateSidebarBundle(item, prev, safeIdx, rd);
         
-        if (renderCache.size > SYS_CONFIG.RENDER_CACHE_SIZE) { renderCache.delete(renderCache.keys().next().value); }
+        if (renderCache.size >= SYS_CONFIG.RENDER_CACHE_SIZE) { renderCache.delete(renderCache.keys().next().value); }
         renderCache.set(cacheKey, htmlBundle);
         
         applySidebarHTML(htmlBundle);
@@ -1805,70 +1835,90 @@ async function runBacktest() {
     const full = state.rawData[state.id];
     if(!full || full.length < 100) return customAlert("历史数据不足，无法完成精准回测。");
     
+    const prevPeriod = state.period;
     document.getElementById('loading').innerText = "沙盘推演中...";
     document.getElementById('loading').style.display = 'flex';
-    
-    // 🚀 清空决策缓存，确保回测始终保持最新鲜的环境推演
-    decisionCache.clear();
-    await new Promise(r => setTimeout(r, 100)); 
-    
-    let capital = 10000, peakCapital = 10000, maxDrawdown = 0;
-    const days = 250; 
-    const startIdx = Math.max(60, full.length - days);
-    let prevAdv = 0, winCount = 0, totalTrades = 0, entryPrice = 0;
-    
-    for(let i = startIdx; i < full.length; i++) {
-        const item = full[i], prev = full[i-1];
-        if (prevAdv > 0) {
-            const dailyRet = (item.close - prev.close) / prev.close;
-            capital = capital * (1 + dailyRet * (prevAdv / 100));
-            if(capital > peakCapital) peakCapital = capital;
-            const dd = (peakCapital - capital) / peakCapital;
-            if(dd > maxDrawdown) maxDrawdown = dd;
+
+    try {
+        if (state.period !== 'daily') {
+            state.period = 'daily';
+            markIndicatorsDirty();
+        }
+        updateAllIndicators();
+        
+        // 🚀 清空决策缓存，确保回测始终保持最新鲜的环境推演
+        decisionCache.clear();
+        await new Promise(r => setTimeout(r, 100)); 
+        
+        let capital = 10000, peakCapital = 10000, maxDrawdown = 0;
+        const days = 250; 
+        const startIdx = Math.max(60, full.length - days);
+        let prevAdv = 0, winCount = 0, totalTrades = 0, entryPrice = 0;
+        
+        for(let i = startIdx; i < full.length; i++) {
+            const item = full[i], prev = full[i-1];
+            if (prevAdv > 0) {
+                const dailyRet = (item.close - prev.close) / prev.close;
+                capital = capital * (1 + dailyRet * (prevAdv / 100));
+                if(capital > peakCapital) peakCapital = capital;
+                const dd = (peakCapital - capital) / peakCapital;
+                if(dd > maxDrawdown) maxDrawdown = dd;
+            }
+            
+            const meta = getSignalMeta(i, full, state.indicators);
+            const decision = getDecisionContext(i, full, state.indicators, meta, 0);
+            
+            if (prevAdv === 0 && decision.position > 0) {
+                entryPrice = item.close;
+            } else if (prevAdv > 0 && decision.position === 0) {
+                totalTrades++;
+                if (item.close > entryPrice) winCount++;
+            }
+            
+            prevAdv = decision.position;
         }
         
-        const meta = getSignalMeta(i, full, state.indicators);
-        const decision = getDecisionContext(i, full, state.indicators, meta, 0);
+        const ret = ((capital - 10000) / 10000 * 100).toFixed(2);
+        const winRate = totalTrades > 0 ? ((winCount / totalTrades) * 100).toFixed(1) : 0;
+        const md = (maxDrawdown * 100).toFixed(2);
         
-        if (prevAdv === 0 && decision.position > 0) {
-            entryPrice = item.close;
-        } else if (prevAdv > 0 && decision.position === 0) {
-            totalTrades++;
-            if (item.close > entryPrice) winCount++;
-        }
+        document.getElementById('loading').style.display = 'none';
         
-        prevAdv = decision.position;
-    }
-    
-    const ret = ((capital - 10000) / 10000 * 100).toFixed(2);
-    const winRate = totalTrades > 0 ? ((winCount / totalTrades) * 100).toFixed(1) : 0;
-    const md = (maxDrawdown * 100).toFixed(2);
-    
-    document.getElementById('loading').style.display = 'none';
-    
-    const content = `
-        <div style="font-size:16px;font-weight:900;margin-bottom:16px;color:var(--blue);letter-spacing:1px;">回测报告: ${state.stockId}</div>
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:16px;">基于「${state.strategy}」过去 ${full.length - startIdx} 个交易日的实盘沙盘推演</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;text-align:left;">
-            <div style="background:var(--inner-bg);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.05);">
-                <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;font-weight:700;">区间策略收益</div>
-                <div style="font-size:20px;font-weight:900;font-family:JetBrains Mono;color:${ret>=0?'var(--red)':'var(--green)'}">${ret>0?'+':''}${ret}%</div>
-            </div>
-            <div style="background:var(--inner-bg);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.05);">
-                <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;font-weight:700;">极端最大回撤</div>
-                <div style="font-size:20px;font-weight:900;font-family:JetBrains Mono;color:#fff">${md}%</div>
-            </div>
-            <div style="background:var(--inner-bg);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.05);grid-column:1/-1;">
-                <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;font-weight:700;">波段交易胜率</div>
-                <div style="display:flex;justify-content:space-between;align-items:end;">
-                    <div style="font-size:20px;font-weight:900;font-family:JetBrains Mono;color:var(--yellow)">${winRate}%</div>
-                    <div style="font-size:12px;color:var(--text-dim);font-weight:700;">共 ${totalTrades} 次完整买卖，获利 ${winCount} 次</div>
+        const content = `
+            <div style="font-size:16px;font-weight:900;margin-bottom:16px;color:var(--blue);letter-spacing:1px;">回测报告: ${state.stockId}</div>
+            <div style="font-size:12px;color:var(--text-dim);margin-bottom:16px;">基于「${state.strategy}」过去 ${full.length - startIdx} 个交易日的实盘沙盘推演</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;text-align:left;">
+                <div style="background:var(--inner-bg);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.05);">
+                    <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;font-weight:700;">区间策略收益</div>
+                    <div style="font-size:20px;font-weight:900;font-family:JetBrains Mono;color:${ret>=0?'var(--red)':'var(--green)'}">${ret>0?'+':''}${ret}%</div>
+                </div>
+                <div style="background:var(--inner-bg);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.05);">
+                    <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;font-weight:700;">极端最大回撤</div>
+                    <div style="font-size:20px;font-weight:900;font-family:JetBrains Mono;color:#fff">${md}%</div>
+                </div>
+                <div style="background:var(--inner-bg);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.05);grid-column:1/-1;">
+                    <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;font-weight:700;">波段交易胜率</div>
+                    <div style="display:flex;justify-content:space-between;align-items:end;">
+                        <div style="font-size:20px;font-weight:900;font-family:JetBrains Mono;color:var(--yellow)">${winRate}%</div>
+                        <div style="font-size:12px;color:var(--text-dim);font-weight:700;">共 ${totalTrades} 次完整买卖，获利 ${winCount} 次</div>
+                    </div>
                 </div>
             </div>
-        </div>
-        <div style="margin-top:16px;font-size:10px;color:#64748b;line-height:1.6;text-align:left;">注：回测按盘末收盘价触发，并严格叠加了大盘环境系数及动态仓位防守。历史业绩不代表未来表现。</div>
-    `;
-    await customAlert(content, true);
+            <div style="margin-top:16px;font-size:10px;color:#64748b;line-height:1.6;text-align:left;">注：回测按盘末收盘价触发，并严格叠加了大盘环境系数及动态仓位防守。历史业绩不代表未来表现。</div>
+        `;
+        await customAlert(content, true);
+    } catch(e) {
+        document.getElementById('loading').style.display = 'none';
+        await customAlert('回测失败：' + (e.message || e));
+    } finally {
+        if (state.period !== prevPeriod) {
+            state.period = prevPeriod;
+            markIndicatorsDirty();
+            updateAllIndicators();
+            draw();
+            safeUpdateSidebar();
+        }
+    }
 }
 
 function searchLocalStocks(q) {
@@ -1894,7 +1944,7 @@ function jsonpSearchEastmoney(query) {
             cleanup(); 
             resolve(data?.QuotationCodeTable?.Data?.filter(x=>/^\d{6}$/.test(x.Code))||[]); 
         };
-        const script=document.createElement('script'); script.id='jq_'+cb; script.src=url; script.onerror=()=>resolve([]); document.head.appendChild(script);
+        const script=document.createElement('script'); script.id='jq_'+cb; script.src=url; script.onerror=()=>{ cleanup(); resolve([]); }; document.head.appendChild(script);
     });
 }
 
@@ -1914,7 +1964,7 @@ function jsonpSearchSina(query) {
             cleanup(); 
             resolve(data?.result?.items?.map(i=>({Code:i.code,Name:i.name})).filter(x=>/^\d{6}$/.test(x.Code))||[]); 
         };
-        const script=document.createElement('script'); script.id='jq_'+cb; script.src=url; script.onerror=()=>resolve([]); document.head.appendChild(script);
+        const script=document.createElement('script'); script.id='jq_'+cb; script.src=url; script.onerror=()=>{ cleanup(); resolve([]); }; document.head.appendChild(script);
     });
 }
 
@@ -1923,19 +1973,25 @@ async function jsonpSearch(query) {
     return r.length ? r : await jsonpSearchSina(query); 
 }
 
-let suggestTimer = null; let suggestActiveIdx = -1;
+let suggestTimer = null; let suggestActiveIdx = -1; let suggestSeq = 0;
 function onSearchInput() { clearTimeout(suggestTimer); suggestTimer = setTimeout(fetchSuggestions, 200); }
 function closeSuggestions() { const el = document.getElementById('stockSuggest'); if(el) el.style.display='none'; suggestActiveIdx=-1; }
 async function fetchSuggestions() {
     const inp = document.getElementById('stockSearchInput'), sug = document.getElementById('stockSuggest'); if(!inp||!sug) return;
     const q = inp.value.trim(); if(!q) { sug.style.display='none'; return; }
+    const seq = ++suggestSeq;
     let res = searchLocalStocks(q).slice(0,20); if(!res.length) res = await jsonpSearch(q);
+    if(seq !== suggestSeq || inp.value.trim() !== q) return;
     if(!res.length) { sug.innerHTML='<div class="stock-suggest-empty">没有找到匹配</div>'; sug.style.display='block'; return; }
     renderSuggest(sug, res.slice(0,20));
 }
 async function searchAndShowInSuggest(q) {
+    const inp = document.getElementById('stockSearchInput');
+    const query = String(q || '').trim();
     const sug = document.getElementById('stockSuggest'); if(!sug) return; sug.innerHTML='<div class="stock-suggest-empty">搜索中...</div>'; sug.style.display='block';
-    let res = await jsonpSearch(q); if(!res.length) res = searchLocalStocks(q).slice(0,20);
+    const seq = ++suggestSeq;
+    let res = await jsonpSearch(query); if(!res.length) res = searchLocalStocks(query).slice(0,20);
+    if(seq !== suggestSeq || (inp && inp.value.trim() !== query)) return;
     if(!res.length) { sug.innerHTML='<div class="stock-suggest-empty">未找到匹配</div>'; return; } renderSuggest(sug, res.slice(0,20));
 }
 function renderSuggest(container, res) { 
@@ -1948,7 +2004,13 @@ function selectSuggestItem(code, name) {
     const safeCode = String(code || '').trim(), safeName = String(name || '').trim(); 
     if(i) i.value=''; 
     if(!/^\d{6}$/.test(safeCode)) return; 
-    if(!STOCK_DATABASE.some(s=>s.Code===safeCode)&&!stockCache.some(s=>s.Code===safeCode)) { 
+    const alreadyKnown = STOCK_DATABASE.some(s=>s.Code===safeCode) || stockCache.some(s=>s.Code===safeCode);
+    const alreadyWatched = state.watchlist.some(s=>s.code===safeCode);
+    if(!alreadyWatched && state.watchlist.length >= 10) {
+        customAlert('最多10只自选股');
+        return;
+    }
+    if(!alreadyKnown) { 
         stockCache.push({Code:safeCode,Name:safeName}); dbSet('stock_cache',stockCache); 
     } 
     selectStock(safeCode,safeName); 
