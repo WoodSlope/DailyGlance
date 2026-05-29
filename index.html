@@ -1022,8 +1022,14 @@ function getDecisionContext(idx, full, ind, meta) {
             simpleColor = 'var(--blue)';
         }
     } else {
-        simpleAction = '积极持有';
-        simpleColor = 'var(--green)';
+        // 🚀 UI 文案优化：区分“产生新买点”和“只是顺势拿着”
+        if (meta.type === '📈 趋势抱单' && meta.buySignals.length === 0) {
+            simpleAction = '顺势持有';
+            simpleColor = 'var(--green)';
+        } else {
+            simpleAction = '积极持有';
+            simpleColor = 'var(--green)';
+        }
     }
 
     let regimeName = '震荡分化', stance = '中性观察', recommended = '综合全能型', reason = '市场缺乏明确主线';
@@ -1341,8 +1347,9 @@ function generateAnalysisHTML(idx, full, meta) {
     }
     let ct = '维持在 '+adv+'%', cc = 'var(--text-dim)';
     if(adv===0 && prevAdv===0) ct = '只观察，不开新仓';
-    else if(adv>prevAdv) { ct = prevAdv+'% 提升到 '+adv+'%'; cc = 'var(--red)'; }
-    else if(adv<prevAdv) { ct = prevAdv+'% 降低到 '+adv+'%'+(adv===0?' (防守)':''); cc = 'var(--green)'; }
+    // 🚀 UI 文案优化：让仓位上限的回升听起来更符合风控逻辑
+    else if(adv>prevAdv) { ct = `风控解除，上限恢复至 ${adv}%`; cc = 'var(--red)'; }
+    else if(adv<prevAdv) { ct = `降至 ${adv}%` + (adv===0?' (防守)':''); cc = 'var(--green)'; }
     
     const ptsRaw = [], ptsValid = [], S = STRATEGY;
     const rawToday = full[idx]._signals || [];
