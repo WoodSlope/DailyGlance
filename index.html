@@ -963,7 +963,7 @@ function getRiskContext(idx, full, ind) {
     };
 }
 
-// 🚀 核心修复2：带回“防守记忆”，短线不收复 MA5 就延续防守状态
+// 🚀 完整带回“防守记忆”逻辑，修复上一轮传参丢失问题
 function getExitSeverity(meta, idx, full, ind) {
     const exits = meta.exitSignals || [];
     const raw = Object.keys(meta.allSignals || {});
@@ -984,13 +984,9 @@ function getExitSeverity(meta, idx, full, ind) {
 
 function roundPosition(v) { return Math.max(0, Math.min(80, Math.round(v / 10) * 10)); }
 
-// 🚀 核心修复3：彻底理顺多层 if-else，消除 SyntaxError 并支持智能文案
 function getDecisionContext(idx, full, ind, meta, isPrev = false) {
-    const base = getBasePosition(idx, full, ind, meta);
-    const market = getMarketContext(full[idx]?.date);
-    const risk = getRiskContext(idx, full, ind);
-    const exit = getExitSeverity(meta, idx, full, ind);
-    
+    // 🚀 正确传入 idx, full, ind 给 getExitSeverity
+    const base = getBasePosition(idx, full, ind, meta), market = getMarketContext(full[idx]?.date), risk = getRiskContext(idx, full, ind), exit = getExitSeverity(meta, idx, full, ind);
     let position = roundPosition(Math.min(base * market.coef * risk.coef, market.maxPosition));
     
     if(exit.level === '清仓防守' || exit.level === '强离场' || meta.inCooldown || meta.type.includes('离场') || meta.type.includes('破位')) position = 0;
@@ -999,11 +995,16 @@ function getDecisionContext(idx, full, ind, meta, isPrev = false) {
     if(meta.warningSignals?.length) position = Math.min(position, 40);
     if(risk.score < 40) position = Math.min(position, 20);
     
-    // 安全获取前一天仓位，isPrev 切断递归
     let prevAdv = 0;
     if (!isPrev && idx > 0) {
         const prevMeta = getSignalMeta(idx - 1, full, ind);
         prevAdv = getDecisionContext(idx - 1, full, ind, prevMeta, true).position;
+    }
+
+    // 🚀 核心交易逻辑补丁：绝不空手接飞刀！
+    // 如果前一天是空仓，今天系统仅仅是因为判定为“趋势抱单”想强行给仓位，立刻拦截清零！
+    if (prevAdv === 0 && position > 0 && meta.type === '📈 趋势抱单') {
+        position = 0;
     }
 
     const signalReady = meta.windowScore >= STRATEGY.buyThreshold;
@@ -1020,6 +1021,7 @@ function getDecisionContext(idx, full, ind, meta, isPrev = false) {
     let simpleColor = 'var(--text-dim)';
     
     if (position === 0) {
+        // 修正 0% 时的大字提示，只有真破位才大喊清仓，平时叫观望
         if (exit.level === '清仓防守' || exit.level === '强离场' || meta.type.includes('规避') || meta.type.includes('破位')) {
             simpleAction = '清仓离场';
             simpleColor = 'var(--red)';
@@ -1029,12 +1031,8 @@ function getDecisionContext(idx, full, ind, meta, isPrev = false) {
         }
     } else if (position <= 30) {
         if (exit.level === '减仓观察' || exit.level === '延续防守' || meta.warningSignals?.length) {
-            // 根据昨日仓位平滑过渡文案
             if (prevAdv === 0) {
                 simpleAction = '谨慎试探';
-                simpleColor = 'var(--yellow)';
-            } else if (prevAdv > 0 && position === prevAdv) {
-                simpleAction = '维持防守';
                 simpleColor = 'var(--yellow)';
             } else {
                 simpleAction = '防守减仓';
@@ -1357,16 +1355,20 @@ function generateAnalysisHTML(idx, full, meta) {
 
     const decision = getDecisionContext(idx, full, state.indicators, meta);
     const adv = decision.position; 
-    const prevAdv = decision.prevAdv; // 💡 使用 getDecisionContext 算好的 prevAdv
+    const prevAdv = decision.prevAdv;
     
     let ct = '维持在 '+adv+'%', cc = 'var(--text-dim)';
     if(adv===0 && prevAdv===0) ct = '只观察，不开新仓';
-    // 🚀 核心修复：更智能的变动文案，区分“从0建仓”和“上限调高”
     else if (adv > prevAdv) { 
         if (prevAdv === 0) {
-            ct = `动能转强，试探建仓至 ${adv}%`; 
+            // 🚀 进一步优化 UI 文案：只有真正积分达标，才配叫“动能转强”
+            if (meta.windowScore >= STRATEGY.buyThreshold) {
+                ct = `动能转强，建仓至 ${adv}%`; 
+            } else {
+                ct = `关注异动，试探建仓至 ${adv}%`; 
+            }
         } else {
-            ct = `环境转暖，上限恢复至 ${adv}%`; 
+            ct = `环境转暖，上限调高至 ${adv}%`; 
         }
         cc = 'var(--red)'; 
     }
