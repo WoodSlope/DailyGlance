@@ -91,17 +91,67 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 .level-item { font-size: 11px; color: var(--text-dim); display: flex; justify-content: space-between; align-items: center; }
 .level-val { font-family: 'JetBrains Mono'; font-weight: 700; color: #fff; margin-left: 4px; }
 .risk-note { margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(255, 255, 255, 0.08); color: #64748b; font-size: 10px; line-height: 1.6; }
-.decision-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
-.decision-box { padding: 10px; border-radius: 10px; background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.06); }
-.decision-box .label { font-size: 9px; color: #94a3b8; font-weight: 800; margin-bottom: 5px; }
-.decision-box .value { font-size: 13px; color: #f8fafc; font-weight: 900; line-height: 1.35; overflow-wrap: anywhere; }
-.decision-box .hint { font-size: 10px; color: #94a3b8; margin-top: 4px; line-height: 1.4; }
 .signal-section-title { font-size: 10px; font-weight: 900; margin: 12px 0 6px; }
 .signal-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0 4px 8px; border-left: 2px solid #475569; font-size: 11px; }
 .signal-row .name { color: #cbd5e1; }
 .signal-row .tag { flex-shrink: 0; background: rgba(148,163,184,0.18); color: #94a3b8; padding: 1px 5px; border-radius: 4px; font-size: 9px; }
 .reason-list { margin-top: 10px; padding: 10px 10px 10px 12px; border-left: 2px solid rgba(245,158,11,0.5); background: rgba(245,158,11,0.045); border-radius: 0 8px 8px 0; }
 .reason-list div { font-size: 11px; color: #e2e8f0; line-height: 1.65; }
+.sector-panel { display: none; flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border-color); background: #0b0f1a; border-radius: 16px; padding: 18px; }
+.sector-panel.show { display: block; }
+.main-container.sector-mode .info-section { display: none; }
+.main-container.sector-mode .chart-section { width: 100%; }
+.chart-section.sector-mode .chart-toolbar, .chart-section.sector-mode .integrated-container { display: none; }
+.chart-section.sector-mode .sector-panel.show { display: block; }
+.sector-hero { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-bottom: 14px; }
+.sector-block { min-width: 0; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; background: rgba(255,255,255,0.035); padding: 14px; }
+.sector-block-title { color: #94a3b8; font-size: 11px; font-weight: 900; margin-bottom: 8px; }
+.sector-headline { font-size: 24px; line-height: 1.15; font-weight: 950; color: #f8fafc; overflow-wrap: anywhere; }
+.sector-sub { margin-top: 8px; color: #cbd5e1; font-size: 12px; line-height: 1.7; }
+.sector-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 1px; overflow: hidden; border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; background: rgba(255,255,255,0.08); margin-top: 10px; }
+.sector-metric { min-width: 0; padding: 9px 6px; background: rgba(2,6,23,.68); text-align: center; }
+.sector-metric span { display: block; color: #94a3b8; font-size: 9px; font-weight: 800; }
+.sector-metric strong { display: block; margin-top: 4px; color: #fff; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sector-trend { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; margin-top: 12px; }
+.sector-trend-card { min-width: 0; border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; background: rgba(2,6,23,.42); padding: 10px; }
+.sector-trend-card span { display: block; color: #94a3b8; font-size: 10px; font-weight: 900; }
+.sector-trend-card strong { display: block; margin-top: 5px; color: #f8fafc; font-size: 13px; font-weight: 950; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sector-list { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+.sector-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items: center; border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; background: rgba(255,255,255,0.03); padding: 10px 12px; }
+.sector-name { min-width: 0; font-size: 13px; font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sector-code { margin-top: 3px; color: #64748b; font-family: JetBrains Mono, monospace; font-size: 10px; }
+.sector-flow { text-align: right; font-family: JetBrains Mono, monospace; font-size: 12px; font-weight: 900; white-space: nowrap; }
+.sector-pct { margin-top: 3px; font-size: 10px; font-weight: 800; }
+.sector-flow-line { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; color: #94a3b8; font-family: JetBrains Mono, monospace; font-size: 10px; white-space: nowrap; }
+.sidebar-block { margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; background: rgba(255,255,255,0.026); padding: 12px; }
+.sidebar-block-title { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: #94a3b8; font-size: 10px; font-weight: 950; margin-bottom: 9px; }
+.action-panel { position: relative; border-radius: 12px; padding: 14px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); }
+.action-panel .kicker { color: rgba(255,255,255,0.66); font-size: 10px; font-weight: 900; margin-bottom: 6px; }
+.action-panel .action-line { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; }
+.action-panel .action-name { min-width: 0; color: #f8fafc; font-size: 22px; font-weight: 950; line-height: 1.15; overflow-wrap: anywhere; }
+.action-panel .action-cap { flex-shrink: 0; text-align: right; }
+.action-panel .action-cap span { display:block; color:#94a3b8; font-size:10px; font-weight:850; }
+.action-panel .action-cap strong { display:block; margin-top:3px; color:#fff; font-family:JetBrains Mono, monospace; font-size:26px; line-height:1; }
+.action-panel .action-sub { margin-top: 8px; color: #cbd5e1; font-size: 11px; line-height: 1.55; }
+.action-panel .level-line { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px; padding-top:10px; border-top:1px dashed rgba(255,255,255,0.14); }
+.level-pill { min-width:0; display:flex; justify-content:space-between; gap:6px; align-items:center; color:#94a3b8; font-size:10px; }
+.level-pill strong { color:#f8fafc; font-size:12px; font-family:JetBrains Mono, monospace; white-space:nowrap; }
+.route-line { display:flex; align-items:center; gap:7px; flex-wrap:wrap; color:#cbd5e1; font-size:11px; line-height:1.65; }
+.route-line strong { color:#fff; }
+.route-dot { width:4px; height:4px; border-radius:999px; background:#475569; flex-shrink:0; }
+.evidence-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.evidence-item { min-width:0; border:1px solid rgba(255,255,255,0.055); border-radius:10px; background:rgba(2,6,23,0.28); padding:9px; }
+.evidence-item .k { color:#94a3b8; font-size:9px; font-weight:900; margin-bottom:4px; }
+.evidence-item .v { color:#f8fafc; font-size:12px; font-weight:900; line-height:1.35; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.evidence-item .h { margin-top:4px; color:#64748b; font-size:10px; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.diagnosis-compact { margin-top: 8px; padding-top: 9px; border-top: 1px dashed rgba(255,255,255,0.09); color:#cbd5e1; font-size:11px; line-height:1.65; }
+.diagnosis-compact strong { color:#ccfbf1; }
+.detail-panel { margin-top: 10px; }
+.detail-panel summary { list-style:none; cursor:pointer; color:#94a3b8; font-size:10px; font-weight:950; padding:8px 0; border-top:1px dashed rgba(255,255,255,0.09); }
+.detail-panel summary::-webkit-details-marker { display:none; }
+.detail-panel summary::after { content:'展开'; float:right; color:#64748b; font-weight:800; }
+.detail-panel[open] summary::after { content:'收起'; }
+.signal-compact { margin-top:6px; }
 
 #loading { position: fixed; inset: 0; background: var(--dark-bg); display: flex; align-items: center; justify-content: center; z-index: 9999; color: var(--blue); font-size: 14px; letter-spacing: 4px; font-weight: 900; }
 .up { color: var(--red) !important; }
@@ -187,11 +237,13 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
     .toolbar-right { margin-left: auto; }
     .ma-selector { width: 100%; padding-left: 0; border-left: none; gap: 7px; }
     .integrated-container { min-height: 560px; flex: none; }
+    .sector-panel { min-height: 560px; flex: none; padding: 12px; }
+    .sector-hero, .sector-list { grid-template-columns: 1fr; }
     .info-section { width: 100%; max-height: none; border-left: none; border-top: 1px solid var(--border-color); padding: 12px; overflow: visible; }
     .card { border-radius: 12px; padding: 14px; }
     #settingsPanel, #helpPanel { width: 96%; max-height: 88vh; }
     .sg-grid, .sg-strategy { grid-template-columns: 1fr; }
-    .decision-summary { grid-template-columns: 1fr; }
+    .main-container.sector-mode .info-section { display: none; }
 }
 </style>
 </head>
@@ -236,12 +288,12 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 
 <header class="header">
     <div class="header-left">
-        <div class="logo-box">
+        <a class="logo-box" href="./index.html" aria-label="返回版本选择入口" title="返回版本选择入口" style="text-decoration:none;">
             <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path d="M3 12s2.5-6 9-6 9 6 9 6-2.5 6-9 6-9-6-9-6Z" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 <circle cx="12" cy="12" r="2.5" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-        </div>
+        </a>
         <div class="header-title">DailyGlance</div>
     </div>
     
@@ -251,6 +303,7 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
         <button class="nav-btn" data-id="zz1000">中证1000</button>
         <button class="nav-btn" data-id="kc50">科创50</button>
         <button class="nav-btn" data-id="stock">股票</button>
+        <button class="nav-btn" data-id="sector">板块</button>
     </div>
     
     <div class="header-right">
@@ -315,6 +368,7 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
             <div class="macd-chart-box"><canvas id="macdChart"></canvas></div>
             <div class="kdj-chart-box"><canvas id="kdjChart"></canvas></div>
         </div>
+        <div class="sector-panel" id="sectorPanel"></div>
     </section>
     
     <aside class="info-section">
@@ -325,7 +379,7 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 </main>
 
 <script>
-// === 🚀 核心 UI 组件化工场 (Phase 5) ===
+// === UI helpers ===
 const UI = {
     badge: (text, type) => {
         return `<span class="badge ${type}">${text}</span>`;
@@ -462,7 +516,8 @@ let STRATEGY = {};
 let state = { 
     id:'sh', mode:'index', range:180, lockIdx:-1, periodLocks:{daily:-1, weekly:-1}, 
     charts:{}, rawData:{}, weeklyData:{}, period: 'daily', activeMAs:[5,20,60], 
-    indicators:{ma:{}, macd:null, rsi:null, kdj:null}, indicatorKey:'', watchlist:[], stockId:null, strategy: '稳健趋势型' 
+    indicators:{ma:{}, macd:null, rsi:null, kdj:null}, indicatorKey:'', watchlist:[], stockId:null, strategy: '稳健趋势型',
+    sectors:[], sectorUpdated:0, sectorLoading:false
 };
 let stockSelectionSeq = 0;
 Object.assign(STRATEGY, STRATEGIES['稳健趋势型']);
@@ -799,6 +854,20 @@ async function handleUpdateData(forceFull=false) {
     } 
     lastUpdateClick = now; 
     if(!state.id) return; 
+
+    if(state.mode === 'sector') {
+        btn.disabled = true;
+        btn.innerHTML = SVG_ICONS.SPIN;
+        try {
+            await refreshSectorFlow(true);
+            renderSectorPanel();
+            await customAlert(state.sectors.length ? `板块资金更新成功，共 ${state.sectors.length} 条。` : '板块资金暂不可用。');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = SVG_ICONS.UPDATE;
+        }
+        return;
+    }
     
     const info = await checkCacheNeedUpdate(state.id); 
     const confirmed = await customConfirm(info.needUpdate ? `需要更新：${info.reason}\n确定？` : '缓存已最新，确定要重新下载全部数据吗？');
@@ -868,6 +937,254 @@ async function getCachedData(id) {
     return (c && c.data) ? c.data : null; 
 }
 
+function jsonpFetch(url, timeout=8000) {
+    return new Promise(resolve => {
+        const cb = 'dg_jsonp_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+        const sep = url.includes('?') ? '&' : '?';
+        const script = document.createElement('script');
+        let done = false;
+        const cleanup = () => {
+            if(done) return;
+            done = true;
+            clearTimeout(timer);
+            delete window[cb];
+            if(script.parentNode) script.remove();
+        };
+        const timer = setTimeout(() => { cleanup(); resolve(null); }, timeout);
+        window[cb] = data => { cleanup(); resolve(data); };
+        script.src = `${url}${sep}cb=${cb}`;
+        script.onerror = () => { cleanup(); resolve(null); };
+        document.head.appendChild(script);
+    });
+}
+
+function formatMoney(v) {
+    const n = Number(v);
+    if(!Number.isFinite(n)) return '--';
+    const sign = n >= 0 ? '' : '-';
+    const abs = Math.abs(n);
+    if(abs >= 1e8) return `${sign}${(abs / 1e8).toFixed(2)}亿`;
+    if(abs >= 1e4) return `${sign}${(abs / 1e4).toFixed(0)}万`;
+    return `${sign}${abs.toFixed(0)}`;
+}
+
+function normalizeSectorRow(row, group, period='today') {
+    const base = {
+        code: row.f12 || '',
+        name: row.f14 || '未命名板块',
+        price: Number(row.f2),
+        updated: Number(row.f124),
+        group
+    };
+    if(period === '5d') {
+        return {
+            ...base,
+            changePct5: Number(row.f109),
+            mainNet5: Number(row.f164),
+            mainRatio5: Number(row.f165)
+        };
+    }
+    if(period === '10d') {
+        return {
+            ...base,
+            changePct10: Number(row.f160),
+            mainNet10: Number(row.f174),
+            mainRatio10: Number(row.f175)
+        };
+    }
+    return {
+        ...base,
+        changePct: Number(row.f3),
+        mainNet: Number(row.f62),
+        mainRatio: Number(row.f184),
+        superNet: Number(row.f66),
+        bigNet: Number(row.f72),
+        midNet: Number(row.f78),
+        smallNet: Number(row.f84)
+    };
+}
+
+const SECTOR_FLOW_PERIODS = {
+    today: { fid:'f62', stat:'1', fields:'f12,f14,f2,f3,f62,f66,f72,f78,f84,f184,f124' },
+    '5d': { fid:'f164', stat:'5', fields:'f12,f14,f2,f109,f164,f165,f124' },
+    '10d': { fid:'f174', stat:'10', fields:'f12,f14,f2,f160,f174,f175,f124' }
+};
+
+async function fetchSectorFlowGroup(group, fs, period='today') {
+    const cfg = SECTOR_FLOW_PERIODS[period] || SECTOR_FLOW_PERIODS.today;
+    const params = [
+        ['pn','1'], ['pz','80'], ['po','1'], ['np','1'],
+        ['ut','b2884a393a59ad64002292a3e90d46a5'], ['fltt','2'], ['invt','2'],
+        ['fid0', cfg.fid], ['fs', fs], ['stat', cfg.stat], ['fields', cfg.fields],
+        ['rt','52975239'], ['_', Date.now()]
+    ].map(([k,v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+    const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
+    const data = await jsonpFetch(url, 8000);
+    const keyField = period === '10d' ? 'mainNet10' : period === '5d' ? 'mainNet5' : 'mainNet';
+    return (data?.data?.diff || []).map(row => normalizeSectorRow(row, group, period)).filter(row => row.name && Number.isFinite(row[keyField]));
+}
+
+function mergeSectorPeriods(todayRows, fiveRows, tenRows) {
+    const map = new Map();
+    const keyOf = row => `${row.group}_${row.code || row.name}`;
+    todayRows.forEach(row => map.set(keyOf(row), { ...row }));
+    fiveRows.forEach(row => {
+        const key = keyOf(row);
+        const item = map.get(key) || { code: row.code, name: row.name, price: row.price, group: row.group, updated: row.updated };
+        map.set(key, { ...item, changePct5: row.changePct5, mainNet5: row.mainNet5, mainRatio5: row.mainRatio5 });
+    });
+    tenRows.forEach(row => {
+        const key = keyOf(row);
+        const item = map.get(key) || { code: row.code, name: row.name, price: row.price, group: row.group, updated: row.updated };
+        map.set(key, { ...item, changePct10: row.changePct10, mainNet10: row.mainNet10, mainRatio10: row.mainRatio10 });
+    });
+    return [...map.values()]
+        .filter(row => Number.isFinite(row.mainNet))
+        .sort((a,b) => (b.mainNet || 0) - (a.mainNet || 0));
+}
+
+async function refreshSectorFlow(force=false) {
+    if(state.sectorLoading) return state.sectors;
+    const now = Date.now();
+    if(!force && state.sectors.length && now - state.sectorUpdated < 5 * 60 * 1000) return state.sectors;
+    state.sectorLoading = true;
+    try {
+        const cached = await dbGet('sector_flow_latest_v2');
+        if(!force && cached?.data?.items?.length && cached.data.items.every(item => Number.isFinite(item.mainNet5) && Number.isFinite(item.mainNet10))) {
+            state.sectors = cached.data.items;
+            state.sectorUpdated = cached.data.updated || 0;
+            if(now - state.sectorUpdated < 10 * 60 * 1000) return state.sectors;
+        }
+        const [industryToday, conceptToday, industry5, concept5, industry10, concept10] = await Promise.all([
+            fetchSectorFlowGroup('行业', 'm:90 t:2', 'today'),
+            fetchSectorFlowGroup('概念', 'm:90 t:3', 'today'),
+            fetchSectorFlowGroup('行业', 'm:90 t:2', '5d'),
+            fetchSectorFlowGroup('概念', 'm:90 t:3', '5d'),
+            fetchSectorFlowGroup('行业', 'm:90 t:2', '10d'),
+            fetchSectorFlowGroup('概念', 'm:90 t:3', '10d')
+        ]);
+        const merged = mergeSectorPeriods(
+            [...industryToday, ...conceptToday],
+            [...industry5, ...concept5],
+            [...industry10, ...concept10]
+        ).slice(0, 60);
+        if(merged.length) {
+            state.sectors = merged;
+            state.sectorUpdated = Date.now();
+            await dbSet('sector_flow_latest_v2', { items: merged, updated: state.sectorUpdated });
+        }
+    } catch(e) {
+        console.warn('sector flow unavailable', e);
+    } finally {
+        state.sectorLoading = false;
+    }
+    return state.sectors;
+}
+
+function getLatestMarketDate() {
+    const dates = INDEX_IDS.flatMap(id => (state.rawData[id] || []).slice(-1).map(d => d.date)).sort();
+    return dates[dates.length - 1] || null;
+}
+
+function getSectorSummary(sectors=state.sectors) {
+    const positive = sectors.filter(s => s.mainNet > 0);
+    const top = positive.slice(0, 5);
+    const topFlow = top.reduce((sum, s) => sum + s.mainNet, 0);
+    const totalFlow = positive.reduce((sum, s) => sum + s.mainNet, 0);
+    const concentration = totalFlow > 0 ? topFlow / totalFlow : 0;
+    const strong = top.filter(s => s.changePct > 0 && s.mainRatio > 0);
+    const persistent = top.filter(s => s.mainNet > 0 && s.mainNet5 > 0 && s.mainNet10 > 0);
+    const pulse = top.filter(s => s.mainNet > 0 && (s.mainNet5 <= 0 || s.mainNet10 <= 0));
+    let label = '资金主线待确认';
+    let continuity = '持续性待确认';
+    if(persistent.length >= 3) continuity = '持续流入';
+    else if(persistent.length >= 1 && pulse.length >= 2) continuity = '轮动延续';
+    else if(pulse.length >= 3) continuity = '当日脉冲';
+    else if(top.length >= 3) continuity = '分散轮动';
+    if(top.length >= 3 && concentration >= 0.45 && strong.length >= 3 && persistent.length >= 2) label = '主线确认';
+    else if(top.length >= 3 && concentration >= 0.45 && strong.length >= 3) label = '资金集中进攻';
+    else if(top.length >= 3 && strong.length >= 2) label = '结构性流入';
+    else if(top.length >= 3) label = '资金分散轮动';
+    return { label, continuity, persistentCount:persistent.length, pulseCount:pulse.length, top, concentration, positiveCount: positive.length, totalFlow, strongest: top[0] || null };
+}
+
+function getStrategyRoute(market, sectorSummary) {
+    const sectorLabel = sectorSummary?.label || '资金主线待确认';
+    const continuity = sectorSummary?.continuity || '持续性待确认';
+    let recommended = '综合全能型', stance = '观察为主', reason = '板块资金不足，暂按全局策略和大盘过滤执行';
+    if(market?.label === '全面弱势') {
+        recommended = '波段抄底型';
+        stance = '空仓防守';
+        reason = sectorLabel === '资金集中进攻' ? '大盘偏弱但局部资金回流，只适合轻仓修复观察' : '大盘弱势且主线不足，优先控制仓位';
+    } else if(market?.label === '全面多头' && ['主线确认','资金集中进攻'].includes(sectorLabel) && ['持续流入','轮动延续'].includes(continuity)) {
+        recommended = '突破追涨型';
+        stance = '顺势进攻';
+        reason = '指数多头共振，且板块资金具备5/10日延续，右侧突破策略匹配度更高';
+    } else if(['温和偏多','结构性题材行情'].includes(market?.label) && ['主线确认','资金集中进攻','结构性流入'].includes(sectorLabel)) {
+        recommended = '稳健趋势型';
+        stance = '轻仓参与主线';
+        reason = continuity === '当日脉冲' ? '指数允许进攻，但板块资金偏单日脉冲，优先等待个股确认' : '指数允许进攻且板块有延续，优先用趋势确认过滤机会';
+    } else if(market?.label === '震荡分化' && ['资金集中进攻','结构性流入'].includes(sectorLabel)) {
+        recommended = '稳健趋势型';
+        stance = '低吸高抛';
+        reason = continuity === '当日脉冲' ? '大盘分化且资金偏脉冲，适合观察轮动，不追高' : '大盘分化但板块有局部主线，适合控制仓位做结构机会';
+    }
+    return { recommended, stance, reason, sectorLabel };
+}
+
+function getFinalVerdict(decision, meta, route) {
+    if(decision.simpleAction === '清仓离场' || decision.exit.level === '清仓防守' || decision.exit.level === '强离场') {
+        return { label:'禁止开仓', text:'核心防守信号优先，先控制风险，等待重新确认。' };
+    }
+    if(decision.market.label === '全面弱势' || decision.position === 0 || meta.inCooldown) {
+        return { label:'防守等待', text:'市场或个股条件不足，保持观察，不主动放大仓位。' };
+    }
+    if(decision.position <= 30 || route.stance.includes('轻仓') || route.stance.includes('观察')) {
+        return { label:'轻仓观察', text:'可以关注修复或试探机会，但需要个股信号继续确认。' };
+    }
+    return { label:'可进攻', text:'市场、板块和个股条件相对配合，可按策略上限执行。' };
+}
+
+function getRelativeStrength(stockData, date) {
+    const marketData = state.rawData.sh || [];
+    if(!stockData?.length || marketData.length < 25) return null;
+    const sIdx = findDateIndex(stockData, date);
+    const mIdx = findDateIndex(marketData, date);
+    if(sIdx < 20 || mIdx < 20) return null;
+    const stockBase = stockData[sIdx - 20]?.close;
+    const marketBase = marketData[mIdx - 20]?.close;
+    if(!stockBase || !marketBase) return null;
+    const stockRet = (stockData[sIdx].close - stockBase) / stockBase * 100;
+    const marketRet = (marketData[mIdx].close - marketBase) / marketBase * 100;
+    const diff = stockRet - marketRet;
+    let label = '跟随市场';
+    if(diff >= 5) label = '强于大盘';
+    else if(diff <= -5) label = '弱于大盘';
+    return { stockRet, marketRet, diff, label };
+}
+
+function getHoldingDiagnosis(idx, full, ind, meta, decision) {
+    const rs = getRelativeStrength(full, full[idx]?.date);
+    const sectorSummary = getSectorSummary();
+    let status = '持仓观察', action = '按原策略执行，不主动补仓';
+    if(decision.exit.level === '清仓防守' || decision.exit.level === '强离场') {
+        status = '破位防守';
+        action = '先处理风险，不用板块强弱为亏损加仓找理由';
+    } else if(rs?.diff <= -5 && decision.position <= 30) {
+        status = '弱势套牢';
+        action = '等待重新站回短期趋势；反弹无量时优先降仓';
+    } else if(decision.position > 0 && ['资金集中进攻','结构性流入'].includes(sectorSummary.label)) {
+        status = '修复观察';
+        action = '可观察板块回流是否带动放量修复，但不追补仓';
+    } else if(meta.windowScore >= STRATEGY.buyThreshold) {
+        status = '结构转强';
+        action = '已有仓位按防守位管理，新仓仍看策略阈值';
+    }
+    const rsText = rs ? `${rs.label}，20日相对大盘 ${rs.diff >= 0 ? '+' : ''}${rs.diff.toFixed(1)}%` : '相对强弱样本不足';
+    const sectorText = sectorSummary.strongest ? `主线：${sectorSummary.strongest.name}` : '主线：暂无';
+    return { status, action, rsText, sectorText };
+}
+
 async function clearAllCache() { 
     if(DB) { 
         const tx = DB.transaction(STORE, 'readwrite'); 
@@ -876,6 +1193,8 @@ async function clearAllCache() {
     } 
     state.rawData = {}; 
     state.weeklyData = {}; 
+    state.sectors = [];
+    state.sectorUpdated = 0;
     dataSourceInfo = {}; 
     location.reload(); 
 }
@@ -1157,7 +1476,6 @@ const SIGNAL_RULES = [
     { id: 'L10', check: ctx => ctx.lookback30.length > 0 && ctx.item.high >= Math.max(...ctx.lookback30.map(d=>d.high)) && ctx.dif < Math.max(...ctx.ind.macd.diff.slice(Math.max(0,ctx.idx-30),ctx.idx)) && ctx.dif < ctx.prevDif },
     
     { id: 'W1', check: ctx => ctx.ma60 > 0 && (ctx.item.close - ctx.ma60) / ctx.ma60 > 0.25 },
-    // 🚀 核心修复1：W2 增加真正的缩量逻辑 ctx.item.vol < ctx.prev.vol
     { id: 'W2', check: ctx => ctx.prev && ctx.prev2 && ctx.prev3 && ctx.prev.close > ctx.prev.open && ctx.prev2.close > ctx.prev2.open && ctx.item.close > ctx.item.open && ctx.prev.vol > ctx.prev2.vol && ctx.item.vol < ctx.prev.vol }
 ];
 
@@ -1338,12 +1656,23 @@ function getRiskContext(idx, full, ind) {
     return { score: Math.max(0, Math.round(score)), level, coef, flags, atrPct, distMA20, drawdown, support: low20, pressure: high20, watch: ma20 || close, stop: Math.min(stop, close), ma60: ma60 || null };
 }
 
+function formatExitDetail(label, signals) {
+    const uniqueSignals = [...new Set((signals || []).filter(Boolean))];
+    if(!uniqueSignals.length) return label;
+    const text = uniqueSignals.map(sig => `${sig} ${getUserSignalText(sig)}`).join(' + ');
+    return `${label}：${text}`;
+}
+
 function getExitSeverity(meta, idx, full, ind) {
     const exits = meta.exitSignals || [];
     const raw = Object.keys(meta.allSignals || {});
     
-    if((meta.type && meta.type.includes('清仓规避')) || (raw.includes('L10') && raw.includes('L3'))) return { level:'清仓防守', detail:'顶背离叠加动能死叉，先保护本金' };
-    if(exits.some(s => ['L3', 'L4', 'L5', 'L9', 'L10'].includes(s))) return { level:'强离场', detail:'今日触发强离场信号，不适合继续加仓' };
+    if((meta.type && meta.type.includes('清仓规避')) || (raw.includes('L10') && raw.includes('L3'))) {
+        const signals = raw.filter(s => ['L3', 'L10'].includes(s));
+        return { level:'清仓防守', detail: formatExitDetail('清仓防守', signals) };
+    }
+    const strongExitSignals = exits.filter(s => ['L3', 'L4', 'L5', 'L9', 'L10'].includes(s));
+    if(strongExitSignals.length) return { level:'强离场', detail: formatExitDetail('强离场', strongExitSignals) };
     if(exits.some(s => ['L1', 'L2', 'L6', 'L7', 'L8'].includes(s)) || (meta.warningSignals || []).length) return { level:'减仓观察', detail:'短线转弱或过热，适合降低仓位等待确认' };
     
     if (meta.windowSignals) {
@@ -1367,14 +1696,12 @@ function markIndicatorsDirty() {
     state.indicatorKey = '';
 }
 
-// 🚀 核心修复2：回测引擎 O(N²) 雪崩终极护盾 (决策缓存)
 const decisionCache = new Map();
 
 function getDecisionContext(idx, full, ind, meta, depth = 0) {
     const item = full[idx] || {};
     const cacheKey = `${state.id}_${state.period}_${idx}_${item.date}_${item.close}_${item.vol}_${state.strategy}`;
     
-    // 如果是溯源历史且已有缓存，直接 O(1) 返回，打破 O(N^2) 雪崩魔咒！
     if (depth > 0 && decisionCache.has(cacheKey)) {
         return decisionCache.get(cacheKey);
     }
@@ -1432,7 +1759,6 @@ function getDecisionContext(idx, full, ind, meta, depth = 0) {
         simpleAction, simpleColor 
     };
 
-    // 缓存绝对收盘的确切历史结论 (排除今日实时波动的K线)
     if (idx < full.length - 1) {
         decisionCache.set(cacheKey, result);
     }
@@ -1467,7 +1793,7 @@ function updateAllIndicators(incrementalIdx = -1) {
     const nextKey = getIndicatorKey(full);
     if (incrementalIdx === -1 && state.indicatorKey === nextKey && state.indicators.macd && state.indicators.rsi && state.indicators.kdj) return;
     
-    // 🚀 核心修复3：流式更新前加入降级保护。如果是刚上市的新股数据不足，直接全量计算防止越界
+    // Fall back to a full recalculation when there is not enough history for incremental updates.
     if (incrementalIdx === -1 || !state.indicators.macd || full.length < 60) {
         MA_OPTIONS.forEach(n => state.indicators.ma[n] = Calcs.ma(full, n));
         state.indicators.macd = Calcs.macd(full); 
@@ -1529,6 +1855,95 @@ function clearCharts(){
         ph.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#334155;font-size:12px;font-weight:600;letter-spacing:1px;z-index:5';
         ph.innerText={'mainChart':'K 线图','volumeChart':'成交量','macdChart':'MACD','kdjChart':'KDJ'}[id]+' — 暂无数据';
     });
+}
+
+function setSectorMode(enabled) {
+    const chartSection = document.querySelector('.chart-section');
+    const mainContainer = document.querySelector('.main-container');
+    const panel = document.getElementById('sectorPanel');
+    const infoSection = document.querySelector('.info-section');
+    if(chartSection) chartSection.classList.toggle('sector-mode', enabled);
+    if(mainContainer) mainContainer.classList.toggle('sector-mode', enabled);
+    if(panel) panel.classList.toggle('show', enabled);
+    if(infoSection) infoSection.style.display = enabled ? 'none' : 'flex';
+}
+
+function renderSectorPanel() {
+    const panel = document.getElementById('sectorPanel');
+    if(!panel) return;
+    const latestDate = getLatestMarketDate();
+    const market = getMarketContext(latestDate);
+    const summary = getSectorSummary();
+    const route = getStrategyRoute(market, summary);
+    const updated = state.sectorUpdated ? new Date(state.sectorUpdated).toLocaleTimeString('zh-CN', {hour12:false, hour:'2-digit', minute:'2-digit'}) : '未更新';
+
+    if(state.sectorLoading && !state.sectors.length) {
+        panel.innerHTML = `<div class="sector-block"><div class="sector-headline">板块资金同步中...</div><div class="sector-sub">正在读取资金流向，原有指数和股票策略不受影响。</div></div>`;
+        return;
+    }
+
+    if(!state.sectors.length) {
+        panel.innerHTML = `
+            <div class="sector-block">
+                <div class="sector-headline">板块资金暂不可用</div>
+                <div class="sector-sub">资金接口失败时，系统不会让板块模块参与策略判断，仍按原有大盘环境和个股技术信号输出。</div>
+                <button class="btn-primary" style="margin-top:14px;" onclick="loadSectorView(true)">重新读取板块资金</button>
+            </div>`;
+        return;
+    }
+
+    const topNames = summary.top.map(s => s.name).slice(0, 3).join(' / ') || '暂无';
+    const rows = state.sectors.slice(0, 24).map(s => {
+        const flowCls = s.mainNet >= 0 ? 'up' : 'down';
+        const pctCls = s.changePct >= 0 ? 'up' : 'down';
+        const sustain = s.mainNet > 0 && s.mainNet5 > 0 && s.mainNet10 > 0 ? '持续' : s.mainNet > 0 && (s.mainNet5 <= 0 || s.mainNet10 <= 0) ? '脉冲' : '流出';
+        return `<div class="sector-row">
+            <div><div class="sector-name">${escapeHTML(s.name)}</div><div class="sector-code">${escapeHTML(s.group)} · ${escapeHTML(s.code)} · ${escapeHTML(sustain)}</div></div>
+            <div>
+                <div class="sector-flow ${flowCls}">${formatMoney(s.mainNet)}</div>
+                <div class="sector-pct ${pctCls}">${Number.isFinite(s.changePct) ? (s.changePct >= 0 ? '+' : '') + s.changePct.toFixed(2) + '%' : '--'}</div>
+                <div class="sector-flow-line"><span>5日 ${formatMoney(s.mainNet5)}</span><span>10日 ${formatMoney(s.mainNet10)}</span></div>
+            </div>
+        </div>`;
+    }).join('');
+
+    panel.innerHTML = `
+        <div class="sector-hero">
+            <div class="sector-block">
+                <div class="sector-block-title">板块策略摘要</div>
+                <div class="sector-headline">${escapeHTML(topNames)}</div>
+                <div class="sector-sub">${escapeHTML(route.reason)}</div>
+                <div class="sector-trend">
+                    <div class="sector-trend-card"><span>1日主线</span><strong>${escapeHTML(summary.label)}</strong></div>
+                    <div class="sector-trend-card"><span>5/10日持续性</span><strong>${escapeHTML(summary.continuity)}</strong></div>
+                    <div class="sector-trend-card"><span>推荐策略</span><strong>${escapeHTML(route.recommended)}</strong></div>
+                    <div class="sector-trend-card"><span>执行姿态</span><strong>${escapeHTML(route.stance)}</strong></div>
+                </div>
+                <div class="sector-grid">
+                    <div class="sector-metric"><span>Top5集中度</span><strong>${(summary.concentration * 100).toFixed(0)}%</strong></div>
+                    <div class="sector-metric"><span>持续流入</span><strong>${summary.persistentCount}</strong></div>
+                    <div class="sector-metric"><span>更新时间</span><strong>${updated}</strong></div>
+                </div>
+                <div class="sector-sub" style="margin-top:10px;">当前执行：${escapeHTML(state.strategy)}。板块资金只做策略路由参考，个股买卖仍回到股票页确认。</div>
+                <button class="btn-primary" style="margin-top:10px;" onclick="loadSectorView(true)">刷新板块资金</button>
+            </div>
+        </div>
+        <div class="sector-block">
+            <div class="sector-block-title">板块资金排名</div>
+            <div class="sector-list">${rows}</div>
+        </div>`;
+}
+
+async function loadSectorView(force=false) {
+    state.mode = 'sector';
+    setSectorMode(true);
+    renderWatchlist();
+    const panel = document.getElementById('sectorPanel');
+    if(panel && (!state.sectors.length || force)) {
+        panel.innerHTML = `<div class="sector-block"><div class="sector-headline">板块资金同步中...</div><div class="sector-sub">正在读取资金流向。</div></div>`;
+    }
+    await refreshSectorFlow(force);
+    renderSectorPanel();
 }
 
 function draw() {
@@ -1711,6 +2126,35 @@ function generateAnalysisHTML(idx, full, meta) {
 
     const riskFlags = decision.risk.flags.length ? decision.risk.flags.join(' / ') : '无高波动或严重偏离';
     const primaryReason = decision.exit.level !== '无明确离场' ? decision.exit.detail : decision.regime.reason;
+    const diagnosis = state.mode === 'stock' ? getHoldingDiagnosis(idx, full, state.indicators, meta, decision) : null;
+    const sectorSummary = getSectorSummary();
+    const route = getStrategyRoute(decision.market, sectorSummary);
+    const verdict = getFinalVerdict(decision, meta, route);
+    const cleanMetaType = meta.type.replace(/[✅⚠️👀📈🛑🚪⏸️]/g, '').trim() || meta.type;
+    const strategyFitLabel = route.recommended === state.strategy ? '匹配' : '不匹配';
+    const strategyFitAdvice = route.recommended === state.strategy ? '继续按当前策略执行。' : (verdict.label === '可进攻' || verdict.label === '轻仓观察') ? `优先切到${route.recommended}再看个股信号。` : '防守阶段先不急于切换策略。';
+    const routeHtml = `
+        <div class="sidebar-block">
+            <div class="sidebar-block-title"><span>策略路由</span><span>${escapeHTML(strategyFitLabel)}</span></div>
+            <div class="route-line">
+                <strong>${escapeHTML(decision.market.label)}</strong><span class="route-dot"></span>
+                <strong>${escapeHTML(sectorSummary.continuity || '板块待确认')}</strong><span class="route-dot"></span>
+                <strong>${escapeHTML(cleanMetaType)}</strong><span class="route-dot"></span>
+                <strong>${escapeHTML(route.recommended)}</strong>
+            </div>
+            <div class="diagnosis-compact">${escapeHTML(strategyFitAdvice)}</div>
+        </div>`;
+    const evidenceHtml = `
+        <div class="sidebar-block">
+            <div class="sidebar-block-title"><span>关键依据</span><span>${escapeHTML(verdict.label)}</span></div>
+            <div class="evidence-grid">
+                <div class="evidence-item"><div class="k">大盘</div><div class="v">${escapeHTML(decision.market.label)}</div><div class="h">${escapeHTML(decision.market.reason)}</div></div>
+                <div class="evidence-item"><div class="k">个股</div><div class="v">${escapeHTML(cleanMetaType)}</div><div class="h">${escapeHTML(meta.detail)}</div></div>
+                <div class="evidence-item"><div class="k">风险</div><div class="v">${escapeHTML(decision.risk.level)}</div><div class="h">${escapeHTML(riskFlags)}</div></div>
+                <div class="evidence-item"><div class="k">信号</div><div class="v">${meta.windowScore||0}分</div><div class="h">买入 ${meta.windowBuyCount||0} · 离场 ${meta.windowExitCount||0}</div></div>
+            </div>
+            ${diagnosis ? `<div class="diagnosis-compact"><strong>${escapeHTML(diagnosis.status)}</strong> · ${escapeHTML(diagnosis.rsText)}<br>${escapeHTML(diagnosis.action)}</div>` : ''}
+        </div>`;
 
     let topCardBg = 'rgba(255, 255, 255, 0.04)', topBorder = 'rgba(255, 255, 255, 0.1)';
     if (decision.simpleAction === '清仓离场') { topCardBg = 'rgba(239, 68, 68, 0.12)'; topBorder = 'rgba(239, 68, 68, 0.3)'; }
@@ -1721,39 +2165,36 @@ function generateAnalysisHTML(idx, full, meta) {
     const cooldownHtml = meta.inCooldown ? `<div style="position:absolute; top:8px; right:8px; background:var(--yellow); color:#000; font-size:9px; font-weight:800; padding:2px 6px; border-radius:4px;">冷却中</div>` : '';
 
     return `
-        <div style="background: ${topCardBg}; border: 1px solid ${topBorder}; border-radius: 12px; padding: 16px; margin-bottom: 14px; position: relative;">
+        <div class="action-panel" style="background:${topCardBg};border-color:${topBorder};">
             ${cooldownHtml}
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div>
-                    <div style="font-size:11px; margin-bottom:6px; color:rgba(255,255,255,0.7); font-weight:700;">极简操作建议</div>
-                    <div style="font-size:22px; font-weight:900; color:${decision.simpleColor};">${decision.simpleAction}</div>
-                    <div style="font-size:11px; color:${cc}; margin-top:6px; font-weight:700;">变动: ${ct}</div>
-                </div>
-                <div style="text-align:right; margin-right: 4px;">
-                    <div style="font-size:11px; margin-bottom:6px; color:rgba(255,255,255,0.7); font-weight:700;">控制上限</div>
-                    <div style="font-size:26px; font-weight:900; font-family:JetBrains Mono;">${adv}%</div>
+            <div class="kicker">交易结论 · ${escapeHTML(verdict.label)}</div>
+            <div class="action-line">
+                <div class="action-name" style="color:${decision.simpleColor};">${escapeHTML(decision.simpleAction)}</div>
+                <div class="action-cap">
+                    <span>仓位上限</span>
+                    <strong>${adv}%</strong>
                 </div>
             </div>
-            <div style="display:flex; justify-content:space-between; margin-top:14px; padding-top:12px; border-top:1px dashed rgba(255,255,255,0.15);">
-                <div><span style="font-size:10px;color:#94a3b8;">防守位</span> <span style="font-family:JetBrains Mono;font-size:13px;font-weight:800;color:#fff;margin-left:4px;">${fmt(decision.risk.stop)}</span></div>
-                <div><span style="font-size:10px;color:#94a3b8;">压力位</span> <span style="font-family:JetBrains Mono;font-size:13px;font-weight:800;color:#fff;margin-left:4px;">${fmt(decision.risk.pressure)}</span></div>
+            <div class="action-sub">${escapeHTML(verdict.text)} ${escapeHTML(ct)}</div>
+            <div class="level-line">
+                <div class="level-pill"><span>防守位</span><strong>${fmt(decision.risk.stop)}</strong></div>
+                <div class="level-pill"><span>压力位</span><strong>${fmt(decision.risk.pressure)}</strong></div>
             </div>
         </div>
 
-        <div class="signal-badges">
-            ${UI.badge(`买入: ${meta.windowBuyCount||0}`, 'bull')}
-            ${UI.badge(`离场: ${meta.windowExitCount||0}`, 'bear')}
-            ${UI.badge(`策略积分: ${meta.windowScore||0}`, 'neutral')}
-        </div>
+        ${routeHtml}
+        ${evidenceHtml}
         
-        <div class="decision-summary">
-            ${UI.decisionBox('大盘环境', decision.regime.regime, decision.market.label)}
-            ${UI.decisionBox('防守与状态', decision.exit.level, decision.risk.level)}
+        <div class="sidebar-block">
+            <div class="sidebar-block-title"><span>主要原因</span><span>${escapeHTML(decision.exit.level)}</span></div>
+            <div class="logic-line">${escapeHTML(primaryReason)}</div>
+            <details class="detail-panel">
+                <summary>技术信号明细</summary>
+                <div class="signal-compact">${ptsRaw}</div>
+                <div class="signal-compact">${ptsValid}</div>
+                ${UI.reasonList([decision.market.reason, `极值预警：${riskFlags}`, diagnosis?.sectorText].filter(Boolean))}
+            </details>
         </div>
-        
-        <div class="logic-line">${ptsRaw}</div>
-        <div class="logic-line">${ptsValid}</div>
-        ${UI.reasonList([primaryReason, decision.market.reason, `极值预警：${riskFlags}`])}
         <div class="risk-note" style="margin-top:8px;">极简建议基于技术模型自动生成，不构成投资建议。</div>`;
 }
 
@@ -1846,7 +2287,6 @@ async function runBacktest() {
         }
         updateAllIndicators();
         
-        // 🚀 清空决策缓存，确保回测始终保持最新鲜的环境推演
         decisionCache.clear();
         await new Promise(r => setTimeout(r, 100)); 
         
@@ -2128,7 +2568,6 @@ async function switchStrategy(name) {
     const confirmed = await customConfirm(`确定切换到「${name}」？\n${STRATEGIES[name].desc}`);
     if(!confirmed) return;
     
-    // 🚀 清除决策缓存，因为策略改变会导致逻辑彻底变化
     decisionCache.clear();
     
     state.strategy=name; Object.assign(STRATEGY, STRATEGIES[name]); localStorage.setItem('quant_strategy', name); renderSettings(); 
@@ -2210,6 +2649,13 @@ async function init() {
     
     document.querySelectorAll('#indexTabs .nav-btn').forEach(b=>b.onclick=async e=>{
         document.querySelectorAll('#indexTabs .nav-btn').forEach(btn=>btn.classList.remove('active')); e.target.classList.add('active');
+        if(e.target.dataset.id==='sector') {
+            await loadSectorView(false);
+            return;
+        }
+        setSectorMode(false);
+        const infoSection = document.querySelector('.info-section');
+        if(infoSection) infoSection.style.display = 'flex';
         if(e.target.dataset.id==='stock') {
             state.mode='stock'; activeIndexTab=null; renderWatchlist();
             if(!state.stockId) { 
@@ -2220,7 +2666,6 @@ async function init() {
         }
         state.mode='index'; state.id=e.target.dataset.id; 
         
-        // 🚀 切回大盘时清理缓存防止串数据
         decisionCache.clear();
         renderWatchlist(); clearCharts(); 
         

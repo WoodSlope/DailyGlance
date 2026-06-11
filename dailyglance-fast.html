@@ -77,6 +77,10 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .stock-title { min-width: 0; }
 .stock-title .name { font-size: 16px; line-height: 1.1; font-weight: 950; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stock-title .meta { margin-top: 4px; color: var(--muted); font: 800 11px ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.priority-badge { display: inline-flex; margin-left: 6px; vertical-align: 2px; border-radius: 999px; padding: 2px 6px; background: rgba(148,163,184,.16); color: #cbd5e1; font-size: 10px; line-height: 1.2; font-weight: 950; }
+.priority-badge.danger { background: rgba(251,113,133,.18); color: #fecdd3; }
+.priority-badge.warn { background: rgba(245,158,11,.18); color: #fde68a; }
+.priority-badge.good { background: rgba(20,184,166,.18); color: #99f6e4; }
 .price { text-align: right; white-space: nowrap; }
 .price .num { font: 950 20px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .price .chg { margin-top: 2px; font: 900 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -90,10 +94,14 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .position-box, .score-box { text-align: center; padding-left: 5px; padding-right: 5px; }
 .position-box .val { margin-top: 3px; font: 950 24px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .score-box .val { margin-top: 6px; font: 950 18px ui-monospace, SFMono-Regular, Menlo, monospace; }
-.metric-row { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 1px; margin: 0 12px 9px; overflow: hidden; border: 1px solid rgba(255,255,255,.06); border-radius: 8px; background: rgba(255,255,255,.08); }
+.metric-row { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 1px; margin: 0 12px 9px; overflow: hidden; border: 1px solid rgba(255,255,255,.06); border-radius: 8px; background: rgba(255,255,255,.08); }
 .metric { min-width: 0; padding: 7px 5px; background: rgba(16,17,20,.72); text-align: center; }
 .metric .k { color: var(--muted); font-size: 10px; }
 .metric .v { margin-top: 3px; font: 900 12px ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fit-row { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 7px; margin: 0 12px 9px; }
+.fit-pill { min-width: 0; border: 1px solid rgba(255,255,255,.07); border-radius: 8px; background: rgba(255,255,255,.035); padding: 8px; }
+.fit-pill .k { color: var(--muted); font-size: 10px; font-weight: 900; }
+.fit-pill .v { margin-top: 4px; color: var(--soft); font-size: 12px; line-height: 1.35; font-weight: 950; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .backtest-row { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 1px; margin: 0 12px 9px; overflow: hidden; border: 1px solid rgba(255,255,255,.06); border-radius: 8px; background: rgba(255,255,255,.08); }
 .bt { min-width: 0; padding: 7px 5px; background: rgba(16,17,20,.62); text-align: center; }
 .bt .k { color: var(--muted); font-size: 10px; }
@@ -108,6 +116,8 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .tag.exit { background: rgba(251,113,133,.16); color: #fecdd3; }
 .tag.warn { background: rgba(245,158,11,.17); color: #fde68a; }
 .spark { display: block; width: calc(100% - 24px); height: 34px; margin: 0 12px 8px; }
+.quick-note { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items: center; margin: 0 12px 9px; padding: 8px 10px; border-radius: 8px; background: rgba(255,255,255,.03); color: var(--muted); font-size: 11px; }
+.quick-note strong { color: var(--soft); font-weight: 950; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-foot { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 8px; min-height: 36px; padding: 7px 12px; border-top: 1px solid rgba(255,255,255,.06); background: rgba(255,255,255,.025); color: var(--muted); font-size: 11px; }
 .card-foot span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-foot button { border: 0; background: transparent; color: #a8b0ba; font-size: 12px; font-weight: 900; padding: 5px 0 5px 8px; }
@@ -156,10 +166,10 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 <div class="app">
   <header class="topbar">
     <div class="top-row">
-      <div class="brand">
+      <a class="brand" href="./index.html" aria-label="返回版本选择入口" title="返回版本选择入口" style="text-decoration:none;color:inherit;">
         <strong>DailyGlance 极速版</strong>
         <span id="statusLine">读取本地缓存...</span>
-      </div>
+      </a>
       <button class="pill-btn" id="summaryBtn">概览</button>
       <button class="pill-btn strategy-btn" id="strategyToggle">稳健</button>
       <div class="strategy-menu" id="strategyMenu"></div>
@@ -275,6 +285,7 @@ const USER_SIGNAL_TEXT = {
   L1:'跌破短期趋势', L2:'均线转弱', L3:'动能死叉', L4:'放量跌破20日线', L5:'反包失败', L6:'连涨后转弱', L7:'超买回落', L8:'冲高回落', L9:'高位回撤破位', L10:'顶背离风险',
   W1:'偏离过大', W2:'缩量上涨'
 };
+function getUserSignalText(sig) { return USER_SIGNAL_TEXT[sig] || SIGNAL_DESC[sig] || sig; }
 
 let DB = null;
 let STRATEGY = {};
@@ -866,11 +877,21 @@ function getRiskContext(idx, full, ind) {
   const stop = Math.max(low20, close - atr * 2);
   return { score:Math.max(0, Math.round(score)), level, coef, flags, atrPct, distMA20, drawdown, support:low20, pressure:high20, watch:ma20 || close, stop:Math.min(stop, close), ma60:ma60 || null };
 }
+function formatExitDetail(label, signals) {
+  const uniqueSignals = [...new Set((signals || []).filter(Boolean))];
+  if(!uniqueSignals.length) return label;
+  const text = uniqueSignals.map(sig => `${sig} ${getUserSignalText(sig)}`).join(' + ');
+  return `${label}：${text}`;
+}
 function getExitSeverity(meta, idx, full, ind) {
   const exits = meta.exitSignals || [];
   const raw = Object.keys(meta.allSignals || {});
-  if(meta.type === '清仓规避' || (raw.includes('L10') && raw.includes('L3'))) return { level:'清仓防守', detail:'顶背离叠加动能死叉，先保护本金' };
-  if(exits.some(s => ['L3','L4','L5','L9','L10'].includes(s))) return { level:'强离场', detail:'今日触发强离场信号，不适合继续加仓' };
+  if((meta.type && meta.type.includes('清仓规避')) || (raw.includes('L10') && raw.includes('L3'))) {
+    const signals = raw.filter(s => ['L3','L10'].includes(s));
+    return { level:'清仓防守', detail:formatExitDetail('清仓防守', signals) };
+  }
+  const strongExitSignals = exits.filter(s => ['L3','L4','L5','L9','L10'].includes(s));
+  if(strongExitSignals.length) return { level:'强离场', detail:formatExitDetail('强离场', strongExitSignals) };
   if(exits.some(s => ['L1','L2','L6','L7','L8'].includes(s)) || (meta.warningSignals || []).length) return { level:'减仓观察', detail:'短线转弱或过热，适合降低仓位等待确认' };
   if(meta.windowSignals) {
     const recentExits = meta.windowSignals.filter(w => w.signal.startsWith('L') && (idx - w.day) >= 1 && (idx - w.day) <= 2);
@@ -999,6 +1020,40 @@ function buildReason(meta, decision, sampleDays) {
   if(decision.simpleAction === '顺势持有') return `前序仓位仍在，趋势结构未破；非空手情况下可以抱单。`;
   return `策略积分 ${meta.windowScore} 分，缺乏足够动能确认，继续等待放量或结构修复。`;
 }
+function getFastStrategyRoute(market) {
+  if(market?.label === '全面多头') return { recommended:'突破追涨型', label:'进攻匹配', note:'多头共振，右侧突破更占优' };
+  if(market?.label === '全面弱势') return { recommended:'波段抄底型', label:'防守优先', note:'弱势环境，不放大新仓' };
+  if(['温和偏多','结构性题材行情'].includes(market?.label)) return { recommended:'稳健趋势型', label:'趋势过滤', note:'结构机会需个股确认' };
+  return { recommended:'综合全能型', label:'观察轮动', note:'分化环境，先看风险' };
+}
+function getFastRelativeStrength(data, date) {
+  const market = state.rawData.sh || [];
+  if(!data?.length || market.length < 25) return null;
+  const sIdx = findDateIndex(data, date), mIdx = findDateIndex(market, date);
+  if(sIdx < 20 || mIdx < 20) return null;
+  const sBase = data[sIdx - 20]?.close, mBase = market[mIdx - 20]?.close;
+  if(!sBase || !mBase) return null;
+  const sRet = (data[sIdx].close - sBase) / sBase * 100;
+  const mRet = (market[mIdx].close - mBase) / mBase * 100;
+  const diff = sRet - mRet;
+  return { diff, label: diff >= 5 ? '强于大盘' : diff <= -5 ? '弱于大盘' : '跟随市场' };
+}
+function getFastHoldingState(data, meta, decision) {
+  const rs = getFastRelativeStrength(data, data[data.length - 1]?.date);
+  let label = decision.position > 0 ? '持仓观察' : '空仓观察';
+  if(decision.exit?.level === '清仓防守' || decision.exit?.level === '强离场') label = '破位防守';
+  else if(rs?.diff <= -5 && decision.position <= 30) label = '弱势套牢';
+  else if(decision.position > 0 && meta.windowScore >= getCurrentStrategy().buyThreshold) label = '结构修复';
+  else if(decision.position > 0) label = '跟随修复';
+  return { label, detail: rs ? `${rs.label} ${rs.diff >= 0 ? '+' : ''}${rs.diff.toFixed(1)}%` : '相对强弱待确认' };
+}
+function getPriorityTag(action, holding) {
+  if(action === '清仓离场' || action === '防守减仓') return { label:'优先处理', tone:'danger' };
+  if(holding?.label === '弱势套牢' || holding?.label === '破位防守') return { label:'风险最高', tone:'danger' };
+  if(action === '谨慎试探' || action === '轻仓试探' || action === '试探建仓') return { label:'等待确认', tone:'warn' };
+  if(action === '积极持有' || action === '顺势持有') return { label:'修复最好', tone:'good' };
+  return { label:'观察', tone:'' };
+}
 function analyzeStock(stock) {
   const code = normalizeStockCode(stock.code), name = normalizeStockName(stock.name), id = codeToSecid(code);
   const data = state.rawData[id] || [];
@@ -1016,6 +1071,13 @@ function analyzeStock(stock) {
   const meta = getSignalMeta(idx, data, ind);
   const decision = getDecisionContext(idx, data, ind, meta);
   const backtest = runBacktestSummary(id, data, ind);
+  const route = getFastStrategyRoute(decision.market);
+  const fit = {
+    route,
+    strategyMatch: route.recommended === state.strategy ? '当前策略适合' : `建议看${route.recommended.replace('型','')}`,
+    holding: getFastHoldingState(data, meta, decision)
+  };
+  const priority = getPriorityTag(decision.simpleAction, fit.holding);
   const allTags = [...new Set([...(data[idx]._signals || []), ...meta.windowSignals.map(w => w.signal)])];
   const tags = allTags.slice(0, 3);
   if(allTags.length > tags.length) tags.push(`+${allTags.length - tags.length}`);
@@ -1023,7 +1085,7 @@ function analyzeStock(stock) {
     code, name, id, status:'ready', item, prev, change, changePct,
     action:decision.simpleAction, tone:decision.tone, position:decision.position, score:meta.windowScore,
     reason:buildReason(meta, decision, data.length), tags, risk:decision.risk, market:decision.market, meta, decision,
-    backtest, spark:getSparkline(data)
+    fit, priority, backtest, spark:getSparkline(data)
   };
 }
 function actionColor(action) {
@@ -1054,7 +1116,7 @@ function renderCard(a) {
   const btWinCls = Number.isFinite(bt.winRate) ? (bt.winRate >= 55 ? 'good' : bt.winRate >= 40 ? 'mid' : 'bad') : 'mid';
   const html = `<article class="card ${a.tone}" data-code="${escapeHTML(a.code)}">
     <div class="card-head">
-      <div class="stock-title"><div class="name">${escapeHTML(a.name)}</div><div class="meta">${escapeHTML(a.code)} · ${escapeHTML(a.item?.date || '--')}</div></div>
+      <div class="stock-title"><div class="name">${escapeHTML(a.name)}<span class="priority-badge ${escapeHTML(a.priority?.tone || '')}">${escapeHTML(a.priority?.label || '观察')}</span></div><div class="meta">${escapeHTML(a.code)} · ${escapeHTML(a.item?.date || '--')}</div></div>
       <div class="price"><div class="num ${priceClass}">${fmt(a.item?.close)}</div><div class="chg ${priceClass}">${fmt(a.change)} / ${pct(a.changePct)}</div></div>
     </div>
     <div class="action-grid">
@@ -1064,20 +1126,17 @@ function renderCard(a) {
     </div>
     <div class="metric-row">
       <div class="metric"><div class="k">市场</div><div class="v">${escapeHTML(a.market?.label || '待确认')}</div></div>
-      <div class="metric"><div class="k">风险</div><div class="v">${escapeHTML(a.risk?.level || '样本不足')}</div></div>
       <div class="metric"><div class="k">防守</div><div class="v">${fmt(a.risk?.stop)}</div></div>
       <div class="metric"><div class="k">压力</div><div class="v">${fmt(a.risk?.pressure)}</div></div>
     </div>
-    <div class="reason">${escapeHTML(a.reason)}</div>
-    <div class="backtest-row">
-      <div class="bt ${btRetCls}"><div class="k">${escapeHTML(bt.label || '回测')}</div><div class="v">${Number.isFinite(bt.totalReturn) ? pct(bt.totalReturn) : '--'}</div></div>
-      <div class="bt ${btDdCls}"><div class="k">最大回撤</div><div class="v">${Number.isFinite(bt.maxDrawdown) ? bt.maxDrawdown.toFixed(1) + '%' : '--'}</div></div>
-      <div class="bt ${btWinCls}"><div class="k">胜率</div><div class="v">${Number.isFinite(bt.winRate) ? bt.winRate.toFixed(0) + '%' : '--'}</div></div>
-      <div class="bt"><div class="k">交易</div><div class="v">${Number.isFinite(bt.trades) ? bt.trades : '--'}次</div></div>
+    <div class="fit-row">
+      <div class="fit-pill"><div class="k">策略匹配</div><div class="v">${escapeHTML(a.fit?.strategyMatch || '待确认')}</div></div>
+      <div class="fit-pill"><div class="k">状态</div><div class="v">${escapeHTML(a.fit?.holding?.label || '空仓观察')} · ${escapeHTML(a.fit?.holding?.detail || '--')}</div></div>
     </div>
-    <div class="signals">${tags}</div>
+    <div class="reason">${escapeHTML(a.reason)}</div>
+    <div class="quick-note"><strong>${escapeHTML(a.meta?.type || a.status || '待分析')}</strong><span>${Number.isFinite(bt.totalReturn) ? `回测 ${pct(bt.totalReturn)}` : '回测 --'}</span></div>
     ${a.spark || ''}
-    <div class="card-foot"><span>${escapeHTML(a.meta?.type || a.status || '待分析')} · ${escapeHTML(a.meta?.detail || '极速卡片')} · ${escapeHTML(bt.assumption || '回测样本不足')}</span><button data-remove="${escapeHTML(a.code)}">移除</button></div>
+    <div class="card-foot"><span>${escapeHTML(a.meta?.detail || '极速卡片')} · ${escapeHTML(bt.assumption || '回测样本不足')}</span><button data-remove="${escapeHTML(a.code)}">移除</button></div>
   </article>`;
   if(renderCache.size >= SYS_CONFIG.RENDER_CACHE_SIZE) renderCache.delete(renderCache.keys().next().value);
   renderCache.set(key, html);
@@ -1105,6 +1164,7 @@ function renderStrategies() {
   )).join('');
 }
 function getRank(a) {
+  if(a.priority?.label === '优先处理' || a.priority?.label === '风险最高') return -1;
   if(a.action === '清仓离场') return 0;
   if(a.action === '谨慎试探' || a.action === '防守减仓') return 1;
   if(a.action === '积极持有' || a.action === '试探建仓') return 2;
