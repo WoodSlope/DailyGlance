@@ -3,7 +3,6 @@
 ## 文件结构
 
 - `index.html`: GitHub Pages 主页面入口
-- `dailyglance.html`: 本地保留副本，发布时可不上传
 - `assets/css/dailyglance.css`: 页面样式
 - `assets/js/01-config-ui.js`: UI 工具、快捷键、模态框
 - `assets/js/02-data.js`: 数据源、缓存、同步、搜索、选股
