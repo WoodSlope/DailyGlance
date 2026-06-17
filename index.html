@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>DailyGlance 量化终端</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%233d6df9'/%3E%3Cstop offset='100%25' stop-color='%233d6df9'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='24' height='24' rx='4' fill='url(%23g)'/%3E%3Cpath d='M3 12s2.5-6 9-6 9 6 9 6-2.5 6-9 6-9-6-9-6Z' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='12' cy='12' r='2.5' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" type="image/svg+xml">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link rel="stylesheet" href="assets/css/dailyglance.css">
+</head>
+<body>
+
+<div id="loading">系统同步中...</div>
+
+<div id="customModal">
+    <div class="custom-modal-box">
+        <div id="customModalMsg" class="custom-modal-msg"></div>
+        <div class="custom-modal-btns">
+            <button id="customModalBtnCancel" class="custom-modal-btn btn-cancel">取消</button>
+            <button id="customModalBtnOk" class="custom-modal-btn btn-ok">确认</button>
+        </div>
+    </div>
+</div>
+
+<div id="settingsOverlay">
+    <div id="settingsPanel"></div>
+</div>
+
+<div id="helpOverlay">
+    <div id="helpPanel">
+        <div class="sg-header">
+            <h2>系统说明与逻辑</h2>
+            <button class="sg-close" onclick="toggleHelp()">×</button>
+        </div>
+        <div class="sg-body">
+            <div class="terminal-block no-bg">
+                <div class="block-title" style="border:none; padding-bottom:0; margin-bottom:8px;">使用路径</div>
+                <div class="text-dim" style="font-size:13px; line-height:1.6;">系统严格遵循：<strong>左侧导航(选择) -> 中间图表(看盘) -> 右侧面板(决策)</strong>。通过算法剥离情绪噪音，回归量价本质。</div>
+            </div>
+            <div class="terminal-block no-bg">
+                <div class="block-title" style="border:none; padding-bottom:0; margin-bottom:8px;">多维度逻辑拆解</div>
+                <ul class="text-dim" style="margin:0 0 0 18px; font-size:13px; line-height:1.6; padding:0;">
+                    <li style="margin-bottom:8px;"><strong>大盘环境：</strong> 判定整体市场温度，决定基础的风控仓位上限（能不能做）。</li>
+                    <li style="margin-bottom:8px;"><strong>周线宏观：</strong> 判定长周期趋势，过滤日线噪音（值不值得做）。周线不输出具体买卖积分。</li>
+                    <li><strong>个股微观(日线)：</strong> 捕捉具体的买卖动能、防守支撑位与极端风险评估（具体怎么做）。</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<header class="header">
+    <div class="header-left">
+        <a class="logo-box" href="#" aria-label="首页" title="首页" style="text-decoration:none;">
+            <svg width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M3 12s2.5-6 9-6 9 6 9 6-2.5 6-9 6-9-6-9-6Z" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="12" cy="12" r="2.5" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </a>
+        <div class="header-title">DailyGlance</div>
+    </div>
+    <div class="header-center" id="mainTabs">
+        <button class="nav-btn active" data-tab="index">大盘数据</button>
+        <button class="nav-btn" data-tab="stock">自选股池</button>
+    </div>
+    <div class="header-right">
+        <div id="liveClock" class="mono text-dim" style="font-size:13px;">00:00:00</div>
+        <button id="btnBacktest" onclick="runBacktest()" title="运行策略回测" class="icon-btn" style="display:none;">
+            <svg class="icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M24 44C35.0457 44 44 35.0457 44 24C44 12.9543 35.0457 4 24 4C12.9543 4 4 12.9543 4 24C4 35.0457 12.9543 44 24 44Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+                <path d="M20 24V17.0718L26 20.5359L32 24L26 27.4641L20 30.9282V24Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+            </svg>
+        </button>
+        <button id="btnClearCache" onclick="handleClearCache()" title="清除缓存" class="icon-btn">
+            <svg class="icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path fill-rule="evenodd" clip-rule="evenodd" d="M20 5.91406H28V13.9141H43V21.9141H5V13.9141H20V5.91406Z" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M8 40H40V22H8V40Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+                <path d="M16 39.8976V33.9141" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M24 39.8977V33.8977" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M32 39.8976V33.9141" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M12 40H36" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+        <button id="btnSettings" onclick="toggleSettings()" title="设置" class="icon-btn">
+            <svg class="icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M34.0003 41L44 24L34.0003 7H14.0002L4 24L14.0002 41H34.0003Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+                <path d="M24 29C26.7614 29 29 26.7614 29 24C29 21.2386 26.7614 19 24 19C21.2386 19 19 21.2386 19 24C19 26.7614 21.2386 29 24 29Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+            </svg>
+        </button>
+        <button id="btnHelp" onclick="toggleHelp()" title="帮助" class="icon-btn">
+            <svg class="icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M24 44C35.0457 44 44 35.0457 44 24C44 12.9543 35.0457 4 24 4C12.9543 4 4 12.9543 4 24C4 35.0457 12.9543 44 24 44Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+                <path d="M24 28.6248V24.6248C27.3137 24.6248 30 21.9385 30 18.6248C30 15.3111 27.3137 12.6248 24 12.6248C20.6863 12.6248 18 15.3111 18 18.6248" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M24 35V36" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+    </div>
+</header>
+
+<main class="main-container">
+    <aside class="nav-section" id="navSection">
+        <div id="indexNavList"></div>
+        <div id="stockNavList" style="display: none;"></div>
+    </aside>
+
+    <section class="chart-section">
+        <div class="chart-toolbar">
+            <div class="toolbar-left">
+                <div class="segmented-control" id="periodTabs">
+                    <button class="seg-btn active" data-period="daily">日线</button>
+                    <button class="seg-btn" data-period="weekly">周线</button>
+                </div>
+                <div class="segmented-control" id="rangeTabs">
+                    <button class="seg-btn" data-range="90">90天</button>
+                    <button class="seg-btn active" data-range="180">180天</button>
+                    <button class="seg-btn" data-range="360">360天</button>
+                </div>
+                <div class="ma-selector" id="indicatorGroup"></div>
+            </div>
+            <div class="toolbar-right">
+                <button id="updateDataBtn" onclick="handleUpdateData()" title="强制更新数据" class="icon-btn">
+                    <svg class="icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M44 31C44 36.5228 39.5228 41 34 41C32.2091 41 30.5281 40.5292 29.0741 39.7046C26.5143 38.2529 24.6579 35.7046 24.1436 32.6983C24.0492 32.1463 24 31.5789 24 31C24 28.4323 24.9678 26.0906 26.5585 24.3198C28.3892 22.2818 31.0449 21 34 21C39.5228 21 44 25.4772 44 31Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M34 12V20V21C31.0449 21 28.3892 22.2818 26.5585 24.3198C24.9678 26.0906 24 28.4323 24 31C24 31.5789 24.0492 32.1463 24.1436 32.6983C24.6579 35.7046 26.5143 38.2529 29.0741 39.7046C26.4116 40.5096 22.8776 41 19 41C10.7157 41 4 38.7614 4 36V28V20V12" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M34 12C34 14.7614 27.2843 17 19 17C10.7157 17 4 14.7614 4 12C4 9.23858 10.7157 7 19 7C27.2843 7 34 9.23858 34 12Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M4 28C4 30.7614 10.7157 33 19 33C20.807 33 22.5393 32.8935 24.1436 32.6983" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M4 20C4 22.7614 10.7157 25 19 25C21.7563 25 24.339 24.7522 26.5585 24.3198" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M38 31C38 33.2091 36.2091 35 34 35" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M30 31C30 28.7909 31.7909 27 34 27" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <div class="integrated-container">
+            <div class="main-chart-box"><canvas id="mainChart"></canvas></div>
+            <div class="volume-chart-box"><canvas id="volumeChart"></canvas></div>
+            <div class="macd-chart-box"><canvas id="macdChart"></canvas></div>
+            <div class="kdj-chart-box"><canvas id="kdjChart"></canvas></div>
+        </div>
+    </section>
+    
+    <aside class="info-section">
+        <div id="cardPrice" style="display: none;"></div>
+        <div id="cardAnalysis" style="display: none;"></div>
+    </aside>
+</main>
+
+<script src="assets/js/01-config-ui.js"></script>
+<script src="assets/js/02-data.js"></script>
+<script src="assets/js/03-calculations.js"></script>
+<script src="assets/js/04-render.js"></script>
+<script src="assets/js/05-app.js"></script>
+</body>
+</html>

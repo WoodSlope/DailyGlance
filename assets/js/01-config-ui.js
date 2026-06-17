@@ -1,0 +1,112 @@
+/* DailyGlance [1] - split from dailyglance.html. Keep classic script order. */
+// ==========================================
+// [1] 配置与 UI 交互工具 (Config & UI Helpers)
+// ==========================================
+
+const rootStyle = getComputedStyle(document.documentElement);
+const getCssVar = (name) => rootStyle.getPropertyValue(name).trim();
+
+const SYS_CONFIG = { THROTTLE_MS: 30000, REQ_TIMEOUT: 5000, UPDATE_COOLDOWN: 60000, VOL_SURGE_RATIO: 1.5, VOL_SHRINK_RATIO: 0.9, EX_RIGHT_TOLERANCE: 0.02, RENDER_CACHE_SIZE: 50 };
+
+const MA_OPTIONS = [5, 10, 20, 30, 60, 120, 250];
+const MA_COLORS = { 5: '#ffffff', 10: '#f5a623', 20: '#c084fc', 30: '#60a5fa', 60: '#f472b6', 120: '#4ade80', 250: '#94a3b8' };
+
+const STRATEGIES = {
+    '稳健趋势型': { buySignals: ['B1','B2','B3','B4','B10','B12','B14','B15'], exitSignals: ['L1','L2','L3','L4','L9','L10'], warningSignals: ['W1','W2'], scoreGroups: [['B1','B10','B15'],['B2','B12'],['B4','B14']], windowDays: 12, buyThreshold: 5, desc: '关注趋势结构、MACD动能和突破确认，适合中期趋势跟随' },
+    '波段抄底型': { buySignals: ['B5','B6','B7','B8','B9','B11','B16'], exitSignals: ['L3','L5','L7','L8','L10'], warningSignals: ['W1','W2','L9'], scoreGroups: [['B5','B6','B11','B16'],['B7','B8']], windowDays: 10, buyThreshold: 4, desc: '关注超卖、背离、大级别支撑和回踩企稳，适合回调末端的修复观察' },
+    '突破追涨型': { buySignals: ['B3','B4','B14'], exitSignals: ['L4','L5','L6','L9'], warningSignals: ['W1','W2','L10'], signalWeights: {'B3':1,'B4':3,'B14':4}, scoreGroups: [['B4','B14']], windowDays: 8, buyThreshold: 4, desc: '专注放量突破和平台突破，适合强势行情里的右侧确认' },
+    '综合全能型': { buySignals: ['B1','B2','B3','B4','B5','B6','B7','B8','B9','B10','B11','B12','B14','B15','B16'], exitSignals: ['L1','L2','L3','L4','L5','L6','L7','L8','L9','L10'], warningSignals: ['W1','W2'], scoreGroups: [['B1','B10','B15'],['B2','B12'],['B4','B14'],['B5','B6','B11','B16'],['B7','B8']], windowDays: 12, buyThreshold: 6, desc: '全量雷达观察模式，适合看全局信号，不建议直接等同交易指令' }
+};
+
+let STRATEGY = {}; 
+let state = { tab: 'index', id: 'sh', mode: 'index', range: 180, lockIdx: -1, periodLocks: { daily: -1, weekly: -1 }, charts: {}, rawData: {}, weeklyData: {}, period: 'daily', activeMAs: [5, 20, 60], indicators: { ma: {}, macd: null, rsi: null, kdj: null }, indicatorKey: '', watchlist: [], stockId: null, strategy: '稳健趋势型', isFrozen: false };
+let globalSelectionSeq = 0;
+Object.assign(STRATEGY, STRATEGIES['稳健趋势型']);
+
+const renderCache = new Map();
+const dateIndexCache = new Map();
+const indexIndicators = {};
+
+function clearDerivedCaches() { renderCache.clear(); dateIndexCache.clear(); }
+
+const SIGNAL_VERSION = 'v4.1.2';
+const SIGNAL_SCORES = { 'B1':3,'B2':3,'B3':2,'B4':2,'B5':2,'B6':2,'B7':1,'B8':1,'B9':4,'B10':2,'B11':2,'B12':3,'B13':3,'B14':2,'B15':2,'B16':3 };
+const SIGNAL_DESC = {
+    'B1':{desc:'均线多头'}, 'B2':{desc:'MACD金叉'}, 'B3':{desc:'上穿20日线'}, 'B4':{desc:'放量突破新高'}, 'B5':{desc:'阳包阴'}, 'B6':{desc:'缩量回踩不破'}, 'B7':{desc:'RSI超卖回升'}, 'B8':{desc:'KDJ金叉'}, 'B9':{desc:'MACD底背离'}, 'B10':{desc:'MA20上穿MA60'}, 'B11':{desc:'均线回踩不破'}, 'B12':{desc:'零轴上金叉'}, 'B13':{desc:'长级别走强'}, 'B14':{desc:'平台放量突破'}, 'B15':{desc:'均线二次金叉'}, 'B16':{desc:'回踩周线支撑企稳'},
+    'L1':{desc:'跌破短期趋势'}, 'L2':{desc:'均线死叉'}, 'L3':{desc:'MACD死叉'}, 'L4':{desc:'跌破20日线'}, 'L5':{desc:'阴包阳'}, 'L6':{desc:'连阳后首阴'}, 'L7':{desc:'RSI超买回落'}, 'L8':{desc:'布林上轨受阻'}, 'L9':{desc:'高点回撤破位'}, 'L10':{desc:'MACD顶背离'}, 'W1':{desc:'偏离均线过大'}, 'W2':{desc:'连阳缩量迹象'}
+};
+
+function getSignalScore(sig, strategy=STRATEGY) { return strategy.signalWeights?.[sig] ?? SIGNAL_SCORES[sig] ?? 0; }
+function getUserSignalText(sig) { return SIGNAL_DESC[sig]?.desc || sig; }
+function getScoreGroupKey(strategy, sig) { const group = (strategy.scoreGroups || []).find(g => g.includes(sig)); return group ? group.join('|') : sig; }
+
+const escapeHTML = v => String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+const escapeJSArg = v => String(v ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+
+// === UI 工具与模态框逻辑 ===
+const UI = {
+    signalRow: (name, sig, isMonitored, isBull) => {
+        const colorClass = isMonitored ? (isBull ? 'text-info' : 'text-bull') : 'text-dim';
+        const tag = isMonitored ? '策略追踪' : '已过滤';
+        return `<div class="signal-row" style="border-left-color: ${isMonitored ? (isBull ? 'var(--blue)' : 'var(--red)') : 'var(--border-color)'};"><span class="name ${isMonitored ? 'text-main' : 'text-dim'}">${name} <span class="mono text-dim" style="font-size:10px;margin-left:4px;">${sig}</span></span><span class="tag">${tag}</span></div>`;
+    },
+    sectionTitle: (title, colorClass) => `<div class="signal-section-title ${colorClass}">${title}</div>`
+};
+
+const SVG_ICONS = {
+    SPIN: `<svg class="icon spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/></svg>`,
+    UPDATE: `<svg class="icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M44 31C44 36.5228 39.5228 41 34 41C32.2091 41 30.5281 40.5292 29.0741 39.7046C26.5143 38.2529 24.6579 35.7046 24.1436 32.6983C24.0492 32.1463 24 31.5789 24 31C24 28.4323 24.9678 26.0906 26.5585 24.3198C28.3892 22.2818 31.0449 21 34 21C39.5228 21 44 25.4772 44 31Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M34 12V20V21C31.0449 21 28.3892 22.2818 26.5585 24.3198C24.9678 26.0906 24 28.4323 24 31C24 31.5789 24.0492 32.1463 24.1436 32.6983C24.6579 35.7046 26.5143 38.2529 29.0741 39.7046C26.4116 40.5096 22.8776 41 19 41C10.7157 41 4 38.7614 4 36V28V20V12" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M34 12C34 14.7614 27.2843 17 19 17C10.7157 17 4 14.7614 4 12C4 9.23858 10.7157 7 19 7C27.2843 7 34 9.23858 34 12Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 28C4 30.7614 10.7157 33 19 33C20.807 33 22.5393 32.8935 24.1436 32.6983" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 20C4 22.7614 10.7157 25 19 25C21.7563 25 24.339 24.7522 26.5585 24.3198" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M38 31C38 33.2091 36.2091 35 34 35" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M30 31C30 28.7909 31.7909 27 34 27" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+};
+
+const showLoading = (msg = 'DailyGlance 同步中...') => { 
+    const l = document.getElementById('loading'); 
+    l.innerHTML = `<div class="loading-wrap"><svg class="icon spin" viewBox="0 0 24 24" fill="none" style="width:20px;height:20px;color:var(--blue);"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-dasharray="16 46" stroke-linecap="round"/></svg><span>${msg}</span></div>`; 
+    l.classList.add('show'); 
+};
+const hideLoading = () => document.getElementById('loading').classList.remove('show');
+
+const customAlert = (msg, isHtml = false) => new Promise(resolve => {
+    const m = document.getElementById('customModal');
+    if(isHtml) document.getElementById('customModalMsg').innerHTML = msg; else document.getElementById('customModalMsg').innerText = msg;
+    document.getElementById('customModalBtnCancel').style.display = 'none';
+    const okBtn = document.getElementById('customModalBtnOk');
+    okBtn.onclick = () => { m.classList.remove('show'); resolve(true); };
+    m.classList.add('show'); okBtn.focus();
+});
+
+const customConfirm = (msg) => new Promise(resolve => {
+    const m = document.getElementById('customModal'); document.getElementById('customModalMsg').innerText = msg;
+    const cancelBtn = document.getElementById('customModalBtnCancel'), okBtn = document.getElementById('customModalBtnOk');
+    cancelBtn.style.display = 'block';
+    const close = (res) => { m.classList.remove('show'); resolve(res); };
+    cancelBtn.onclick = () => close(false); okBtn.onclick = () => close(true);
+    m.classList.add('show'); okBtn.focus();
+});
+
+document.addEventListener('keydown', (e) => {
+    const modal = document.getElementById('customModal'), help = document.getElementById('helpOverlay'), settings = document.getElementById('settingsOverlay');
+    const isModalOpen = modal.classList.contains('show');
+
+    if (e.key === 'Escape') {
+        if (isModalOpen) {
+            const cancelBtn = document.getElementById('customModalBtnCancel');
+            if (cancelBtn.style.display !== 'none') cancelBtn.click(); else document.getElementById('customModalBtnOk').click();
+        } else if (settings.classList.contains('show')) toggleSettings();
+        else if (help.classList.contains('show')) toggleHelp();
+        else closeSuggestions();
+    }
+    
+    if (e.key === 'Enter' && isModalOpen) { e.preventDefault(); document.getElementById('customModalBtnOk').click(); }
+
+    if (!isModalOpen && !settings.classList.contains('show') && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+        if (e.key === 'ArrowLeft') { e.preventDefault(); prevDay(); }
+        if (e.key === 'ArrowRight') { e.preventDefault(); nextDay(); }
+    }
+});
+
+document.addEventListener('click', (e) => {
+    const sug = document.getElementById('stockSuggest');
+    if (sug && sug.style.display === 'block' && !e.target.closest('.stock-search')) closeSuggestions();
+    if(e.target.id === 'settingsOverlay') toggleSettings();
+    if(e.target.id === 'helpOverlay') toggleHelp();
+});

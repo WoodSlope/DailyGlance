@@ -1,0 +1,401 @@
+/* DailyGlance [2] - split from dailyglance.html. Keep classic script order. */
+// ==========================================
+// [2] 接口与数据层 (API & Data Layer)
+// ==========================================
+
+const INDEX_CONFIG = { sh: {name: '上证指数', eastmoney: '1.000001', tencent: 'sh000001'}, cy: {name: '创业板指', eastmoney: '0.399006', tencent: 'sz399006'}, zz1000: {name: '中证1000', eastmoney: '1.000852', tencent: 'sh000852'}, kc50: {name: '科创50', eastmoney: '1.000688', tencent: 'sh000688'} };
+const INDEX_IDS = Object.keys(INDEX_CONFIG);
+function getIndexConfig(id) { return INDEX_CONFIG[id] || null; }
+function resolveSecid(id) { return getIndexConfig(id)?.eastmoney || id; }
+function resolveTencentSymbol(id) { const cfg = getIndexConfig(id); if(cfg) return cfg.tencent; let cleanCode = id.includes('.') ? id.split('.')[1] : id; return cleanCode.startsWith('6') ? 'sh' + cleanCode : 'sz' + cleanCode; }
+
+const STOCK_TOKEN='D43BF722C8E33BDC906FB84D85E326E8';
+function codeToSecid(c){ return c.match(/^6/) ? '1.' + c : '0.' + c }
+const STOCK_DATABASE = [
+    {Code:'601398',Name:'工商银行'},{Code:'601939',Name:'建设银行'},{Code:'601988',Name:'中国银行'},{Code:'601318',Name:'中国平安'},{Code:'600519',Name:'贵州茅台'},{Code:'000858',Name:'五粮液'},{Code:'000333',Name:'美的集团'},{Code:'002594',Name:'比亚迪'},{Code:'300750',Name:'宁德时代'},{Code:'601012',Name:'隆基绿能'},{Code:'002371',Name:'北方华创'},{Code:'603501',Name:'韦尔股份'},{Code:'002475',Name:'立讯精密'},{Code:'600276',Name:'恒瑞医药'},{Code:'300760',Name:'迈瑞医疗'},{Code:'601899',Name:'紫金矿业'}
+];
+let stockCache = [];
+
+function getBJDate() { return new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Shanghai"})); }
+function isMarketOpen() { const now = getBJDate(), day = now.getDay(), m = now.getHours() * 60 + now.getMinutes(); return day !== 0 && day !== 6 && m >= 9 * 60 + 15 && m <= 15 * 60 + 15; }
+function isAfterMarketClose() { const now = getBJDate(), day = now.getDay(), m = now.getHours() * 60 + now.getMinutes(); return day === 0 || day === 6 || m > 15 * 60 + 15; }
+function getLastTradingDate() { let d = getBJDate(), day = d.getDay(), m = d.getHours() * 60 + d.getMinutes(); if(day === 0) d.setDate(d.getDate() - 2); else if(day === 6) d.setDate(d.getDate() - 1); else if(day === 1 && m <= 15 * 60 + 15) d.setDate(d.getDate() - 3); else if(m <= 15 * 60 + 15) d.setDate(d.getDate() - 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function isValidPrice(price, id) { return !isNaN(price) && price > 0; }
+function getActiveData() { return state.period === 'weekly' ? state.weeklyData[state.id] : state.rawData[state.id]; }
+function rememberPeriodLock(idx=state.lockIdx, period=state.period) { if(!state.periodLocks) state.periodLocks = {daily:-1, weekly:-1}; state.periodLocks[period] = idx; }
+function setLockIdx(idx) { state.lockIdx = idx; rememberPeriodLock(idx); }
+function getPeriodLock(period=state.period) { return state.periodLocks?.[period] ?? -1; }
+
+function findDateIndex(data, date, id = '') {
+    if(!data || !data.length) return -1;
+    const cacheKey = `${id}_${date}`;
+    if (dateIndexCache.has(cacheKey)) return dateIndexCache.get(cacheKey);
+    let l = 0, r = data.length - 1, res = -1;
+    while (l <= r) {
+        let m = (l + r) >> 1;
+        if (data[m].date === date) { res = m; break; }
+        else if (data[m].date < date) { res = m; l = m + 1; }
+        else r = m - 1;
+    }
+    if (res === -1) res = data.length - 1; 
+    dateIndexCache.set(cacheKey, res); 
+    return res;
+}
+
+function alignLockToPeriod(targetPeriod, anchorDate) {
+    const data = targetPeriod === 'weekly' ? state.weeklyData[state.id] : state.rawData[state.id];
+    if(!data || !data.length) return -1;
+    if(anchorDate) return findDateIndex(data, anchorDate, state.id);
+    const saved = getPeriodLock(targetPeriod);
+    if(saved >= 0 && saved < data.length) return saved;
+    return data.length - 1;
+}
+
+function getSafeIndex(data) {
+    if (!data || data.length === 0) return -1;
+    if (state.lockIdx < 0 || state.lockIdx >= data.length) { setLockIdx(data.length - 1); return data.length - 1; }
+    return state.lockIdx;
+}
+
+function convertDailyToWeekly(dailyData) {
+    if (!dailyData || !dailyData.length) return [];
+    const weekly = []; let currentWeekKey = null, currentWeek = null;
+    for (const d of dailyData) {
+        const dateObj = new Date(d.date + "T00:00:00Z"); const day = dateObj.getUTCDay() || 7;
+        dateObj.setUTCDate(dateObj.getUTCDate() - day + 1);
+        const wk = `${dateObj.getUTCFullYear()}-${String(dateObj.getUTCMonth()+1).padStart(2,'0')}-${String(dateObj.getUTCDate()).padStart(2,'0')}`;
+        if (wk !== currentWeekKey) {
+            if (currentWeek) weekly.push(currentWeek);
+            currentWeekKey = wk; currentWeek = { date: d.date, open: d.open, high: d.high, low: d.low, close: d.close, vol: d.vol, amt: d.amt };
+        } else {
+            currentWeek.date = d.date; currentWeek.high = Math.max(currentWeek.high, d.high); currentWeek.low = Math.min(currentWeek.low, d.low);
+            currentWeek.close = d.close; currentWeek.vol += d.vol; currentWeek.amt += d.amt;
+        }
+    }
+    if (currentWeek) weekly.push(currentWeek); 
+    return weekly;
+}
+
+function setRawData(id, data) {
+    state.rawData[id] = data;
+    if (data) state.weeklyData[id] = convertDailyToWeekly(data); else state.weeklyData[id] = null;
+    if (id === state.id) markIndicatorsDirty();
+    clearDerivedCaches();
+}
+
+const requestManager = {
+    limiters: new Map(),
+    async fetchRealtimeWithThrottle(id) {
+        const now = Date.now(), s = this.limiters.get(id) || { lastCall: 0, isFetching: false };
+        if (s.isFetching) return null; if (now - s.lastCall < SYS_CONFIG.THROTTLE_MS) return null;
+        s.isFetching = true; this.limiters.set(id, s);
+        try { const rt = await getRealtimePriceJSONP(id); s.lastCall = Date.now(); return rt; } 
+        catch (e) { return null; } 
+        finally { s.isFetching = false; this.limiters.set(id, s); }
+    }
+};
+
+function jsonpFetchEastmoneyKline(id) {
+    return new Promise(resolve => {
+        const secid = resolveSecid(id), cb = 'em_kline_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+        const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&end=20500101&lmt=1000&cb=${cb}`;
+        let cl = false; const cleanup = () => { if(cl) return; cl=true; clearTimeout(timer); delete window[cb]; const s = document.getElementById(cb); if(s) s.remove(); };
+        const timer = setTimeout(() => { cleanup(); resolve([]); }, 8000);
+        window[cb] = data => { 
+            cleanup(); 
+            if(data && data.data && data.data.klines) resolve(data.data.klines.map(l => { const p = l.split(','); return { date: p[0], open: parseFloat(p[1]), close: parseFloat(p[2]), high: parseFloat(p[3]), low: parseFloat(p[4]), vol: parseFloat(p[5]), amt: parseFloat(p[6]) }; }).filter(item => isValidPrice(item.close, id))); 
+            else resolve([]);
+        };
+        const script = document.createElement('script'); script.id = cb; script.src = url; script.onerror = () => { cleanup(); resolve([]); }; document.head.appendChild(script);
+    });
+}
+
+function jsonpFetchTencentKline(id) {
+    return new Promise(resolve => {
+        let symbol = resolveTencentSymbol(id);
+        const cb = 'tx_kline_' + Date.now(), url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${symbol},day,,,1000,qfq&_var=${cb}`;
+        let cl = false; const cleanup = () => { if(cl) return; cl = true; clearTimeout(timer); delete window[cb]; const s = document.getElementById(cb); if(s) s.remove(); };
+        const timer = setTimeout(() => { cleanup(); resolve([]); }, 5000); window[cb] = undefined;
+        const script = document.createElement('script'); script.id = cb; script.src = url;
+        script.onload = () => { 
+            const payload = window[cb]; cleanup(); 
+            if(payload && payload.code === 0 && payload.data && payload.data[symbol]) { 
+                const klines = payload.data[symbol].qfqday || payload.data[symbol].day; 
+                if(!klines) { resolve([]); return; } 
+                resolve(klines.map(p => ({ date: p[0], open: parseFloat(p[1]), close: parseFloat(p[2]), high: parseFloat(p[3]), low: parseFloat(p[4]), vol: parseFloat(p[5]), amt: p.length > 6 ? parseFloat(p[6]) : (parseFloat(p[5]) * parseFloat(p[2]) * 100) })).filter(item => isValidPrice(item.close, id))); 
+            } else resolve([]); 
+        };
+        script.onerror = () => { cleanup(); resolve([]); }; document.head.appendChild(script);
+    });
+}
+
+function getRealtimePriceJSONP(id) {
+    return new Promise(resolve => {
+        const symbol = resolveTencentSymbol(id), varName = 'v_' + symbol;
+        const script = document.createElement('script'); script.src = `https://qt.gtimg.cn/q=${symbol}`; script.charset = 'GBK';
+        let cl = false; const cleanup = () => { if(cl) return; cl = true; clearTimeout(timer); if(script.parentNode) script.remove(); };
+        const timer = setTimeout(() => { cleanup(); resolve(null); }, 5000);
+        script.onload = () => { 
+            cleanup(); 
+            if(typeof window[varName] !== 'undefined') { 
+                const fields = window[varName].split('~'); 
+                if(fields.length >= 6) { 
+                    const price = parseFloat(fields[3]) || 0; 
+                    if(price > 0) { 
+                        const now = getBJDate(), localDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`; 
+                        resolve({ date: localDate, open: parseFloat(fields[5])||price, high: parseFloat(fields[33])||price, low: parseFloat(fields[34])||price, close: price, vol: parseInt(fields[36])||0, amt: parseFloat(fields[37])||0 }); 
+                        return; 
+                    } 
+                } 
+            } 
+            resolve(null); 
+        };
+        script.onerror = () => { cleanup(); resolve(null); }; document.head.appendChild(script);
+    });
+}
+
+async function syncDataWithHistory(id) { 
+    let data = await jsonpFetchEastmoneyKline(id); if(data && data.length >= 30) return data; 
+    data = await jsonpFetchTencentKline(id); if(data && data.length >= 30) return data; 
+    return null; 
+}
+
+async function syncDataIncremental(id) { 
+    try { 
+        const cached = await dbGet(id); 
+        if(!cached || !cached.data || !cached.data.length) return await syncDataWithHistory(id); 
+        
+        const fresh = await syncDataWithHistory(id); 
+        if(!fresh || !fresh.length) return cached.data; 
+
+        const lastCached = cached.data[cached.data.length - 1];
+        const matchingFresh = fresh.find(d => d.date === lastCached.date);
+        
+        if (matchingFresh && Math.abs(matchingFresh.close - lastCached.close) / lastCached.close > SYS_CONFIG.EX_RIGHT_TOLERANCE) return fresh; 
+
+        const mergedMap = new Map(); 
+        cached.data.forEach(item => mergedMap.set(item.date, item)); 
+        fresh.forEach(item => mergedMap.set(item.date, item)); 
+        return Array.from(mergedMap.values()).sort((a, b) => a.date.localeCompare(b.date)); 
+    } catch(e) { return await getCachedData(id) || null; } 
+}
+
+async function syncData(id) { 
+    const cached = await getCachedData(id), now = getBJDate(), today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`; 
+    const hasEnough = cached && cached.length >= 30; 
+    
+    if(isMarketOpen()) { 
+        if(hasEnough) { 
+            const incremental = await syncDataIncremental(id); 
+            if(incremental && incremental.length > 0) { await dbSet(id, incremental); cached.length = 0; Array.prototype.push.apply(cached, incremental); } 
+            const rt = await requestManager.fetchRealtimeWithThrottle(id); 
+            if(rt) { if(cached[cached.length-1].date === today) cached[cached.length-1] = rt; else cached.push(rt); await dbSet(id, cached); } 
+            return cached; 
+        } 
+        const data = await syncDataWithHistory(id); 
+        if(data && data.length >= 30) { await dbSet(id, data); return data; } 
+        return hasEnough ? cached : null; 
+    } else { 
+        if(hasEnough) { 
+            const incremental = await syncDataIncremental(id); 
+            if(incremental && incremental.length > 0) { await dbSet(id, incremental); return incremental; } 
+            return cached; 
+        } 
+        const data = await syncDataWithHistory(id); 
+        if(data && data.length >= 30) { await dbSet(id, data); return data; } 
+        return null; 
+    } 
+}
+
+async function checkCacheNeedUpdate(id) { 
+    const cached = await dbGet(id); 
+    if(!cached || !cached.data || !cached.data.length) return { needUpdate: true, reason: '无数据' }; 
+    const ld = cached.data[cached.data.length-1].date, ltd = getLastTradingDate(); 
+    if(ld < ltd) return { needUpdate: true, reason: '数据过期' }; 
+    return { needUpdate: false, reason: '已最新' }; 
+}
+
+const lastUpdateClicks = new Map(); 
+async function handleUpdateData(forceFull = false) { 
+    const btn = document.getElementById('updateDataBtn'); if(!btn) return; 
+    if(!state.id) return; 
+    
+    const now = Date.now(), lastClick = lastUpdateClicks.get(state.id) || 0;
+    if(!forceFull && now - lastClick < SYS_CONFIG.UPDATE_COOLDOWN) { await customAlert(`频繁请求限制。此标的更新需等待 ${Math.ceil((SYS_CONFIG.UPDATE_COOLDOWN-(now-lastClick))/1000)} 秒。`); return; } 
+    lastUpdateClicks.set(state.id, now); 
+    
+    const info = await checkCacheNeedUpdate(state.id); 
+    const confirmed = await customConfirm(info.needUpdate ? `需要更新：${info.reason}\n继续？` : '数据已是最新，确认强制同步？');
+    if(!confirmed) return;
+    
+    btn.disabled = true; btn.innerHTML = SVG_ICONS.SPIN; 
+    try { 
+        const fresh = (!forceFull && !info.needUpdate) ? await syncDataIncremental(state.id) : await syncDataWithHistory(state.id); 
+        if(fresh && fresh.length) { 
+            await dbSet(state.id, fresh); setRawData(state.id, fresh); setLockIdx(getActiveData()?.length-1 || -1); 
+            updateAllIndicators(); draw(); safeUpdateSidebar(); 
+            await customAlert(`同步成功！K线数量：${fresh.length}`); 
+        } else { await customAlert('数据同步失败！'); } 
+    } catch(e) { await customAlert('同步异常: ' + e.message); } 
+    finally { btn.disabled = false; btn.innerHTML = SVG_ICONS.UPDATE; } 
+}
+
+let DB = null; const DB_NAME = 'QuantProDB_v515', DB_VER = 1, STORE = 'kline';
+function openDB() { 
+    return new Promise(resolve => { 
+        const req = indexedDB.open(DB_NAME, DB_VER); 
+        req.onupgradeneeded = e => { if (!e.target.result.objectStoreNames.contains(STORE)) e.target.result.createObjectStore(STORE, { keyPath: 'id' }); }; 
+        req.onsuccess = e => { DB = e.target.result; resolve(); }; 
+        req.onerror = () => resolve(); 
+    }); 
+}
+function dbGet(id) { 
+    return new Promise(resolve => { 
+        if(!DB) return resolve(null); 
+        const req = DB.transaction(STORE, 'readonly').objectStore(STORE).get(id); 
+        req.onsuccess = e => resolve(e.target.result); req.onerror = () => resolve(null); 
+    }); 
+}
+function dbSet(id, data) { 
+    return new Promise(resolve => { 
+        if(!DB) return resolve(); 
+        const tx = DB.transaction(STORE, 'readwrite'); 
+        tx.objectStore(STORE).put({ id, data, updated: Date.now() }); 
+        tx.oncomplete = () => resolve(); tx.onerror = () => resolve(); 
+    }); 
+}
+async function getCachedData(id) { const c = await dbGet(id); return (c && c.data) ? c.data : null; }
+
+function getFinalVerdict(decision) {
+    const action = decision.simpleAction;
+    if (['清仓离场', '规避风险'].includes(action)) return { label:'强制防守', text:'核心防守或破位信号触发，严格规避系统性风险。' };
+    if (action === '执行离场') return { label:'主动撤退', text:'上行动能衰退或环境走弱，建议清空敞口，耐心等待。' };
+    if (action === '持币观望') return { label:'防守等待', text:'市场环境或个股动能不足，空仓观望为主。' };
+    if (action === '防守减仓') return { label:'控制敞口', text:'系统判定风险上升或动能衰减，建议主动降低持仓比例。' };
+    if (['轻仓建仓', '缓慢加仓'].includes(action)) return { label:'低吸试错', text:'左侧异动或动能初显，建议控制上限，小仓位试探。' };
+    if (['积极建仓', '顺势加仓'].includes(action)) return { label:'把握主升', text:'量价结构共振向好，动能充沛，可积极获取趋势利润。' };
+    if (['谨慎持有', '轻仓持有'].includes(action)) return { label:'轻仓观望', text:'处于震荡或分歧期，胜率盈亏比偏低，底仓持有观察。' };
+    if (['顺势抱单', '积极持有'].includes(action)) return { label:'趋势进攻', text:'处于主升或多头排列中，依托均线及防守位顺势持有。' };
+    return { label:'状态检测', text:'量化系统持续推演中...' };
+}
+
+function getRelativeStrength(stockData, date) {
+    const marketData = state.rawData.sh || [];
+    if(!stockData?.length || marketData.length < 25) return null;
+    const sIdx = findDateIndex(stockData, date, state.id);
+    const mIdx = findDateIndex(marketData, date, 'sh');
+    if(sIdx < 20 || mIdx < 20) return null;
+    const stockBase = stockData[sIdx - 20]?.close;
+    const marketBase = marketData[mIdx - 20]?.close;
+    if(!stockBase || !marketBase) return null;
+    const stockRet = (stockData[sIdx].close - stockBase) / stockBase * 100;
+    const marketRet = (marketData[mIdx].close - marketBase) / marketBase * 100;
+    const diff = stockRet - marketRet;
+    let label = '跟随大盘';
+    if(diff >= 5) label = '强于大盘';
+    else if(diff <= -5) label = '弱于大盘';
+    return { stockRet, marketRet, diff, label };
+}
+
+function getHoldingDiagnosis(idx, full, ind, meta, decision) {
+    const rs = getRelativeStrength(full, full[idx]?.date);
+    let status = '持仓观察', action = '按原策略执行，不主动补仓。';
+    if(decision.exit.level === '清仓防守' || decision.exit.level === '强离场') { 
+        status = '破位防守'; action = '优先处理风险部位，果断执行纪律止损。'; 
+    } else if(rs?.diff <= -5 && decision.position <= 30) { 
+        status = '弱势套牢'; action = '跌破趋势支撑，反弹无量时优先降仓或调仓。'; 
+    } else if(meta.windowScore >= STRATEGY.buyThreshold) { 
+        status = '结构转强'; action = '已有仓位按防守位管理，新仓仍看策略阈值。'; 
+    }
+    const rsText = rs ? `${rs.label}，20日相对大盘 ${rs.diff >= 0 ? '+' : ''}${rs.diff.toFixed(1)}%` : '相对强弱样本不足';
+    return { status, action, rsText };
+}
+
+async function clearAllCache() { 
+    if(DB) { 
+        const tx = DB.transaction(STORE, 'readwrite'); 
+        tx.objectStore(STORE).clear(); 
+        await new Promise(r => tx.oncomplete = r); 
+    } 
+    state.rawData = {}; 
+    state.weeklyData = {}; 
+    localStorage.removeItem('quant_strategy'); 
+    location.reload(); 
+}
+
+async function handleClearCache() { 
+    const confirmed = await customConfirm('确定要彻底清除所有本地数据缓存并重置系统吗？'); 
+    if(confirmed) {
+        clearAllCache().catch(async e => await customAlert('清除失败: '+e.message)); 
+    }
+}
+
+async function cachedFetch(id) {
+    let firstLoad = true;
+    const cachedResult = await dbGet(id);
+    if (cachedResult && cachedResult.data && cachedResult.data.length > 0 && id === state.id) {
+        setRawData(id, cachedResult.data);
+        setLockIdx(getActiveData()?.length - 1 || -1);
+        updateAllIndicators();
+        hideLoading();
+        renderMASelector();
+        requestAnimationFrame(() => { draw(); safeUpdateSidebar(); });
+        firstLoad = false;
+    }
+
+    const fresh = await syncData(id);
+    if (!fresh || fresh.length === 0) {
+        if (firstLoad) {
+            document.getElementById('loading').innerHTML = `<div class="loading-wrap" style="flex-direction:column;gap:16px;"><div class="text-bull" style="font-size:14px;font-weight:700;">数据加载失败</div><button onclick="location.reload()" style="padding:8px 24px;background:var(--blue);border:none;border-radius:4px;color:#fff;cursor:pointer;font-weight:600;outline:none;">重试</button></div>`;
+        }
+        return;
+    }
+
+    const old = state.rawData[id];
+    const hasUpdate = !old || fresh.length > old.length || fresh[fresh.length-1].date !== old[old.length-1].date;
+    
+    if (firstLoad || hasUpdate) {
+        setRawData(id, fresh);
+        setLockIdx(getActiveData()?.length - 1 || -1);
+        await dbSet(id, fresh);
+        if (id === state.id) {
+            if (firstLoad) { hideLoading(); renderMASelector(); }
+            updateAllIndicators();
+            requestAnimationFrame(() => { draw(); safeUpdateSidebar(); });
+        }
+    }
+    if (state.mode === 'index') renderIndexList(); 
+    if (state.mode === 'stock') renderWatchlist();
+}
+
+async function preloadCacheOnly() {
+    const symbols = [...INDEX_IDS];
+    if (state.watchlist && state.watchlist.length > 0) {
+        symbols.push(...state.watchlist.slice(0, 5).map(s => codeToSecid(s.code)).filter(s => !symbols.includes(s)));
+    }
+    for (const id of symbols) {
+        try {
+            const c = await dbGet(id);
+            if (c && c.data && c.data.length >= 30 && isValidPrice(c.data[c.data.length - 1].close, id)) {
+                setRawData(id, c.data);
+            }
+        } catch(e) {}
+    }
+}
+
+async function ensureMarketTemperatureData() {
+    for (const id of INDEX_IDS) {
+        if (state.rawData[id] && state.rawData[id].length >= 60) continue;
+        try {
+            const data = await syncData(id);
+            if (data && data.length >= 30) {
+                setRawData(id, data);
+                await dbSet(id, data);
+            }
+        } catch(e) {}
+    }
+    if (state.mode === 'index' || state.mode === 'stock') {
+        updateAllIndicators();
+        safeUpdateSidebar();
+    }
+}
