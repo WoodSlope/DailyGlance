@@ -88,9 +88,9 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 .nav-list-item .wl-close:hover { color: var(--red); }
 
 /* 图表工具栏 */
-.chart-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-shrink: 0; gap: 12px; flex-wrap: wrap; }
+.chart-toolbar { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; flex-shrink: 0; gap: 12px; flex-wrap: wrap; }
 .toolbar-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; flex: 1; }
-.toolbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.toolbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
 
 /* 分段控制器 */
 .segmented-control { background: var(--inner-bg); border-radius: var(--radius-sm); display: flex; padding: 3px; border: 1px solid var(--border-color); user-select: none; }
@@ -106,7 +106,7 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 .icon-btn .icon { width: 16px; height: 16px; }
 
 /* 均线选择器 */
-.ma-selector { display: flex; gap: 12px; align-items: center; padding-left: 10px; border-left: 1px solid var(--border-color); user-select: none; }
+.ma-selector { display: flex; gap: 12px; align-items: center; user-select: none; flex-wrap: wrap; }
 .ma-checkbox { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; cursor: pointer; transition: opacity 0.2s; }
 .ma-checkbox:hover { opacity: 0.8; }
 .ma-checkbox input { display: none; }
@@ -118,7 +118,7 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 .volume-chart-box { flex: 1.5; position: relative; border-top: 1px solid var(--border-color); min-height: 0; }
 .macd-chart-box { flex: 1.5; position: relative; border-top: 1px solid var(--border-color); min-height: 0; }
 .kdj-chart-box { flex: 1.5; position: relative; border-top: 1px solid var(--border-color); min-height: 0; }
-.main-chart-box canvas, .volume-chart-box canvas, .macd-chart-box canvas, .kdj-chart-box canvas { width: 100% !important; height: 100% !important; touch-action: none; }
+.main-chart-box canvas, .volume-chart-box canvas, .macd-chart-box canvas, .kdj-chart-box canvas { width: 100% !important; height: 100% !important; touch-action: pan-y; }
 
 /* === 右侧面板组件 === */
 .terminal-block { background: var(--sidebar-bg); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 16px; display: flex; flex-direction: column; box-shadow: inset 0 1px 1px rgba(255,255,255,0.02); }
@@ -211,7 +211,8 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 /* 模态框 */
 #customModal { display:flex; position:fixed; inset:0; background:rgba(11, 14, 20, 0.85); z-index:10000; align-items:center; justify-content:center; padding: 20px; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
 #customModal.show { opacity: 1; pointer-events: auto; }
-.custom-modal-box { background: var(--sidebar-bg); padding: 24px; border-radius: var(--radius-md); border: 1px solid var(--border-color); width: 100%; max-width: 360px; min-width: 280px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); text-align: center; transform: scale(0.95); transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+/* Backtest table UI fix */
+.custom-modal-box { background: var(--sidebar-bg); padding: 24px; border-radius: var(--radius-md); border: 1px solid var(--border-color); width: 100%; max-width: 420px; min-width: 280px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); text-align: center; transform: scale(0.95); transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
 #customModal.show .custom-modal-box { transform: scale(1); }
 .custom-modal-msg { margin-bottom:24px; color:var(--text-main); font-size:14px; line-height:1.6; text-align: left;}
 .custom-modal-btns { display:flex; gap:12px; justify-content:center; }
@@ -242,7 +243,7 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 .signal-config-list { font-size: 12px; line-height: 1.8; display: flex; flex-direction: column; gap: 4px; }
 
 /* 加载状态 */
-#loading { position: fixed; inset: 0; background: var(--dark-bg); display: flex; align-items: center; justify-content: center; z-index: 9999; color: var(--blue); font-size: 13px; font-weight: 700; transition: opacity 0.3s; opacity: 0; pointer-events: none; letter-spacing: 1px; }
+#loading { position: fixed; inset: 0; background: var(--dark-bg); display: flex; align-items: center; justify-content: center; z-index: 99999; color: var(--blue); font-size: 13px; font-weight: 700; transition: opacity 0.3s; opacity: 0; pointer-events: none; letter-spacing: 1px; }
 #loading.show { opacity: 1; pointer-events: auto; }
 
 /* 响应式调整 */
@@ -443,9 +444,11 @@ function isAfterMarketClose() {
     return day === 0 || day === 6 || m > 15 * 60 + 15; 
 }
 
+// QA修复 Bug 3: 补齐周末极端时间点的交易日回推防跌落逻辑
 function getLastTradingDate() {
     let d = getBJDate(), day = d.getDay(), m = d.getHours() * 60 + d.getMinutes();
     if(day === 0) d.setDate(d.getDate() - 2); 
+    else if(day === 6) d.setDate(d.getDate() - 1); 
     else if(day === 1 && m <= 15 * 60 + 15) d.setDate(d.getDate() - 3); 
     else if(m <= 15 * 60 + 15) d.setDate(d.getDate() - 1);
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -624,11 +627,11 @@ let globalSelectionSeq = 0;
 Object.assign(STRATEGY, STRATEGIES['稳健趋势型']);
 
 const renderCache = new Map();
-const decisionCache = new Map();
+const dateIndexCache = new Map();
 
 function clearDerivedCaches() {
-    decisionCache.clear();
     renderCache.clear();
+    dateIndexCache.clear();
 }
 
 const SIGNAL_VERSION = 'v4.1.1';
@@ -692,20 +695,31 @@ function rememberPeriodLock(idx=state.lockIdx, period=state.period) {
 }
 function setLockIdx(idx) { state.lockIdx = idx; rememberPeriodLock(idx); }
 function getPeriodLock(period=state.period) { return state.periodLocks?.[period] ?? -1; }
-function findNearestIndexByDate(data, date) {
+
+function findDateIndex(data, date, id = '') {
     if(!data || !data.length) return -1;
-    if(!date) return data.length - 1;
-    let exact = data.findIndex(d => d.date === date);
-    if(exact >= 0) return exact;
-    for(let i=data.length-1; i>=0; i--) if(data[i].date <= date) return i;
-    return 0;
+    const cacheKey = `${id}_${date}`;
+    if (dateIndexCache.has(cacheKey)) return dateIndexCache.get(cacheKey);
+
+    let l = 0, r = data.length - 1;
+    let res = -1;
+    while (l <= r) {
+        let m = (l + r) >> 1;
+        if (data[m].date === date) { res = m; break; }
+        else if (data[m].date < date) { res = m; l = m + 1; }
+        else r = m - 1;
+    }
+    if (res === -1) res = data.length - 1; // Fallback to latest if not found
+    dateIndexCache.set(cacheKey, res);
+    return res;
 }
+
 function alignLockToPeriod(targetPeriod, anchorDate) {
     const data = targetPeriod === 'weekly' ? state.weeklyData[state.id] : state.rawData[state.id];
     if(!data || !data.length) return -1;
     const saved = getPeriodLock(targetPeriod);
     if(saved >= 0 && saved < data.length) return saved;
-    return findNearestIndexByDate(data, anchorDate);
+    return findDateIndex(data, anchorDate, state.id);
 }
 
 function getSafeIndex(data) {
@@ -936,18 +950,20 @@ async function checkCacheNeedUpdate(id) {
     return {needUpdate:false, reason:'已最新'}; 
 }
 
-let lastUpdateClick=0; 
+const lastUpdateClicks = new Map(); 
 async function handleUpdateData(forceFull=false) { 
     const btn = document.getElementById('updateDataBtn'); 
     if(!btn) return; 
     
+    if(!state.id) return; 
     const now = Date.now(); 
-    if(!forceFull && now-lastUpdateClick < SYS_CONFIG.UPDATE_COOLDOWN) { 
-        await customAlert(`请等待 ${Math.ceil((SYS_CONFIG.UPDATE_COOLDOWN-(now-lastUpdateClick))/1000)} 秒。`); 
+    const lastClick = lastUpdateClicks.get(state.id) || 0;
+    
+    if(!forceFull && now - lastClick < SYS_CONFIG.UPDATE_COOLDOWN) { 
+        await customAlert(`频繁请求限制。此标的更新需等待 ${Math.ceil((SYS_CONFIG.UPDATE_COOLDOWN-(now-lastClick))/1000)} 秒。`); 
         return; 
     } 
-    lastUpdateClick = now; 
-    if(!state.id) return; 
+    lastUpdateClicks.set(state.id, now); 
     
     const info = await checkCacheNeedUpdate(state.id); 
     const confirmed = await customConfirm(info.needUpdate ? `需要更新：${info.reason}\n继续？` : '数据已是最新，确认强制同步？');
@@ -1017,33 +1033,41 @@ async function getCachedData(id) {
     return (c && c.data) ? c.data : null; 
 }
 
-function getFinalVerdict(decision, meta) {
-    if(decision.simpleAction === '清仓离场') {
-        return { label:'强制防守', text:'核心防守信号触发，严格清仓规避系统性风险。' };
+function getFinalVerdict(decision) {
+    const action = decision.simpleAction;
+    
+    if (['清仓离场', '规避风险'].includes(action)) {
+        return { label:'强制防守', text:'核心防守或破位信号触发，严格规避系统性风险。' };
     }
-    if(decision.simpleAction === '规避风险') {
-        return { label:'强制防守', text:'核心破位或高危信号触发，切勿盲目抄底，继续空仓避险。' };
+    if (action === '执行离场') {
+        return { label:'主动撤退', text:'上行动能衰退或环境走弱，建议清空敞口，耐心等待。' };
     }
-    if(decision.simpleAction === '离场观望') {
-        return { label:'执行离场', text:'上行动能衰退，建议清空仓位，耐心等待下次机会。' };
-    }
-    if(decision.simpleAction === '防守减仓') {
-        return { label:'控制敞口', text:'系统判定风险上升或动能衰减，建议主动降低仓位。' };
-    }
-    if(decision.market.label === '全面弱势' || decision.position === 0 || meta.inCooldown) {
+    if (action === '持币观望') {
         return { label:'防守等待', text:'市场环境或个股动能不足，空仓观望为主。' };
     }
-    if(decision.position <= 30) {
-        return { label:'轻仓观望', text:'胜率盈亏比偏低，仅适合低仓位试错或网格操作。' };
+    if (action === '防守减仓') {
+        return { label:'控制敞口', text:'系统判定风险上升或动能衰减，建议主动降低持仓比例。' };
     }
-    return { label:'可进攻', text:'量价结构共振向好，依托均线及防守位持有或加仓。' };
+    if (['轻仓建仓', '缓慢加仓'].includes(action)) {
+        return { label:'低吸试错', text:'左侧异动或动能初显，建议控制上限，小仓位试探。' };
+    }
+    if (['积极建仓', '顺势加仓'].includes(action)) {
+        return { label:'把握主升', text:'量价结构共振向好，动能充沛，可积极获取趋势利润。' };
+    }
+    if (['谨慎持有', '轻仓持有'].includes(action)) {
+        return { label:'轻仓观望', text:'处于震荡或分歧期，胜率盈亏比偏低，底仓持有观察。' };
+    }
+    if (['顺势抱单', '积极持有'].includes(action)) {
+        return { label:'趋势进攻', text:'处于主升或多头排列中，依托均线及防守位顺势持有。' };
+    }
+    return { label:'状态检测', text:'量化系统持续推演中...' };
 }
 
 function getRelativeStrength(stockData, date) {
     const marketData = state.rawData.sh || [];
     if(!stockData?.length || marketData.length < 25) return null;
-    const sIdx = findDateIndex(stockData, date);
-    const mIdx = findDateIndex(marketData, date);
+    const sIdx = findDateIndex(stockData, date, state.id);
+    const mIdx = findDateIndex(marketData, date, 'sh');
     if(sIdx < 20 || mIdx < 20) return null;
     const stockBase = stockData[sIdx - 20]?.close;
     const marketBase = marketData[mIdx - 20]?.close;
@@ -1490,18 +1514,10 @@ function getATR(data, idx, n=14) {
     return count ? sum / count : 0;
 }
 
-function findDateIndex(data, date) {
-    if(!data || !data.length) return -1;
-    let idx = data.findIndex(d => d.date === date);
-    if(idx >= 0) return idx;
-    for(let i=data.length-1; i>=0; i--) if(data[i].date <= date) return i;
-    return data.length - 1;
-}
-
 function getIndexTrend(id, date) {
     const data = state.period === 'weekly' ? state.weeklyData[id] : state.rawData[id];
     if(!data || data.length < 60) return null;
-    const idx = findDateIndex(data, date), ma20 = Calcs.ma(data, 20), ma60 = Calcs.ma(data, 60);
+    const idx = findDateIndex(data, date, id), ma20 = Calcs.ma(data, 20), ma60 = Calcs.ma(data, 60);
     if(idx < 60 || !ma20[idx] || !ma60[idx] || !data[idx]) return null;
     const close = data[idx].close, ma20Now = ma20[idx], ma60Now = ma60[idx], ma20Prev = ma20[Math.max(0, idx-5)] || ma20Now;
     let stateLabel = '震荡', score = 0;
@@ -1583,90 +1599,81 @@ function getExitSeverity(meta, idx, full, ind) {
     return { level:'无明确离场', detail:'暂未看到需要立即防守的核心离场信号' };
 }
 
-function roundPosition(v) { return Math.max(0, Math.min(80, Math.round(v / 10) * 10)); }
-
-function getIndicatorKey(data = getActiveData()) {
-    if(!data || !data.length) return '';
-    const last = data[data.length - 1];
-    return `${state.id}_${state.period}_${data.length}_${last.date}_${last.open}_${last.high}_${last.low}_${last.close}_${last.vol}_${last.amt}`;
+// === 核心逻辑：仓位分档控制 (Step-Sizing Quantization) ===
+function quantizePosition(val) {
+    const steps = [0, 10, 20, 30, 50, 80, 100];
+    return steps.reduce((prev, curr) => Math.abs(curr - val) < Math.abs(prev - val) ? curr : prev);
 }
 
-function markIndicatorsDirty() {
-    state.indicatorKey = '';
-}
+// === 状态机闭环核心 (FSM) - O(1) 预演算 ===
+function computeDecisionForIndex(idx, full, prevPos) {
+    const meta = getSignalMeta(idx, full, state.indicators);
+    const market = getMarketContext(full[idx].date);
+    const risk = getRiskContext(idx, full, state.indicators);
+    const exit = getExitSeverity(meta, idx, full, state.indicators);
+    const base = getBasePosition(idx, full, state.indicators, meta);
 
-function getDecisionContext(idx, full, ind, meta, depth = 0) {
-    const item = full[idx] || {};
-    const cacheKey = `${state.id}_${state.period}_${idx}_${item.date}_${item.close}_${item.vol}_${state.strategy}`;
-    
-    if (depth > 0 && decisionCache.has(cacheKey)) {
-        return decisionCache.get(cacheKey);
+    let rawPosition = base * market.coef * risk.coef;
+    let position = quantizePosition(Math.min(rawPosition, market.maxPosition));
+
+    const isCriticalExit = exit.level === '清仓防守' || exit.level === '强离场' || (meta.type||'').includes('规避') || (meta.type||'').includes('破位');
+
+    // 核心风控压制
+    if(isCriticalExit || meta.inCooldown) position = 0;
+    else if(exit.level === '减仓观察' || exit.level === '延续防守') position = quantizePosition(Math.min(position, 30));
+
+    // 预警压制
+    if(meta.warningSignals?.length) position = quantizePosition(Math.min(position, 40));
+    if(risk.score < 40) position = quantizePosition(Math.min(position, 20));
+
+    // 防震荡摩擦 (Friction Filter)
+    if (Math.abs(position - prevPos) <= 10 && position !== 0) {
+        position = prevPos;
     }
+    
+    // 无买点抱单状态在清零后的延续保护
+    if (prevPos === 0 && position > 0 && meta.type === '📈 趋势抱单') { position = 0; }
 
-    const base = getBasePosition(idx, full, ind, meta);
-    const market = getMarketContext(item.date);
-    const risk = getRiskContext(idx, full, ind);
-    const exit = getExitSeverity(meta, idx, full, ind);
-    
-    let position = roundPosition(Math.min(base * market.coef * risk.coef, market.maxPosition));
-    
-    if(exit.level === '清仓防守' || exit.level === '强离场' || meta.inCooldown || (meta.type||'').includes('离场') || (meta.type||'').includes('破位')) position = 0;
-    else if(exit.level === '减仓观察' || exit.level === '延续防守') position = Math.min(position, 30);
-    
-    if(meta.warningSignals?.length) position = Math.min(position, 40);
-    if(risk.score < 40) position = Math.min(position, 20);
-    
-    let prevAdv = 0;
-    if (depth < 40 && idx > 0) {
-        const prevMeta = getSignalMeta(idx - 1, full, ind);
-        prevAdv = getDecisionContext(idx - 1, full, ind, prevMeta, depth + 1).position;
-    }
+    let simpleAction = '持币观望', simpleColor = 'var(--text-dim)', bsMark = null;
 
-    if (prevAdv === 0 && position > 0 && meta.type === '📈 趋势抱单') { position = 0; }
-
-    const signalReady = meta.windowScore >= STRATEGY.buyThreshold;
-    
-    let simpleAction = '持币观望', simpleColor = 'var(--text-dim)';
+    // === QA修复: 严格限定 B/S 仅在 开仓 和 清仓 瞬间打标，避免图表被微小加减仓污染 ===
     if (position === 0) {
-        const isCriticalExit = exit.level === '清仓防守' || exit.level === '强离场' || (meta.type||'').includes('规避') || (meta.type||'').includes('破位');
-        if (prevAdv > 0) {
-            simpleAction = isCriticalExit ? '清仓离场' : '离场观望'; 
+        if (prevPos > 0) { // Delta < 0 (彻底清仓)
+            simpleAction = isCriticalExit ? '清仓离场' : '执行离场'; 
             simpleColor = 'var(--down-color)'; 
-        } else {
+            bsMark = 'S'; // 只在这里标记 S
+        } else { // Delta == 0
             simpleAction = isCriticalExit ? '规避风险' : '持币观望'; 
             simpleColor = isCriticalExit ? 'var(--down-color)' : 'var(--text-dim)'; 
         }
-    } else if (position < prevAdv) {
-        // 关键逻辑补齐：只要仓位目标调低，强行输出黄灯减仓警告
+    } else if (position < prevPos) { // Delta < 0 (仅减仓)
         simpleAction = '防守减仓';
         simpleColor = 'var(--yellow)';
-    } else if (position <= 30) {
-        if (exit.level === '减仓观察' || exit.level === '延续防守' || meta.warningSignals?.length) {
-            simpleAction = '谨慎试探'; 
-            simpleColor = 'var(--yellow)';
-        } else { 
-            simpleAction = '轻仓试探'; 
-            simpleColor = 'var(--blue)'; 
+        // 减仓不触发主图 S，保持图表干净
+    } else if (position > prevPos) { // Delta > 0 (建仓或加仓)
+        if (prevPos === 0) {
+            simpleAction = position <= 30 ? '轻仓建仓' : '积极建仓';
+            bsMark = 'B'; // 仅在首次开仓标记 B
+        } else {
+            simpleAction = position <= 30 ? '缓慢加仓' : '顺势加仓';
+            // 加仓不触发主图 B，保持图表干净
         }
-    } else {
-        if (meta.type === '📈 趋势抱单' && meta.buySignals.length === 0) { 
-            simpleAction = '顺势持有'; 
-            simpleColor = 'var(--up-color)'; 
-        } else { 
-            simpleAction = '积极持有'; 
-            simpleColor = 'var(--up-color)'; 
+        simpleColor = position <= 30 ? 'var(--blue)' : 'var(--up-color)';
+    } else { // Delta == 0
+        if (position <= 30) {
+            simpleAction = (exit.level === '减仓观察' || exit.level === '延续防守' || meta.warningSignals?.length) ? '谨慎持有' : '轻仓持有';
+            simpleColor = simpleAction === '谨慎持有' ? 'var(--yellow)' : 'var(--blue)';
+        } else {
+            simpleAction = (meta.type === '📈 趋势抱单' && meta.buySignals.length === 0) ? '顺势抱单' : '积极持有';
+            simpleColor = 'var(--up-color)';
         }
     }
 
-    const result = { 
-        basePosition: base, position, prevAdv, market, risk, exit, signalReady, simpleAction, simpleColor 
+    return { 
+        basePosition: base, position, prevAdv: prevPos, market, risk, exit, 
+        signalReady: meta.windowScore >= STRATEGY.buyThreshold, 
+        simpleAction, simpleColor, bsMark 
     };
-
-    if (idx < full.length - 1) {
-        decisionCache.set(cacheKey, result);
-    }
-
-    return result;
 }
 
 function getWeeklyDirectionContext(idx, full, ind) {
@@ -1691,6 +1698,17 @@ function getWeeklyDirectionContext(idx, full, ind) {
     return { direction, directionReason, position, repair, dailyImpact, ma20, ma60, support: low20, pressure: high20, distMA20 };
 }
 
+function getIndicatorKey(data = getActiveData()) {
+    if(!data || !data.length) return '';
+    const last = data[data.length - 1];
+    // 已注入 state.strategy 特征码
+    return `${state.id}_${state.period}_${state.strategy}_${data.length}_${last.date}_${last.open}_${last.high}_${last.low}_${last.close}_${last.vol}_${last.amt}`;
+}
+
+function markIndicatorsDirty() {
+    state.indicatorKey = '';
+}
+
 function updateAllIndicators(incrementalIdx = -1) {
     const full = getActiveData(); if(!full || !full.length) return;
     const nextKey = getIndicatorKey(full);
@@ -1701,11 +1719,20 @@ function updateAllIndicators(incrementalIdx = -1) {
         state.indicators.macd = Calcs.macd(full); 
         state.indicators.rsi = Calcs.rsi(full); 
         state.indicators.kdj = Calcs.kdj(full);
+        
+        let prevPos = 0;
         for(let i=0; i<full.length; i++) {
-            if (full[i]?._signals && full[i]._signalVersion === SIGNAL_VERSION && i !== full.length - 1) continue; 
+            // QA修复: 确保缓存不仅校验长度，还严格校验策略指纹，杜绝切换策略不生效的幽灵缓存
+            if (full[i]?._signals && full[i]._signalVersion === SIGNAL_VERSION && full[i]._strategy === state.strategy && i !== full.length - 1 && full[i]._decision) {
+                prevPos = full[i]._decision.position;
+                continue; 
+            }
             if (full[i]) {
                 full[i]._signals = calculateDailySignals(i, full, state.indicators);
                 full[i]._signalVersion = SIGNAL_VERSION;
+                full[i]._strategy = state.strategy;
+                full[i]._decision = computeDecisionForIndex(i, full, prevPos);
+                prevPos = full[i]._decision.position;
             }
         }
     } else {
@@ -1747,6 +1774,10 @@ function updateAllIndicators(incrementalIdx = -1) {
         
         full[i]._signals = calculateDailySignals(i, full, state.indicators);
         full[i]._signalVersion = SIGNAL_VERSION;
+        full[i]._strategy = state.strategy;
+        
+        const prevPos = full[i-1]?._decision?.position || 0;
+        full[i]._decision = computeDecisionForIndex(i, full, prevPos);
     }
     state.indicatorKey = nextKey;
 }
@@ -1838,6 +1869,43 @@ function draw() {
         }
     };
     
+    // === 核心功能：B/S 买卖点渲染 ===
+    const bsMarkerPlugin = {
+        id: 'bsMarkerPlugin',
+        afterDatasetsDraw: c => {
+            const { ctx, chartArea: { top, bottom, left, right }, scales: { x, y } } = c;
+            const dss = c.data.datasets.find(d => d.isCandle === true && d.candleData);
+            if (!dss || state.period === 'weekly') return; 
+
+            const activeData = getActiveData();
+            const slice = activeData.slice(-actualRange);
+
+            ctx.save();
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = 'bold 11px "JetBrains Mono", monospace';
+
+            slice.forEach((d, i) => {
+                const px = x.getPixelForValue(i);
+                if (px < left || px > right || !d._decision) return;
+                
+                // 仅当明确出现代表 波段起点和终点 的 B 或 S 时才进行渲染
+                if (d._decision.bsMark === 'B') {
+                    ctx.fillStyle = colorUpHex;
+                    let py = y.getPixelForValue(d.low) + 14; 
+                    if (py > bottom - 8) py = bottom - 8; 
+                    ctx.fillText('B', px, py);
+                } else if (d._decision.bsMark === 'S') {
+                    ctx.fillStyle = colorDownHex;
+                    let py = y.getPixelForValue(d.high) - 14; 
+                    if (py < top + 8) py = top + 8;
+                    ctx.fillText('S', px, py);
+                }
+            });
+            ctx.restore();
+        }
+    };
+    
     const commonTooltipOptions = {
         enabled: true, mode: 'index', intersect: false, animation: false,
         backgroundColor: '#1c2130', titleColor: '#f8fafc', bodyColor: '#8b9eb7', borderColor: '#2b313f', borderWidth: 1, cornerRadius: 4,
@@ -1857,10 +1925,9 @@ function draw() {
     
     const baseOptions = { responsive:true, maintainAspectRatio:false, animation:false, layout:ly, interaction: { mode: 'index', intersect: false } };
 
-    uc('main','mainChart',{ type:'line', data:{labels, datasets:ds}, options:{ ...baseOptions, plugins:{ legend:{display:false}, tooltip: commonTooltipOptions }, scales:{x:{display:false}, y:yc} }, plugins: [localAlignPlugin] });
+    uc('main','mainChart',{ type:'line', data:{labels, datasets:ds}, options:{ ...baseOptions, plugins:{ legend:{display:false}, tooltip: commonTooltipOptions }, scales:{x:{display:false}, y:yc} }, plugins: [localAlignPlugin, bsMarkerPlugin] });
     
     const volColors = slice.map(d => d.close >= d.open ? colorUpHex : colorDownHex);
-    // Add opacity to volume bars
     const volColorsOp = volColors.map(c => c + '80');
 
     uc('vol','volumeChart',{ type:'bar', data:{ labels, datasets:[{ data:slice.map(d=>d.vol), backgroundColor:volColorsOp }] }, options: { ...baseOptions, plugins:{ legend:{display:false}, tooltip:{mode:'index', intersect:false, animation: false} }, scales:{x:{display:false}, y:yv} }, plugins: [localAlignPlugin] });
@@ -1906,15 +1973,15 @@ function generateAnalysisHTML(idx, full, meta) {
     const S = STRATEGY;
     const rawToday = full[idx]?._signals || [];
     const ptsRaw = rawToday.length > 0 
-        ? UI.sectionTitle('今日触发形态', 'var(--text-main)') + rawToday.map(sig => {
+        ? UI.sectionTitle('近期触发形态', 'var(--text-main)') + rawToday.map(sig => {
             const isMonitored = S.buySignals.includes(sig) || S.exitSignals.includes(sig) || S.warningSignals?.includes(sig);
             return UI.signalRow(getUserSignalText(sig), sig, isMonitored, sig.startsWith('B'));
           }).join('')
-        : UI.sectionTitle('今日无强技术形态', 'var(--text-dim)');
+        : UI.sectionTitle('近期无强技术形态', 'var(--text-dim)');
 
     let ptsValid = '';
     if(meta.windowSignals && meta.windowSignals.length > 0) {
-        ptsValid += UI.sectionTitle('近期有效信号 (构建动能)', 'var(--text-main)');
+        ptsValid += UI.sectionTitle('历史有效信号 (构建动能)', 'var(--text-main)');
         const grouped = {};
         meta.windowSignals.forEach(w => { if(!grouped[w.day]) grouped[w.day]=[]; grouped[w.day].push(w.signal); });
         Object.keys(grouped).sort((a,b)=>b-a).forEach(dIdx => {
@@ -1924,12 +1991,12 @@ function generateAnalysisHTML(idx, full, meta) {
         });
     }
 
-    const signalsHtmlBlock = `
+    const signalsHtmlBlock = state.period === 'daily' ? `
         <div class="terminal-block">
-            <div class="block-title">底层技术信号</div>
+            <div class="block-title">底层技术信号 (日线级)</div>
             <div class="signal-compact">${ptsRaw}</div>
             <div class="signal-compact" style="margin-top: 8px;">${ptsValid}</div>
-        </div>`;
+        </div>` : '';
 
     if(state.mode === 'index') {
         const market = getMarketContext(full[idx]?.date);
@@ -1998,42 +2065,41 @@ function generateAnalysisHTML(idx, full, meta) {
                     <div class="level-pill"><span>周线压力区 (箱体上沿)</span><strong>${fmt(wk.pressure)}</strong></div>
                 </div>
             </div>
-            ${signalsHtmlBlock}
-            <div class="risk-note">周线信号可用于过滤日线级别噪音，帮助判断当前是处于反弹还是主升浪。</div>`;
+            <div class="risk-note">周线级别为主力中长线风向标，不输出直接买卖积分。用于过滤日线噪音，辅助判断当前为反弹还是主升浪。</div>`;
     }
 
-    const decision = getDecisionContext(idx, full, state.indicators, meta);
+    const decision = full[idx]?._decision;
+    if (!decision) return ''; 
+    
     const adv = decision.position, prevAdv = decision.prevAdv;
     
     let ct = `维持在 ${adv}%`;
     if(adv===0 && prevAdv===0) ct = '只观察，不开新仓';
     else if (adv > prevAdv) { 
-        if (prevAdv === 0) {
-            ct = meta.windowScore >= STRATEGY.buyThreshold ? `动能转强，建仓上限 ${adv}%` : `左侧异动，试探建仓上限 ${adv}%`; 
-        } else {
-            ct = `环境转暖，风控仓位上调至 ${adv}%`; 
-        }
+        if (prevAdv === 0) ct = meta.windowScore >= STRATEGY.buyThreshold ? `动能转强，建仓上限 ${adv}%` : `左侧异动，试探建仓上限 ${adv}%`; 
+        else ct = `环境转暖，风控仓位上调至 ${adv}%`; 
     }
-    else if(adv<prevAdv) { ct = `降至 ${adv}%${adv===0?' (严格执行防守)':''}`; }
+    else if(adv < prevAdv) ct = `降至 ${adv}%${adv===0?' (严格执行防守)':''}`; 
     
-    const verdict = getFinalVerdict(decision, meta);
+    const verdict = getFinalVerdict(decision);
     const cleanMetaType = meta.type.replace(/[✅⚠️👀📈🛑🚪⏸️]/g, '').trim() || meta.type;
     const riskFlags = decision.risk.flags.length ? decision.risk.flags.join(' / ') : '处于安全空间，无明显偏离';
     const diagnosis = state.mode === 'stock' ? getHoldingDiagnosis(idx, full, state.indicators, meta, decision) : null;
 
     let topCardBg = 'var(--inner-bg)', leftBorder = 'var(--border-color)';
-    if (['清仓离场', '离场观望', '规避风险'].includes(decision.simpleAction)) { topCardBg = 'rgba(14, 203, 129, 0.05)'; leftBorder = 'var(--down-color)'; } 
-    else if (['防守减仓', '谨慎试探', '维持防守'].includes(decision.simpleAction)) { topCardBg = 'rgba(245, 166, 35, 0.05)'; leftBorder = 'var(--yellow)'; }
-    else if (decision.simpleAction === '轻仓试探') { topCardBg = 'rgba(61, 109, 249, 0.05)'; leftBorder = 'var(--blue)'; }
-    else if (['积极持有', '顺势持有'].includes(decision.simpleAction)) { topCardBg = 'rgba(246, 70, 93, 0.05)'; leftBorder = 'var(--up-color)'; }
-    else if (decision.simpleAction === '持币观望') { topCardBg = 'rgba(139, 158, 183, 0.05)'; leftBorder = 'var(--text-dim)'; } 
+    const a = decision.simpleAction;
+    if (['清仓离场', '执行离场', '规避风险'].includes(a)) { topCardBg = 'rgba(14, 203, 129, 0.05)'; leftBorder = 'var(--down-color)'; } 
+    else if (['防守减仓', '谨慎持有'].includes(a)) { topCardBg = 'rgba(245, 166, 35, 0.05)'; leftBorder = 'var(--yellow)'; }
+    else if (['轻仓建仓', '缓慢加仓', '轻仓持有'].includes(a)) { topCardBg = 'rgba(61, 109, 249, 0.05)'; leftBorder = 'var(--blue)'; }
+    else if (['积极建仓', '顺势加仓', '顺势抱单', '积极持有'].includes(a)) { topCardBg = 'rgba(246, 70, 93, 0.05)'; leftBorder = 'var(--up-color)'; }
+    else if (a === '持币观望') { topCardBg = 'rgba(139, 158, 183, 0.05)'; leftBorder = 'var(--text-dim)'; }
 
-    const cooldownHtml = meta.inCooldown ? `<div style="position:absolute; top:12px; right:12px; background:var(--yellow); color:#000; font-size:9px; font-weight:800; padding:2px 6px; border-radius:4px;">防守冷静期</div>` : '';
+    const cooldownHtml = meta.inCooldown ? `<div style="position:absolute; top:0; right:0; background:var(--yellow); color:#000; font-size:9px; font-weight:800; padding:2px 8px; border-bottom-left-radius:6px; border-top-right-radius:7px;">防守冷静期</div>` : '';
 
     const actionHtml = `
         <div class="action-panel" style="background:${topCardBg};border-left-color:${leftBorder};">
             ${cooldownHtml}
-            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                 <div class="block-title" style="border:none; padding-bottom:0; margin:0;">个股交易结论 (日线微观)</div>
                 <div class="kicker" style="color:var(--text-main); font-weight:700;">${escapeHTML(verdict.label)}</div>
             </div>
@@ -2104,7 +2170,7 @@ function safeUpdateSidebar() {
         const item = rd[safeIdx];
         const cacheKey = `${state.id}_${item.date}_${state.strategy}_${state.period}_${item.close}_${item.vol}`;
         
-        if (renderCache.has(cacheKey)) { applySidebarHTML(renderCache.get(cacheKey)); updateNavCapsuleVisuals(safeIdx, rd.length); return; }
+        if (renderCache.has(cacheKey)) { applySidebarHTML(renderCache.get(cacheKey), cacheKey); updateNavCapsuleVisuals(safeIdx, rd.length); return; }
 
         const prev = safeIdx > 0 ? rd[safeIdx - 1] : null;
         const htmlBundle = generateSidebarBundle(item, prev, safeIdx, rd);
@@ -2112,7 +2178,7 @@ function safeUpdateSidebar() {
         if (renderCache.size >= SYS_CONFIG.RENDER_CACHE_SIZE) { renderCache.delete(renderCache.keys().next().value); }
         renderCache.set(cacheKey, htmlBundle);
         
-        applySidebarHTML(htmlBundle);
+        applySidebarHTML(htmlBundle, cacheKey);
         updateNavCapsuleVisuals(safeIdx, rd.length);
     } else {
         applySidebarHTML({ priceHtml: '', analysisHtml: '', isHide: true });
@@ -2126,21 +2192,25 @@ function updateNavCapsuleVisuals(safeIdx, totalLen) {
         if (isLatest) {
             btn.classList.add('active');
             btn.classList.remove('is-history');
-            // btn.innerText = '最新'; // 不再需要动态修改文字
         } else {
             btn.classList.remove('active');
             btn.classList.add('is-history');
-            // btn.innerText = '已锁定历史'; // 保持文字为“最新”，只用样式区分
         }
     }
 }
 
-function applySidebarHTML(bundle) {
+function applySidebarHTML(bundle, cacheKey = '') {
     const cPrice = document.getElementById('cardPrice'), cAnalysis = document.getElementById('cardAnalysis');
     if(!cPrice || !cAnalysis) return;
     if (bundle.isHide) { cPrice.style.display = 'none'; cAnalysis.style.display = 'none'; return; }
     cPrice.style.display = 'flex'; cAnalysis.style.display = 'flex';
-    cPrice.innerHTML = bundle.priceHtml; cAnalysis.innerHTML = bundle.analysisHtml;
+    
+    if (cacheKey && cPrice.dataset.key === cacheKey) return; 
+
+    cPrice.innerHTML = bundle.priceHtml; 
+    cAnalysis.innerHTML = bundle.analysisHtml;
+    
+    if (cacheKey) cPrice.dataset.key = cacheKey;
 }
 
 function generateSidebarBundle(item, prev, safeIdx, rd) {
@@ -2183,6 +2253,7 @@ function generateSidebarBundle(item, prev, safeIdx, rd) {
     return { priceHtml, analysisHtml, isHide: false };
 }
 
+// === 强化的回测推演引擎 (附带 B/S 记录生成) ===
 async function runBacktest() {
     if(state.mode !== 'stock' || !state.id) return customAlert("请先选择并查看一只具体的股票后再运行回测。");
     const full = state.rawData[state.id];
@@ -2197,17 +2268,19 @@ async function runBacktest() {
             markIndicatorsDirty();
         }
         updateAllIndicators();
-        
-        decisionCache.clear();
         await new Promise(r => setTimeout(r, 100)); 
         
         let capital = 10000, peakCapital = 10000, maxDrawdown = 0;
         const days = 250; 
         const startIdx = Math.max(60, full.length - days);
         let prevAdv = 0, winCount = 0, totalTrades = 0, entryPrice = 0;
+        const trades = [];
         
         for(let i = startIdx; i < full.length; i++) {
             const item = full[i], prev = full[i-1];
+            const decision = item._decision;
+            if (!decision) continue;
+            
             if (prevAdv > 0) {
                 const dailyRet = (item.close - prev.close) / prev.close;
                 capital = capital * (1 + dailyRet * (prevAdv / 100));
@@ -2216,14 +2289,19 @@ async function runBacktest() {
                 if(dd > maxDrawdown) maxDrawdown = dd;
             }
             
-            const meta = getSignalMeta(i, full, state.indicators);
-            const decision = getDecisionContext(i, full, state.indicators, meta, 0);
-            
-            if (prevAdv === 0 && decision.position > 0) {
-                entryPrice = item.close;
-            } else if (prevAdv > 0 && decision.position === 0) {
-                totalTrades++;
-                if (item.close > entryPrice) winCount++;
+            // 只要仓位发生异动，全面捕获记录到回测报表中
+            if (decision.position !== prevAdv) {
+                trades.push({
+                    date: item.date, action: decision.simpleAction,
+                    posFrom: prevAdv, posTo: decision.position, price: item.close
+                });
+
+                if (prevAdv === 0 && decision.position > 0) {
+                    entryPrice = item.close;
+                } else if (decision.position === 0 && prevAdv > 0) {
+                    totalTrades++;
+                    if (item.close > entryPrice) winCount++;
+                }
             }
             
             prevAdv = decision.position;
@@ -2235,27 +2313,49 @@ async function runBacktest() {
         
         hideLoading();
         
+        let tradeRows = [...trades].reverse().map(t => {
+            const isBuy = t.posTo > t.posFrom; // 核心判别：是加仓买还是减仓卖
+            const color = isBuy ? 'var(--up-color)' : 'var(--down-color)';
+            const shortDate = t.date.length > 5 ? t.date.substring(5) : t.date;
+            const shortAction = t.action.substring(0, 4); 
+            return `
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px dashed var(--border-color); font-family:'JetBrains Mono', monospace; font-size:11px;">
+                    <span style="color:var(--text-dim); flex:1; text-align:left;">${shortDate}</span>
+                    <span style="color:${color}; font-weight:bold; width:50px; text-align:center; flex-shrink:0;">${shortAction}</span>
+                    <span style="color:var(--text-main); flex:1; text-align:right;">${t.price.toFixed(2)}</span>
+                    <span style="color:var(--text-dim); flex:1.2; text-align:right;">${t.posFrom}%➔${t.posTo}%</span>
+                </div>
+            `;
+        }).join('');
+
+        const tradeListHtml = trades.length > 0 ? `
+            <div style="margin-top:16px; border:1px solid var(--border-color); border-radius:var(--radius-sm); max-height:180px; overflow-y:auto; padding:0 12px; text-align:left;">
+                ${tradeRows}
+            </div>
+        ` : `<div style="margin-top:16px; padding:20px; color:var(--text-dim); font-size:12px; text-align:center; border:1px dashed var(--border-color); border-radius:var(--radius-sm);">区间内无调仓动作</div>`;
+
         const content = `
-            <div class="mono" style="font-size:15px;font-weight:800;margin-bottom:16px;color:var(--text-main);letter-spacing:0.5px;">回测报告: ${state.stockId}</div>
-            <div style="font-size:12px;color:var(--text-dim);margin-bottom:20px;">基于「${state.strategy}」过去 ${full.length - startIdx} 个交易日的实盘沙盘推演</div>
+            <div class="mono" style="font-size:15px;font-weight:800;margin-bottom:16px;color:var(--text-main);letter-spacing:0.5px;text-align:center;">回测报告: ${state.stockId}</div>
+            <div style="font-size:12px;color:var(--text-dim);margin-bottom:20px;text-align:center;">基于「${state.strategy}」过去 ${full.length - startIdx} 天实盘推演</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;text-align:left;">
                 <div style="background:var(--inner-bg);padding:14px;border-radius:var(--radius-md);border:1px solid var(--border-color);">
-                    <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;font-weight:600;">区间策略收益</div>
+                    <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;font-weight:600;">策略总收益</div>
                     <div style="font-size:20px;font-weight:800;font-family:'JetBrains Mono', monospace;color:${ret>=0?'var(--up-color)':'var(--down-color)'}">${ret>0?'+':''}${ret}%</div>
                 </div>
                 <div style="background:var(--inner-bg);padding:14px;border-radius:var(--radius-md);border:1px solid var(--border-color);">
-                    <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;font-weight:600;">极端最大回撤</div>
+                    <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;font-weight:600;">极限最大回撤</div>
                     <div style="font-size:20px;font-weight:800;font-family:'JetBrains Mono', monospace;color:#fff">${md}%</div>
                 </div>
                 <div style="background:var(--inner-bg);padding:14px;border-radius:var(--radius-md);border:1px solid var(--border-color);grid-column:1/-1;">
                     <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;font-weight:600;">波段交易胜率</div>
                     <div style="display:flex;justify-content:space-between;align-items:end;">
                         <div style="font-size:24px;font-weight:800;font-family:'JetBrains Mono', monospace;color:var(--blue)">${winRate}%</div>
-                        <div style="font-size:12px;color:var(--text-dim);font-weight:500;">${totalTrades} 次完整买卖，获利 ${winCount} 次</div>
+                        <div style="font-size:12px;color:var(--text-dim);font-weight:500;">${totalTrades} 次清仓结算，获利 ${winCount} 次</div>
                     </div>
                 </div>
             </div>
-            <div style="margin-top:16px;font-size:11px;color:var(--text-dim);line-height:1.5;text-align:left;">注：回测按盘末收盘价触发，并严格叠加了大盘环境系数及动态仓位防守。历史业绩不代表未来表现。</div>
+            ${tradeListHtml}
+            <div style="margin-top:16px;font-size:10px;color:var(--text-dim);line-height:1.5;text-align:justify;">注：交易记录按盘末收盘价触发，并严格叠加了大盘温控环境及个股极端防守系数。主图 B/S 仅标注重大的开平仓转折点，中途加减仓仅在回测记录中展示。</div>
         `;
         await customAlert(content, true);
     } catch(e) {
@@ -2415,7 +2515,7 @@ async function removeStock(code) {
         document.getElementById('indexNavList').style.display = 'block';
         document.getElementById('stockNavList').style.display = 'none';
         document.getElementById('btnBacktest').style.display = 'none'; 
-        decisionCache.clear();
+        
         globalSelectionSeq++;
         renderIndexList();
         clearCharts();
@@ -2470,12 +2570,15 @@ async function selectIndex(id) {
     const seq = ++globalSelectionSeq;
     state.mode = 'index'; state.id = id; state.stockId = null;
     document.getElementById('btnBacktest').style.display = 'none'; 
-    decisionCache.clear();
+    
     renderIndexList();
-    clearCharts();
-    await new Promise(r => setTimeout(r, 0));
-    if(seq !== globalSelectionSeq) return;
+    
+    showLoading("大盘切换中..."); 
+    await new Promise(r => setTimeout(r, 10)); 
+    
+    if(seq !== globalSelectionSeq) { hideLoading(); return; }
     await cachedFetch(id);
+    hideLoading();
 }
 
 async function selectStock(code, name) {
@@ -2485,23 +2588,25 @@ async function selectStock(code, name) {
     state.mode='stock'; state.id=secid; state.stockId=code;
     document.getElementById('btnBacktest').style.display = 'flex'; 
 
-    decisionCache.clear();
     renderWatchlist();
-    clearCharts(); 
     
-    await new Promise(resolve => setTimeout(resolve, 0));
+    showLoading("标的加载中...");
+    await new Promise(resolve => setTimeout(resolve, 10)); 
 
     try {
         const data = await syncData(secid);
-        if(seq !== globalSelectionSeq || state.id !== secid || state.stockId !== code) return;
+        if(seq !== globalSelectionSeq || state.id !== secid || state.stockId !== code) { hideLoading(); return; }
         if(data && data.length && isValidPrice(data[data.length-1].close, secid)) { 
             setRawData(secid,data); await dbSet(secid,data); setLockIdx(getActiveData()?.length-1 || -1); 
             updateAllIndicators(); draw(); safeUpdateSidebar(); 
+            hideLoading();
         } else throw new Error('Invalid');
     } catch(e) { 
         if(seq !== globalSelectionSeq || state.id !== secid || state.stockId !== code) return;
-        setRawData(secid,null); clearCharts(); 
+        setRawData(secid,null); 
+        clearCharts(); 
         applySidebarHTML({ priceHtml: '<div class="stock-empty">暂无数据或数据异常</div>', analysisHtml: '', isHide: false });
+        hideLoading();
     }
     
     debounceWatchlistUpdate();
@@ -2560,227 +2665,137 @@ async function switchStrategy(name) {
     const confirmed = await customConfirm(`确定切换到 [${name}]？\n${STRATEGIES[name].desc}`);
     if(!confirmed) return;
     
-    decisionCache.clear();
-    
     state.strategy=name; Object.assign(STRATEGY, STRATEGIES[name]); localStorage.setItem('quant_strategy', name); renderSettings(); 
-    if(getActiveData()){ updateAllIndicators(); draw(); safeUpdateSidebar(); } 
-}
-function toggleSettings() { 
-    const o = document.getElementById('settingsOverlay'); 
-    if(o) { 
-        if(o.classList.contains('show')) o.classList.remove('show'); 
-        else { renderSettings(); o.classList.add('show'); } 
-    } 
+    if(getActiveData()){ updateAllIndicators(); draw(); safeUpdateSidebar(); }
 }
 
 function renderSettings() {
-    const p = document.getElementById('settingsPanel'); if(!p) return; const S = STRATEGY, cur = state.strategy;
+    const panel = document.getElementById('settingsPanel');
+    if(!panel) return;
+    
+    const strategyHtml = Object.entries(STRATEGIES).map(([name, config]) => {
+        const isActive = state.strategy === name ? 'active' : '';
+        return `<button class="${isActive}" onclick="switchStrategy('${name}')">
+            ${name}
+            <span class="sg-desc">${config.desc}</span>
+        </button>`;
+    }).join('');
+    
+    const signalConfigHtml = SIGNAL_RULES.map(rule => {
+        const score = getSignalScore(rule.id);
+        const isBuy = rule.id.startsWith('B');
+        const color = isBuy ? 'var(--red)' : (rule.id.startsWith('L') ? 'var(--green)' : 'var(--yellow)');
+        return `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 10px; background:var(--inner-bg); border-radius:var(--radius-sm); border-left:2px solid ${color};">
+                <span style="color:var(--text-main); font-weight:600;">${rule.id} <span style="color:var(--text-dim);font-weight:400;">${getUserSignalText(rule.id)}</span></span>
+                <span style="font-family:'JetBrains Mono', monospace; color:var(--text-main); font-weight:700;">${score > 0 ? '+' + score : score}</span>
+            </div>
+        `;
+    }).join('');
 
-    let h = `
+    panel.innerHTML = `
         <div class="sg-header">
-            <h3>策略配置</h3>
+            <h2>系统设置</h2>
             <button class="sg-close" onclick="toggleSettings()">×</button>
         </div>
         <div class="sg-body">
-            <div class="terminal-block no-bg" style="margin-bottom:16px;">
-                <div class="sg-strategy">
-                    ${Object.keys(STRATEGIES).map(k=>`
-                        <button class="${cur===k?'active':''}" onclick="switchStrategy('${k}')">
-                            ${k}<span class="sg-desc">${STRATEGIES[k].desc}</span>
-                        </button>
-                    `).join('')}
-                </div>
+            <div class="terminal-block">
+                <div class="block-title">量化策略选择 (当前: ${state.strategy})</div>
+                <div class="sg-strategy">${strategyHtml}</div>
             </div>
-    `;
-    
-    const bSigs = ['B1','B2','B3','B4','B5','B6','B7','B8','B9','B10','B11','B12','B13','B14','B15','B16'];
-    let bHtml = bSigs.map(id => {
-        let active = S.buySignals && S.buySignals.includes(id), color = active ? 'var(--blue)' : 'var(--text-dim)', td = active ? 'none' : 'line-through', op = active ? '1' : '0.4';
-        return `<div style="color:${color};text-decoration:${td};opacity:${op};font-family:'JetBrains Mono',monospace;">${id}: <span style="font-family:'Inter', -apple-system, 'PingFang SC', sans-serif;">${SIGNAL_DESC[id].desc}</span></div>`;
-    }).join('');
-
-    const lSigs = ['L1','L2','L3','L4','L5','L6','L7','L8','L9','L10'];
-    let lHtml = lSigs.map(id => {
-        let active = S.exitSignals && S.exitSignals.includes(id), color = active ? 'var(--red)' : 'var(--text-dim)', td = active ? 'none' : 'line-through', op = active ? '1' : '0.4';
-        return `<div style="color:${color};text-decoration:${td};opacity:${op};font-family:'JetBrains Mono',monospace;">${id}: <span style="font-family:'Inter', -apple-system, 'PingFang SC', sans-serif;">${SIGNAL_DESC[id].desc}</span></div>`;
-    }).join('');
-    
-    const wSigs = ['W1','W2'];
-    let wHtml = wSigs.map(id => {
-        let active = S.warningSignals && S.warningSignals.includes(id), color = active ? 'var(--yellow)' : 'var(--text-dim)', td = active ? 'none' : 'line-through', op = active ? '1' : '0.4';
-        return `<div style="color:${color};text-decoration:${td};opacity:${op};font-family:'JetBrains Mono',monospace;">${id}: <span style="font-family:'Inter', -apple-system, 'PingFang SC', sans-serif;">${SIGNAL_DESC[id].desc}</span></div>`;
-    }).join('');
-
-    h += `
-            <div class="signal-config-grid">
-                <div class="terminal-block" style="background:var(--inner-bg);">
-                    <div class="block-title" style="color:var(--text-main); margin-bottom: 8px;">做多信号库</div>
-                    <div class="signal-config-list">${bHtml}</div>
+            <div class="terminal-block">
+                <div class="block-title" style="display:flex;justify-content:space-between;">
+                    <span>信号积分配置 (SOP 4.1)</span>
+                    <span style="font-weight:400;color:var(--text-dim);">买入阈值: ${STRATEGY.buyThreshold}分</span>
                 </div>
-                <div class="terminal-block" style="background:var(--inner-bg);">
-                    <div class="block-title" style="color:var(--text-main); margin-bottom: 8px;">风控离场库</div>
-                    <div class="signal-config-list">${lHtml}${wHtml}</div>
-                </div>
+                <div class="signal-config-grid">${signalConfigHtml}</div>
+                <div class="risk-note" style="margin-top:12px;">注：积分配置由当前策略动态决定，不同策略对同一信号的赋分可能不同。</div>
+            </div>
+            <div class="terminal-block no-bg">
+                <button onclick="handleClearCache()" style="width:100%; padding:12px; background:rgba(246, 70, 93, 0.1); border:1px solid var(--red); color:var(--red); border-radius:var(--radius-sm); font-weight:700; cursor:pointer; transition:all .1s;">
+                    ⚠️ 彻底重置系统数据
+                </button>
             </div>
         </div>
     `;
-    p.innerHTML = h;
 }
 
-async function init() {
-    try { await openDB(); } catch(e) {}
-    try { await loadWatchlist(); } catch(e) { state.watchlist = []; }
-    try { const sc = await dbGet('stock_cache'); if(sc&&sc.data) stockCache = sc.data; } catch(e) {}
-    
-    const savedStrat = localStorage.getItem('quant_strategy'); 
-    if(savedStrat && STRATEGIES[savedStrat]) { state.strategy = savedStrat; Object.assign(STRATEGY, STRATEGIES[savedStrat]); } 
-    else { state.strategy = '稳健趋势型'; Object.assign(STRATEGY, STRATEGIES['稳健趋势型']); }
-
-    await preloadCacheOnly();
-    
-    // Tab Switching Logic
-    document.querySelectorAll('#mainTabs .nav-btn').forEach(b => b.onclick = async e => {
-        document.querySelectorAll('#mainTabs .nav-btn').forEach(btn => btn.classList.remove('active')); 
-        e.target.classList.add('active');
-        const tab = e.target.dataset.tab;
-        state.tab = tab;
-
-        if(tab === 'stock') {
-            document.getElementById('indexNavList').style.display = 'none';
-            document.getElementById('stockNavList').style.display = 'block';
-            state.mode = 'stock';
-            renderWatchlist();
-            if(!state.stockId) { 
-                if(state.watchlist.length) {
-                    await selectStock(state.watchlist[0].code, state.watchlist[0].name); 
-                } else { 
-                    clearCharts(); 
-                    document.getElementById('btnBacktest').style.display = 'none';
-                    applySidebarHTML({ priceHtml: '<div class="stock-empty">搜索代码或名称添加自选</div>', analysisHtml: '', isHide: false }); 
-                    
-                    if (window.innerWidth > 768) {
-                        setTimeout(() => document.getElementById('stockSearchInput')?.focus(), 100);
-                    }
-                } 
-            } else {
-                await selectStock(state.stockId, state.watchlist.find(s=>s.code===state.stockId)?.name || '股票');
-            }
-        } else {
-            document.getElementById('indexNavList').style.display = 'block';
-            document.getElementById('stockNavList').style.display = 'none';
-            state.mode = 'index';
-            if(!INDEX_IDS.includes(state.id)) state.id = 'sh';
-            await selectIndex(state.id);
-        }
-    });
-
-    // Sub-range switching
-    document.querySelectorAll('#periodTabs .seg-btn').forEach(b=>b.onclick=e=>{
-        const prevData = getActiveData(); const anchorDate = prevData?.[getSafeIndex(prevData)]?.date || null;
-        rememberPeriodLock(); document.querySelector('#periodTabs .seg-btn.active').classList.remove('active'); e.target.classList.add('active'); state.period = e.target.dataset.period;
-        const isWeekly = state.period === 'weekly';
-        document.querySelectorAll('#rangeTabs .seg-btn').forEach(rb => { const rangeVal = parseInt(rb.dataset.range); rb.innerText = isWeekly ? Math.ceil(rangeVal / 5) + '周' : (rangeVal === 360 ? '1年' : (rangeVal === 180 ? '半年' : rangeVal + '天')); });
-        setLockIdx(alignLockToPeriod(state.period, anchorDate)); requestAnimationFrame(() => { draw(); safeUpdateSidebar(); });
-    });
-
-    document.querySelectorAll('#rangeTabs .seg-btn').forEach(b=>b.onclick=e=>{
-        document.querySelector('#rangeTabs .seg-btn.active').classList.remove('active'); e.target.classList.add('active'); state.range=+e.target.dataset.range; 
-        draw(); safeUpdateSidebar();
-    });
-
-    ['mainChart','volumeChart','macdChart','kdjChart'].forEach(id=>{ const el=document.getElementById(id); if(el) el.onclick=e=>{ const c=Chart.getChart(el); if(!c) return; const pts=c.getElementsAtEventForMode(e,'index',{intersect:false},true); if(pts.length) syncHover(pts); }; });
-
-    setInterval(() => { const e = document.getElementById('liveClock'); if(e) e.innerText = getBJDate().toLocaleTimeString('zh-CN',{hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit'}); }, 1000);
-    renderMASelector(); 
-    
-    // Initial Render
-    renderIndexList();
-    if(state.tab === 'index') {
-        document.getElementById('indexNavList').style.display = 'block';
-        document.getElementById('stockNavList').style.display = 'none';
-        document.getElementById('btnBacktest').style.display = 'none';
-        await cachedFetch(state.id); 
+function toggleSettings() {
+    const o = document.getElementById('settingsOverlay');
+    if(o) {
+        if (!o.classList.contains('show')) { renderSettings(); }
+        o.classList.toggle('show');
     }
+}
+
+// --- Init ---
+async function init() {
+    showLoading(); await openDB(); loadWatchlist();
+    const savedStrategy = localStorage.getItem('quant_strategy');
+    if(savedStrategy && STRATEGIES[savedStrategy]) { state.strategy = savedStrategy; Object.assign(STRATEGY, STRATEGIES[savedStrategy]); }
+    
+    window.addEventListener('resize', () => { if(state.charts.main) state.charts.main.resize(); if(state.charts.vol) state.charts.vol.resize(); if(state.charts.macd) state.charts.macd.resize(); if(state.charts.kdj) state.charts.kdj.resize(); });
+
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const tab = e.target.dataset.tab;
+            if(tab === state.tab) return;
+            state.tab = tab;
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+            if(tab === 'index') {
+                document.getElementById('indexNavList').style.display = 'block';
+                document.getElementById('stockNavList').style.display = 'none';
+                selectIndex('sh');
+            } else {
+                document.getElementById('indexNavList').style.display = 'none';
+                document.getElementById('stockNavList').style.display = 'block';
+                renderWatchlist();
+                if(state.watchlist.length > 0) {
+                    selectStock(state.watchlist[0].code, state.watchlist[0].name);
+                } else {
+                    state.mode = 'stock';
+                    state.id = null;
+                    state.stockId = null;
+                    clearCharts();
+                    applySidebarHTML({ priceHtml: '', analysisHtml: '', isHide: true });
+                }
+            }
+        });
+    });
+
+    document.querySelectorAll('#periodTabs .seg-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const p = e.target.dataset.period; if(p===state.period) return;
+            document.querySelectorAll('#periodTabs .seg-btn').forEach(b=>b.classList.remove('active')); e.target.classList.add('active');
+            state.period = p;
+            setLockIdx(alignLockToPeriod(p, getActiveData()?.[getPeriodLock(p==='daily'?'weekly':'daily')]?.date));
+            markIndicatorsDirty(); draw(); safeUpdateSidebar();
+        });
+    });
+    
+    document.querySelectorAll('#rangeTabs .seg-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const r = parseInt(e.target.dataset.range); if(r===state.range) return;
+            document.querySelectorAll('#rangeTabs .seg-btn').forEach(b=>b.classList.remove('active')); e.target.classList.add('active');
+            state.range = r; draw();
+        });
+    });
+    
+    renderMASelector();
+    
+    setInterval(() => { const d = getBJDate(); document.getElementById('liveClock').innerText = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`; }, 1000);
+    
+    if(isMarketOpen()) setInterval(() => { if(state.mode==='index') cachedFetch(state.id); else if(state.mode==='stock' && state.id) cachedFetch(state.id); }, SYS_CONFIG.THROTTLE_MS);
+
+    await ensureMarketTemperatureData();
+    preloadCacheOnly();
+    await cachedFetch('sh');
     
     hideLoading();
-    setTimeout(()=>ensureMarketTemperatureData(), 300);
-    
-    setTimeout(async ()=>{ if(isAfterMarketClose()) { const info = await checkCacheNeedUpdate(state.id); if(info.needUpdate) { const fr = await syncDataIncremental(state.id); if(fr&&fr.length) { await dbSet(state.id,fr); setRawData(state.id, fr); setLockIdx(getActiveData()?.length-1 || -1); updateAllIndicators(); draw(); } } } }, 1500);
-    
-    let realtimeInterval;
-    let lastDbSave = 0; 
-    let marketSyncTimer = null;
-    
-    function startBackgroundMarketSync() {
-        if(marketSyncTimer) clearInterval(marketSyncTimer);
-        marketSyncTimer = setInterval(async () => {
-            if(!isMarketOpen() || state.mode === 'index') return; 
-            for(const id of INDEX_IDS) {
-                try {
-                    const rt = await requestManager.fetchRealtimeWithThrottle(id);
-                    if(rt) {
-                        const raw = state.rawData[id];
-                        if(raw && raw.length > 0) {
-                            const today = `${getBJDate().getFullYear()}-${String(getBJDate().getMonth()+1).padStart(2,'0')}-${String(getBJDate().getDate()).padStart(2,'0')}`;
-                            if(raw[raw.length-1].date === today) raw[raw.length-1] = rt;
-                            else raw.push(rt);
-                            
-                            // 静默保存
-                            await dbSet(id, raw);
-                        }
-                    }
-                } catch(e) {}
-                await new Promise(r => setTimeout(r, 500)); 
-            }
-            if(state.mode === 'stock') safeUpdateSidebar(); 
-        }, 60000);
-    }
-    
-    function startRealtimeUpdate() {
-        if(realtimeInterval) clearInterval(realtimeInterval);
-        realtimeInterval = setInterval(async () => {
-            if(!isMarketOpen() || !state.id) return;
-            const rt = await requestManager.fetchRealtimeWithThrottle(state.id);
-            if(rt) {
-                const raw = state.rawData[state.id];
-                if (!raw || raw.length === 0) return;
-                const now = getBJDate(), today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-                
-                let isNewDay = false;
-                if (raw[raw.length-1].date === today) { 
-                    raw[raw.length-1] = rt; 
-                } else { 
-                    raw.push(rt); 
-                    isNewDay = true;
-                }
-                
-                if (state.weeklyData[state.id]) {
-                    state.weeklyData[state.id] = convertDailyToWeekly(raw);
-                }
-                
-                updateAllIndicators(state.period === 'weekly' ? -1 : raw.length - 1); 
-                
-                if (Date.now() - lastDbSave > 60000) {
-                    await dbSet(state.id, raw); 
-                    lastDbSave = Date.now();
-                }
-                
-                if (state.mode === 'index') renderIndexList();
-                if (state.mode === 'stock') renderWatchlist();
-
-                const activeData = getActiveData();
-                if(state.lockIdx >= activeData.length - 2 || isNewDay) { setLockIdx(activeData.length - 1); }
-                draw();
-                if(state.lockIdx === activeData.length - 1) { safeUpdateSidebar(); }
-            }
-        }, 5000); 
-    }
-    
-    startBackgroundMarketSync();
-    startRealtimeUpdate();
 }
 
-window.onload = init;
+init();
 </script>
 </body>
 </html>
