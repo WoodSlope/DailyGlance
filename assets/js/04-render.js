@@ -330,33 +330,17 @@ function generateAnalysisHTML(idx, full, meta) {
     const diagnosis = state.mode === 'stock' ? getHoldingDiagnosis(idx, full, state.indicators, meta, decision) : null;
     const exitEvidence = getExitSignalEvidence(meta, decision);
     const hasExitContext = decision.exit.level !== '无明确离场' || exitEvidence.direct.length || exitEvidence.windowDesc !== '近窗内无额外离场形态';
-    const exitBlockTitle = decision.exit.level !== '无明确离场' ? '离场判断' : '近窗防守信号';
     const displayExitLevel = getExitDisplayLevel(decision.exit.level, hasExitContext);
     const decisionSummary = getFinalVerdict(decision);
-    const detailStackHtml = (diagnosis || hasExitContext) ? `
-        <div class="evidence-detail-stack">
-            ${diagnosis ? `
-                <div class="evidence-detail">
-                    <div class="evidence-detail-head">
-                        <div class="evidence-detail-title">持仓判定</div>
-                        <div class="evidence-detail-badge ${diagnosis.toneClass || 'text-main'}">${escapeHTML(diagnosis.displayStatus || diagnosis.status)}</div>
-                    </div>
-                    <div class="evidence-detail-body">${escapeHTML(decisionSummary.label)}：${escapeHTML(diagnosis.action)}</div>
-                    <div class="evidence-detail-meta">${escapeHTML(diagnosis.rsText)}</div>
-                </div>
-            ` : ''}
-            ${hasExitContext ? `
-                <div class="evidence-detail">
-                    <div class="evidence-detail-head">
-                        <div class="evidence-detail-title">${exitBlockTitle}</div>
-                        <div class="evidence-detail-badge ${decision.exit.level !== '无明确离场' || exitEvidence.direct.length ? 'text-warn' : 'text-main'}">${escapeHTML(displayExitLevel)}</div>
-                    </div>
-                    <div class="evidence-detail-body">${escapeHTML(decision.exit.detail || exitEvidence.exitText)}</div>
-                    <div class="evidence-detail-meta">${escapeHTML(decision.positionDriver || `${decisionSummary.label} 依据已收敛`)}</div>
-                </div>
-            ` : ''}
-        </div>
-    ` : '';
+    const signalSourceText = state.mode === 'index' ? '推导自：指数信号窗口' : '推导自：B/L 信号窗口';
+    const isDirectExitContext = decision.exit.level !== '无明确离场' || exitEvidence.direct.length;
+    const guardValue = hasExitContext ? displayExitLevel : decision.risk.level;
+    const guardTextClass = isDirectExitContext || decision.risk.score < 60 ? 'text-warn' : 'text-main';
+    const guardExitText = isDirectExitContext
+        ? (decision.exit.detail || exitEvidence.exitText)
+        : (hasExitContext ? `近窗：${exitEvidence.windowDesc}` : decision.exit.detail);
+    const guardHoldingText = diagnosis ? `${diagnosis.displayStatus || diagnosis.status}：${diagnosis.action}` : '';
+    const guardHint = [riskFlags, guardExitText, guardHoldingText].filter(Boolean).join('；');
 
     let panelClass = 'panel-neutral';
     const a = decision.simpleAction;
@@ -368,7 +352,7 @@ function generateAnalysisHTML(idx, full, meta) {
 
     const cooldownHtml = meta.inCooldown ? `<div style="position:absolute; top:0; right:0; background:var(--yellow); color:#000; font-size:9px; font-weight:800; padding:2px 8px; border-bottom-left-radius:6px; border-top-right-radius:7px;">防守冷静期</div>` : '';
     const titleText = state.mode === 'index' ? '大盘走势推演 (日线)' : '个股交易结论 (日线微观)';
-    const evidenceTitle2 = state.mode === 'index' ? '指数动能' : '个股定买卖';
+    const evidenceTitle2 = state.mode === 'index' ? '指数动能' : '个股信号';
 
     const actionPanelHtml = `
         <div class="action-panel ${panelClass}">
@@ -402,35 +386,36 @@ function generateAnalysisHTML(idx, full, meta) {
             <div class="block-title">关键推导依据</div>
             <div class="evidence-grid">
                 <div class="evidence-item">
-                    <div class="k">大盘定基调</div>
+                    <div class="evidence-label">
+                        <div class="k">大盘定基调</div>
+                        <div class="evidence-source">推导自：四指数趋势温度</div>
+                    </div>
                     <div class="right-side">
                         <div class="v ${decision.market.cls === 'bull' ? 'text-bull' : (decision.market.cls === 'bear' ? 'text-bear' : 'text-main')}">${escapeHTML(decision.market.label)}</div>
                         <div class="h">${escapeHTML(decision.market.reason)}</div>
                     </div>
                 </div>
                 <div class="evidence-item">
-                    <div class="k">${evidenceTitle2}</div>
+                    <div class="evidence-label">
+                        <div class="k">${evidenceTitle2}</div>
+                        <div class="evidence-source">${signalSourceText}</div>
+                    </div>
                     <div class="right-side">
                         <div class="v">${escapeHTML(decisionSummary.label)}</div>
                         <div class="h">信号积分 ${meta.windowScore}/${STRATEGY.buyThreshold}</div>
                     </div>
                 </div>
                 <div class="evidence-item">
-                    <div class="k">风险防极端</div>
-                    <div class="right-side">
-                        <div class="v">${escapeHTML(decision.risk.level)}</div>
-                        <div class="h">${escapeHTML(riskFlags)}</div>
+                    <div class="evidence-label">
+                        <div class="k">风控/防守</div>
+                        <div class="evidence-source">推导自：风险评分 / L 类离场 / 持仓状态</div>
                     </div>
-                </div>
-                <div class="evidence-item">
-                    <div class="k">防守状态</div>
                     <div class="right-side">
-                        <div class="v ${decision.exit.level !== '无明确离场' || exitEvidence.direct.length ? 'text-warn' : 'text-main'}">${escapeHTML(displayExitLevel)}</div>
-                        <div class="h">${escapeHTML(decision.exit.detail || exitEvidence.exitText)}</div>
+                        <div class="v ${guardTextClass}">${escapeHTML(guardValue)}</div>
+                        <div class="h">${escapeHTML(guardHint)}</div>
                     </div>
                 </div>
             </div>
-            ${detailStackHtml}
         </div>
     `;
 
