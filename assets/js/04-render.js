@@ -326,9 +326,37 @@ function generateAnalysisHTML(idx, full, meta) {
     }
     
     const verdict = getFinalVerdict(decision);
-    const cleanMetaType = meta.type.replace(/[✅⚠️👀📈🛑🚪⏸️]/g, '').trim() || meta.type;
     const riskFlags = decision.risk.flags.length ? decision.risk.flags.join(' / ') : '处于安全空间，无明显偏离';
     const diagnosis = state.mode === 'stock' ? getHoldingDiagnosis(idx, full, state.indicators, meta, decision) : null;
+    const exitEvidence = getExitSignalEvidence(meta, decision);
+    const hasExitContext = decision.exit.level !== '无明确离场' || exitEvidence.direct.length || exitEvidence.windowDesc !== '近窗内无额外离场形态';
+    const exitBlockTitle = decision.exit.level !== '无明确离场' ? '离场判断' : '近窗防守信号';
+    const displayExitLevel = getExitDisplayLevel(decision.exit.level, hasExitContext);
+    const decisionSummary = getFinalVerdict(decision);
+    const detailStackHtml = (diagnosis || hasExitContext) ? `
+        <div class="evidence-detail-stack">
+            ${diagnosis ? `
+                <div class="evidence-detail">
+                    <div class="evidence-detail-head">
+                        <div class="evidence-detail-title">持仓判定</div>
+                        <div class="evidence-detail-badge ${diagnosis.toneClass || 'text-main'}">${escapeHTML(diagnosis.displayStatus || diagnosis.status)}</div>
+                    </div>
+                    <div class="evidence-detail-body">${escapeHTML(decisionSummary.label)}：${escapeHTML(diagnosis.action)}</div>
+                    <div class="evidence-detail-meta">${escapeHTML(diagnosis.rsText)}</div>
+                </div>
+            ` : ''}
+            ${hasExitContext ? `
+                <div class="evidence-detail">
+                    <div class="evidence-detail-head">
+                        <div class="evidence-detail-title">${exitBlockTitle}</div>
+                        <div class="evidence-detail-badge ${decision.exit.level !== '无明确离场' || exitEvidence.direct.length ? 'text-warn' : 'text-main'}">${escapeHTML(displayExitLevel)}</div>
+                    </div>
+                    <div class="evidence-detail-body">${escapeHTML(decision.exit.detail || exitEvidence.exitText)}</div>
+                    <div class="evidence-detail-meta">${escapeHTML(decision.positionDriver || `${decisionSummary.label} 依据已收敛`)}</div>
+                </div>
+            ` : ''}
+        </div>
+    ` : '';
 
     let panelClass = 'panel-neutral';
     const a = decision.simpleAction;
@@ -357,6 +385,7 @@ function generateAnalysisHTML(idx, full, meta) {
                 </div>
             </div>
             <div class="action-sub">${escapeHTML(verdict.text)} ${escapeHTML(ct)}</div>
+            ${decision.positionDriver ? `<div class="action-driver">${escapeHTML(decision.positionDriver)}</div>` : ''}
             <div class="level-line">
                 <div class="level-pill">
                     <span>防守位</span><strong class="mono">${fmt(decision.risk.stop)}</strong>
@@ -376,14 +405,14 @@ function generateAnalysisHTML(idx, full, meta) {
                     <div class="k">大盘定基调</div>
                     <div class="right-side">
                         <div class="v ${decision.market.cls === 'bull' ? 'text-bull' : (decision.market.cls === 'bear' ? 'text-bear' : 'text-main')}">${escapeHTML(decision.market.label)}</div>
-                        <div class="h">上限约束: ${decision.market.maxPosition}%</div>
+                        <div class="h">${escapeHTML(decision.market.reason)}</div>
                     </div>
                 </div>
                 <div class="evidence-item">
                     <div class="k">${evidenceTitle2}</div>
                     <div class="right-side">
-                        <div class="v">${escapeHTML(cleanMetaType)}</div>
-                        <div class="h">信号积分: ${meta.windowScore} (要求: ${STRATEGY.buyThreshold})</div>
+                        <div class="v">${escapeHTML(decisionSummary.label)}</div>
+                        <div class="h">信号积分 ${meta.windowScore}/${STRATEGY.buyThreshold}</div>
                     </div>
                 </div>
                 <div class="evidence-item">
@@ -396,12 +425,12 @@ function generateAnalysisHTML(idx, full, meta) {
                 <div class="evidence-item">
                     <div class="k">防守状态</div>
                     <div class="right-side">
-                        <div class="v ${decision.exit.level !== '无明确离场' ? 'text-warn' : 'text-main'}">${escapeHTML(decision.exit.level)}</div>
-                        <div class="h">状态检测有效</div>
+                        <div class="v ${decision.exit.level !== '无明确离场' || exitEvidence.direct.length ? 'text-warn' : 'text-main'}">${escapeHTML(displayExitLevel)}</div>
+                        <div class="h">${escapeHTML(decision.exit.detail || exitEvidence.exitText)}</div>
                     </div>
                 </div>
             </div>
-            ${diagnosis ? `<div class="diagnosis-compact"><strong>持仓状态判定：</strong> <span class="text-info">${escapeHTML(diagnosis.action)}</span></div>` : ''}
+            ${detailStackHtml}
         </div>
     `;
 

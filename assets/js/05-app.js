@@ -506,7 +506,7 @@ function updateLeftMarketContext(date) {
     const textClass = market.cls === 'bull' ? 'text-bull' : (market.cls === 'bear' ? 'text-bear' : 'text-main');
 
     let detailHtml = market.trends.map(t => `
-        <div class="index-dash-card" style="border-left-color:${t.score>0?'var(--up-color)':t.score<0?'var(--down-color)':'var(--border-color)'}; padding: 8px 10px; margin-bottom: 4px;">
+        <div class="index-dash-card" style="padding: 8px 10px; margin-bottom: 4px;">
             <span class="n">${t.name}</span>
             <span class="s ${t.score>0?'text-bull':t.score<0?'text-bear':'text-main'}">${t.state}</span>
         </div>
@@ -723,10 +723,8 @@ function renderSettings() {
         const idBg = isUsed ? 'rgba(255,255,255,0.08)' : 'transparent';
         const idColor = isUsed ? `var(${baseColorVar})` : 'var(--text-dim)';
         const textColor = isUsed ? 'var(--text-main)' : 'var(--text-dim)';
-        const borderColor = isUsed ? `var(${baseColorVar})` : 'var(--border-color)';
-        
         return `
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 8px; background:var(--inner-bg); border-radius:var(--radius-sm); border-left:2px solid ${borderColor}; opacity:${opacity}; transition: opacity 0.2s;">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 8px; background:var(--inner-bg); border-radius:var(--radius-sm); border:1px solid var(--border-light); opacity:${opacity}; transition: opacity 0.2s;">
                 <div style="display:flex; align-items:center; gap:6px;">
                     <span class="mono" style="font-size:10px; font-weight:700; background:${idBg}; padding:2px 4px; border-radius:3px; color:${idColor}; line-height:1;">${rule.id}</span>
                     <span style="font-size:11px; color:${textColor};">${getUserSignalText(rule.id)}</span>

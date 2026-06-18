@@ -297,6 +297,46 @@ function getExitSeverity(meta, idx, full, ind) {
     return { level: '无明确离场', detail: '暂未看到需要立即防守的核心离场信号' };
 }
 
+function getExitSignalEvidence(meta, decision) {
+    const direct = meta.exitSignals || [];
+    const windowExits = (meta.windowSignals || []).filter(w => w.signal.startsWith('L')).slice(-4).map(w => w.signal);
+    const logicMap = {
+        L1: '跌破短期趋势线',
+        L2: '短中期均线死叉',
+        L3: 'MACD 死叉',
+        L4: '跌破 20 日线',
+        L5: '阴包阳',
+        L6: '连阳后首阴',
+        L7: 'RSI 超买回落',
+        L8: '布林上轨受阻',
+        L9: '高点回撤破位',
+        L10: 'MACD 顶背离'
+    };
+    const directDesc = direct.length ? direct.map(s => `${s} ${logicMap[s] || getUserSignalText(s)}`).join(' / ') : '无直接离场信号';
+    const windowDesc = windowExits.length ? windowExits.map(s => `${s} ${logicMap[s] || getUserSignalText(s)}`).join(' / ') : '近窗内无额外离场形态';
+    const exitText = decision?.exit?.detail || '暂无明确离场依据';
+    return { direct, directDesc, windowDesc, exitText };
+}
+
+function getPositionDriverText(meta, market, risk, exit, base, position, prevPos) {
+    if (exit.level === '清仓防守' || exit.level === '强离场') {
+        return `触发${exit.level}，${meta.exitSignals?.length ? `技术离场 ${meta.exitSignals.join(' / ')}` : '按防守规则直接处理'}。`;
+    }
+    if (meta.inCooldown) {
+        return `离场冷静期 ${Math.max(0, 3 - (meta.daysSinceExit || 0))} 天，先观察再说。`;
+    }
+    if (base <= 0) {
+        return '基础仓位为 0%，当前不满足开仓条件。';
+    }
+
+    const pieces = [`基础 ${base}%`];
+    if ((market?.coef ?? 1) !== 1) pieces.push(`市场系数 ${market.coef.toFixed(2)}`);
+    if ((risk?.coef ?? 1) !== 1) pieces.push(`风险系数 ${risk.coef.toFixed(2)}`);
+    pieces.push(position === prevPos ? `维持 ${position}%` : `调整至 ${position}%`);
+    if (position === 0 && prevPos > 0) pieces.push(`较前次收至 0%`);
+    return pieces.join('，') + '。';
+}
+
 function quantizePosition(val) { const steps = [0, 10, 20, 30, 50, 80, 100]; return steps.reduce((prev, curr) => Math.abs(curr - val) < Math.abs(prev - val) ? curr : prev); }
 
 function computeDecisionForIndex(idx, full, prevPos) {
@@ -315,6 +355,7 @@ function computeDecisionForIndex(idx, full, prevPos) {
 
     if (Math.abs(position - prevPos) <= 10 && position !== 0) position = prevPos;
     if (prevPos === 0 && position > 0 && meta.type === '📈 趋势抱单') position = 0;
+    const positionDriver = getPositionDriverText(meta, market, risk, exit, base, position, prevPos);
 
     let simpleAction = '持币观望', simpleColorClass = 'text-dim', bsMark = null;
     if (position === 0) {
@@ -329,7 +370,7 @@ function computeDecisionForIndex(idx, full, prevPos) {
         if (position <= 30) { simpleAction = (exit.level === '减仓观察' || exit.level === '延续防守' || meta.warningSignals?.length) ? '谨慎持有' : '轻仓持有'; simpleColorClass = simpleAction === '谨慎持有' ? 'text-warn' : 'text-info'; } 
         else { simpleAction = (meta.type === '📈 趋势抱单' && meta.buySignals.length === 0) ? '顺势抱单' : '积极持有'; simpleColorClass = 'text-bull'; }
     }
-    return { basePosition: base, position, prevAdv: prevPos, market, risk, exit, signalReady: meta.windowScore >= STRATEGY.buyThreshold, simpleAction, simpleColorClass, bsMark };
+    return { basePosition: base, position, prevAdv: prevPos, market, risk, exit, positionDriver, signalReady: meta.windowScore >= STRATEGY.buyThreshold, simpleAction, simpleColorClass, bsMark };
 }
 
 function getWeeklyDirectionContext(idx, full, ind) {

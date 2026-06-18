@@ -1,23 +1,104 @@
-# DailyGlance 说明
+# DailyGlance 量化终端
+
+DailyGlance 是一个面向 A 股大盘与自选股观察的网页量化终端。它把指数环境、K 线走势、技术指标、策略信号和仓位建议集中到一个页面中，方便日常看盘、复盘和策略辅助判断。
+
+> 本项目仅用于市场观察、研究和复盘，不构成任何投资建议。
+
+## 核心功能
+
+- 大盘指数看盘：内置上证指数、创业板指、中证 1000、科创 50。
+- 自选股池：支持搜索股票代码/名称并加入本地自选列表。
+- 多图表联动：展示 K 线、成交量、MACD、KDJ。
+- 日线/周线切换：支持从不同周期观察趋势结构。
+- 区间切换：支持 90 天、180 天、360 天视图。
+- 多均线显示：支持 MA5、MA10、MA20、MA30、MA60、MA120、MA250。
+- 策略信号识别：内置趋势、抄底、突破、综合等策略模式。
+- 仓位建议：结合大盘环境、技术信号、风险状态输出辅助仓位。
+- 关键位提示：展示防守位、压力区等辅助观察位。
+- 本地缓存：使用浏览器 IndexedDB 缓存行情数据，减少重复请求。
+- 手动同步：支持手动刷新当前标的数据。
+- 策略回测：自选股模式下可运行策略沙盘回测。
+
+## 使用方式
+
+直接打开 GitHub Pages 部署地址即可使用。页面会自动加载指数数据，并在本地浏览器缓存历史行情。
+
+常用路径：
+
+1. 左侧选择大盘指数或自选股。
+2. 中间查看 K 线、成交量、MACD、KDJ。
+3. 右侧查看价格、策略结论、仓位建议和关键依据。
+4. 顶部切换日线/周线、观察区间和均线组合。
+
+## 页面结构
+
+- 左侧导航：大盘指数列表、自选股搜索和自选股列表。
+- 中间图表：K 线主图、成交量、MACD、KDJ。
+- 右侧面板：价格信息、策略结论、风险提示、信号依据。
+- 顶部工具：模式切换、时间、回测、缓存清理、设置、帮助。
+
+## 策略模式
+
+当前内置 4 类策略：
+
+- 稳健趋势型：偏中期趋势跟随，关注均线结构、MACD 动能和突破确认。
+- 波段抄底型：关注超卖、背离、支撑和回踩企稳。
+- 突破追涨型：关注放量突破和平台突破。
+- 综合全能型：展示更完整的信号雷达，适合观察全局。
+
+不同策略会影响买入信号、离场信号、观察窗口、积分阈值和最终仓位建议。
 
 ## 文件结构
 
-- `index.html`: GitHub Pages 主页面入口
-- `assets/css/dailyglance.css`: 页面样式
-- `assets/js/01-config-ui.js`: UI 工具、快捷键、模态框
-- `assets/js/02-data.js`: 数据源、缓存、同步、搜索、选股
-- `assets/js/03-calculations.js`: 指标与信号计算
-- `assets/js/04-render.js`: 图表与侧栏渲染
-- `assets/js/05-app.js`: 初始化、切换、生命周期
+- `index.html`: GitHub Pages 主页面入口。
+- `assets/css/dailyglance.css`: 页面样式。
+- `assets/icons/logo.svg`: 页面左上角 logo。
+- `assets/icons/favicon.svg`: 浏览器标签图标主文件。
+- `assets/icons/favicon.png`: 浏览器标签图标 PNG 兜底。
+- `assets/js/01-config-ui.js`: UI 工具、快捷键、模态框和全局配置。
+- `assets/js/02-data.js`: 数据源、缓存、同步、搜索、选股。
+- `assets/js/03-calculations.js`: 指标计算、信号识别、仓位推导。
+- `assets/js/04-render.js`: 图表绘制、右侧侧栏和左侧列表渲染。
+- `assets/js/05-app.js`: 初始化、交互切换、设置、回测和生命周期。
 
-## 维护建议
+## GitHub Pages 部署
 
-- 改样式，优先看 `assets/css/dailyglance.css`
-- 改接口/缓存/选股，优先看 `assets/js/02-data.js`
-- 改信号逻辑，优先看 `assets/js/03-calculations.js`
-- 改页面排版和文案渲染，优先看 `assets/js/04-render.js`
-- 改启动流程、切换逻辑、回测入口，优先看 `assets/js/05-app.js`
+只需要上传：
 
-## 注意
+```text
+index.html
+assets/
+```
+
+部署步骤：
+
+1. 将 `index.html` 和 `assets/` 放到 GitHub 仓库的发布目录。
+2. 在仓库 Settings -> Pages 中选择对应分支和目录。
+3. 等待 GitHub Pages 构建完成后访问页面地址。
+
+不需要上传：
+
+```text
+.DS_Store
+备份/
+dailyglance.html
+```
+
+## 开发维护
+
+- 改视觉样式：优先修改 `assets/css/dailyglance.css`。
+- 改 logo 或浏览器标签图标：替换 `assets/icons/logo.svg`、`assets/icons/favicon.svg` 和 `assets/icons/favicon.png`。
+- 改数据源/缓存/搜索：优先修改 `assets/js/02-data.js`。
+- 改技术指标/信号规则：优先修改 `assets/js/03-calculations.js`。
+- 改页面文案/模块排版：优先修改 `assets/js/04-render.js`。
+- 改启动流程/交互/回测：优先修改 `assets/js/05-app.js`。
+
+注意：
 
 - 5 个脚本文件必须按当前顺序加载。
+- 当前采用普通 `<script>` 顺序加载，方便 GitHub Pages 直接部署。
+- 不建议恢复成单文件，后续维护和 AI 协作会消耗更多上下文。
+
+## 风险声明
+
+DailyGlance 的所有结论、信号、仓位建议和回测结果仅用于研究、观察和复盘。市场存在不确定性，工具输出不能替代独立判断，也不构成投资、理财、买卖建议。使用者应自行承担投资决策风险。

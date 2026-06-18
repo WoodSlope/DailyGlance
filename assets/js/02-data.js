@@ -279,6 +279,38 @@ function getFinalVerdict(decision) {
     return { label:'状态检测', text:'量化系统持续推演中...' };
 }
 
+function getHoldingDisplayStatus(status) {
+    const map = {
+        '持仓观察': '观望等待',
+        '弱势套牢': '弱势承压',
+        '结构转强': '结构转强',
+        '破位防守': '破位防守'
+    };
+    return map[status] || status;
+}
+
+function getExitDisplayLevel(level, hasContext = false) {
+    const map = {
+        '清仓防守': '清仓防守',
+        '强离场': '强制离场',
+        '减仓观察': '防守观察',
+        '延续防守': '防守延续',
+        '无明确离场': hasContext ? '防守观察' : '未触发离场'
+    };
+    return map[level] || level;
+}
+
+function getActionDisplayText(action) {
+    const map = {
+        '减仓观察': '防守观察',
+        '延续防守': '防守延续',
+        '弱势套牢': '弱势承压',
+        '破位防守': '破位防守',
+        '结构转强': '结构转强'
+    };
+    return map[action] || action;
+}
+
 function getRelativeStrength(stockData, date) {
     const marketData = state.rawData.sh || [];
     if(!stockData?.length || marketData.length < 25) return null;
@@ -308,7 +340,8 @@ function getHoldingDiagnosis(idx, full, ind, meta, decision) {
         status = '结构转强'; action = '已有仓位按防守位管理，新仓仍看策略阈值。'; 
     }
     const rsText = rs ? `${rs.label}，20日相对大盘 ${rs.diff >= 0 ? '+' : ''}${rs.diff.toFixed(1)}%` : '相对强弱样本不足';
-    return { status, action, rsText };
+    const toneClass = status === '破位防守' ? 'text-bear' : (status === '弱势套牢' ? 'text-warn' : (status === '结构转强' ? 'text-bull' : 'text-main'));
+    return { status, displayStatus: getHoldingDisplayStatus(status), action, displayAction: getActionDisplayText(action), rsText, toneClass };
 }
 
 async function clearAllCache() { 

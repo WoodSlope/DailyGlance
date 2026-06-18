@@ -46,9 +46,8 @@ const escapeJSArg = v => String(v ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\
 // === UI 工具与模态框逻辑 ===
 const UI = {
     signalRow: (name, sig, isMonitored, isBull) => {
-        const colorClass = isMonitored ? (isBull ? 'text-info' : 'text-bull') : 'text-dim';
         const tag = isMonitored ? '策略追踪' : '已过滤';
-        return `<div class="signal-row" style="border-left-color: ${isMonitored ? (isBull ? 'var(--blue)' : 'var(--red)') : 'var(--border-color)'};"><span class="name ${isMonitored ? 'text-main' : 'text-dim'}">${name} <span class="mono text-dim" style="font-size:10px;margin-left:4px;">${sig}</span></span><span class="tag">${tag}</span></div>`;
+        return `<div class="signal-row"><span class="name ${isMonitored ? 'text-main' : 'text-dim'}">${name} <span class="mono text-dim" style="font-size:10px;margin-left:4px;">${sig}</span></span><span class="tag">${tag}</span></div>`;
     },
     sectionTitle: (title, colorClass) => `<div class="signal-section-title ${colorClass}">${title}</div>`
 };
