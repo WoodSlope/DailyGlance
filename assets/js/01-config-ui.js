@@ -19,13 +19,62 @@ const STRATEGIES = {
 };
 
 let STRATEGY = {}; 
-let state = { tab: 'index', id: 'sh', mode: 'index', range: 180, lockIdx: -1, periodLocks: { daily: -1, weekly: -1 }, charts: {}, rawData: {}, weeklyData: {}, period: 'daily', activeMAs: [5, 20, 60], indicators: { ma: {}, macd: null, rsi: null, kdj: null }, indicatorKey: '', watchlist: [], stockId: null, strategy: '稳健趋势型', isFrozen: false };
+let state = { tab: 'index', id: 'sh', mode: 'index', range: 180, lockIdx: -1, periodLocks: { daily: -1, weekly: -1 }, charts: {}, rawData: {}, weeklyData: {}, period: 'daily', activeMAs: [5, 20, 60], indicators: { ma: {}, macd: null, rsi: null, kdj: null }, indicatorKey: '', pendingIndicatorMutation: null, watchlist: [], stockId: null, strategy: '稳健趋势型', isFrozen: false };
 let globalSelectionSeq = 0;
 Object.assign(STRATEGY, STRATEGIES['稳健趋势型']);
 
 const renderCache = new Map();
 const dateIndexCache = new Map();
 const indexIndicators = {};
+const derivedIndicatorCache = new Map();
+
+const PERF = {
+    enabled: true,
+    maxEntries: 80,
+    traces: [],
+    start(label, meta = {}) {
+        if (!this.enabled) return null;
+        return { label, meta, start: performance.now(), marks: [] };
+    },
+    mark(trace, step, meta = {}) {
+        if (!this.enabled || !trace) return;
+        trace.marks.push({ step, at: performance.now(), meta });
+    },
+    end(trace, meta = {}) {
+        if (!this.enabled || !trace) return null;
+        const end = performance.now();
+        const steps = trace.marks.map((mark, idx) => ({
+            step: mark.step,
+            duration: Number((mark.at - (idx === 0 ? trace.start : trace.marks[idx - 1].at)).toFixed(1)),
+            meta: mark.meta
+        }));
+        const entry = {
+            label: trace.label,
+            total: Number((end - trace.start).toFixed(1)),
+            meta: { ...trace.meta, ...meta },
+            steps,
+            endedAt: new Date().toISOString()
+        };
+        this.traces.push(entry);
+        if (this.traces.length > this.maxEntries) this.traces.shift();
+        return entry;
+    },
+    latest(label) {
+        const list = label ? this.traces.filter(item => item.label === label) : this.traces;
+        return list[list.length - 1] || null;
+    },
+    summary(label) {
+        const list = label ? this.traces.filter(item => item.label === label) : this.traces;
+        return list.map(item => ({
+            label: item.label,
+            total: item.total,
+            meta: item.meta,
+            steps: item.steps.map(step => `${step.step}:${step.duration}ms`).join(' | ')
+        }));
+    }
+};
+
+window.__DG_PERF__ = PERF;
 
 function clearDerivedCaches() { renderCache.clear(); dateIndexCache.clear(); }
 
@@ -108,4 +157,5 @@ document.addEventListener('click', (e) => {
     if (sug && sug.style.display === 'block' && !e.target.closest('.stock-search')) closeSuggestions();
     if(e.target.id === 'settingsOverlay') toggleSettings();
     if(e.target.id === 'helpOverlay') toggleHelp();
+    if(e.target.id === 'perfOverlay') togglePerfPanel();
 });

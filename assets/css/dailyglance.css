@@ -227,12 +227,12 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 .amt-row .lbl { font-size: 11px; color: var(--text-dim); font-weight: 500; }
 .amt-row .val { font-size: 14px; font-weight: 700; color: var(--text-main); }
 
-#customModal, #settingsOverlay, #helpOverlay { 
+#customModal, #settingsOverlay, #helpOverlay, #perfOverlay { 
     display: flex; position: fixed; inset: 0; background: rgba(11,14,20,0.85); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); 
     z-index: 10000; align-items: center; justify-content: center; padding: 20px; opacity: 0; pointer-events: none; transition: opacity 0.2s; 
 }
 #customModal { z-index: 10020; }
-#customModal.show, #settingsOverlay.show, #helpOverlay.show { opacity: 1; pointer-events: auto; }
+#customModal.show, #settingsOverlay.show, #helpOverlay.show, #perfOverlay.show { opacity: 1; pointer-events: auto; }
 
 .custom-modal-box { 
     background: var(--sidebar-bg); padding: 24px; border-radius: var(--radius-md); border: 1px solid var(--border-color); 
@@ -250,11 +250,12 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 .btn-ok:hover { filter: brightness(1.1); }
 .btn-ok:active { transform: scale(0.96); }
 
-#settingsPanel, #helpPanel { 
+#settingsPanel, #helpPanel, #perfPanel { 
     display: flex; flex-direction: column; background: var(--sidebar-bg); border: 1px solid var(--border-color); border-radius: var(--radius-md); 
     width: 100%; max-width: 680px; max-height: 85vh; box-shadow: 0 10px 30px rgba(0,0,0,0.5); transform: scale(0.98); transition: transform 0.2s; 
 }
-#settingsOverlay.show #settingsPanel, #helpOverlay.show #helpPanel { transform: scale(1); }
+#perfPanel { max-width: 820px; }
+#settingsOverlay.show #settingsPanel, #helpOverlay.show #helpPanel, #perfOverlay.show #perfPanel { transform: scale(1); }
 
 .sg-header { padding: 16px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; background: var(--dark-bg); border-radius: var(--radius-md) var(--radius-md) 0 0; }
 .sg-header h2 { font-size: 15px; font-weight: 700; color: var(--text-main); margin: 0; }
@@ -268,6 +269,20 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 .sg-strategy button.active { border-color: var(--blue); background: var(--bg-blue-light); color: var(--blue); }
 .sg-strategy button .sg-desc { display: block; font-weight: 400; font-size: 11px; color: var(--text-dim); margin-top: 6px; line-height: 1.5; }
 .signal-config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+
+.perf-toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
+.perf-toolbar button { padding: 8px 12px; border: 1px solid var(--border-color); background: var(--inner-bg); color: var(--text-main); border-radius: var(--radius-sm); cursor: pointer; font-size: 12px; font-weight: 600; }
+.perf-toolbar button:hover { border-color: var(--text-dim); }
+.perf-empty { padding: 24px; border: 1px dashed var(--border-color); border-radius: var(--radius-sm); color: var(--text-dim); text-align: center; font-size: 12px; }
+.perf-list { display: flex; flex-direction: column; gap: 10px; }
+.perf-item { border: 1px solid var(--border-light); background: var(--inner-bg); border-radius: var(--radius-sm); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.perf-item-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.perf-item-title { font-size: 13px; font-weight: 700; color: var(--text-main); }
+.perf-item-total { font-size: 13px; font-weight: 700; color: var(--blue); }
+.perf-item-meta { font-size: 11px; color: var(--text-dim); line-height: 1.5; }
+.perf-steps { display: flex; flex-direction: column; gap: 6px; }
+.perf-step { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; color: var(--text-main); }
+.perf-step .step-name { color: var(--text-dim); }
 
 #loading { 
     position: fixed; inset: 0; background: rgba(11,14,20,0.85); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); 

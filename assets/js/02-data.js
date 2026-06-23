@@ -15,6 +15,9 @@ const STOCK_DATABASE = [
     {Code:'601398',Name:'工商银行'},{Code:'601939',Name:'建设银行'},{Code:'601988',Name:'中国银行'},{Code:'601318',Name:'中国平安'},{Code:'600519',Name:'贵州茅台'},{Code:'000858',Name:'五粮液'},{Code:'000333',Name:'美的集团'},{Code:'002594',Name:'比亚迪'},{Code:'300750',Name:'宁德时代'},{Code:'601012',Name:'隆基绿能'},{Code:'002371',Name:'北方华创'},{Code:'603501',Name:'韦尔股份'},{Code:'002475',Name:'立讯精密'},{Code:'600276',Name:'恒瑞医药'},{Code:'300760',Name:'迈瑞医疗'},{Code:'601899',Name:'紫金矿业'}
 ];
 let stockCache = [];
+const cachedFetchRefreshJobs = new Map();
+let cachedFetchRefreshApplyTimer = 0;
+let pendingCachedFetchRefreshApplyId = '';
 
 function getBJDate() { return new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Shanghai"})); }
 function isMarketOpen() { const now = getBJDate(), day = now.getDay(), m = now.getHours() * 60 + now.getMinutes(); return day !== 0 && day !== 6 && m >= 9 * 60 + 15 && m <= 15 * 60 + 15; }
@@ -77,10 +80,53 @@ function convertDailyToWeekly(dailyData) {
 }
 
 function setRawData(id, data) {
+    const prevData = state.rawData[id];
     state.rawData[id] = data;
     if (data) state.weeklyData[id] = convertDailyToWeekly(data); else state.weeklyData[id] = null;
-    if (id === state.id) markIndicatorsDirty();
+    if (id === state.id) {
+        const indicatorScopePrefix = `${state.id}_${state.period}_${state.strategy}_`;
+        const isSameIndicatorScope = typeof state.indicatorKey === 'string' && state.indicatorKey.startsWith(indicatorScopePrefix);
+        state.pendingIndicatorMutation = isSameIndicatorScope ? getDataMutationMeta(prevData, data) : { mode: 'full', startIdx: 0 };
+        markIndicatorsDirty();
+    }
     clearDerivedCaches();
+}
+
+function barsEqual(a, b) {
+    if (!a || !b) return false;
+    return a.date === b.date &&
+        a.open === b.open &&
+        a.close === b.close &&
+        a.high === b.high &&
+        a.low === b.low &&
+        a.vol === b.vol &&
+        a.amt === b.amt;
+}
+
+function getDataMutationMeta(prevData, nextData) {
+    if (!prevData || !prevData.length || !nextData || !nextData.length) {
+        return { mode: 'full', startIdx: 0 };
+    }
+    if (nextData.length < prevData.length) {
+        return { mode: 'full', startIdx: 0 };
+    }
+
+    const minLen = Math.min(prevData.length, nextData.length);
+    let firstDiff = 0;
+    while (firstDiff < minLen && barsEqual(prevData[firstDiff], nextData[firstDiff])) firstDiff++;
+
+    if (firstDiff === minLen && prevData.length === nextData.length) {
+        return { mode: 'unchanged', startIdx: -1 };
+    }
+
+    const isPureAppend = firstDiff === prevData.length && nextData.length >= prevData.length;
+    const tailOnlyChange = firstDiff >= Math.max(0, minLen - 5);
+
+    if (isPureAppend || tailOnlyChange) {
+        return { mode: 'incremental', startIdx: Math.max(0, firstDiff) };
+    }
+
+    return { mode: 'full', startIdx: 0 };
 }
 
 const requestManager = {
@@ -280,6 +326,31 @@ function dbSet(id, data) {
 }
 async function getCachedData(id) { const c = await dbGet(id); return (c && c.data) ? c.data : null; }
 
+function scheduleCachedFetchRefreshApply(id) {
+    pendingCachedFetchRefreshApplyId = id;
+    if (cachedFetchRefreshApplyTimer) return;
+    cachedFetchRefreshApplyTimer = window.setTimeout(() => {
+        const applyId = pendingCachedFetchRefreshApplyId;
+        pendingCachedFetchRefreshApplyId = '';
+        cachedFetchRefreshApplyTimer = 0;
+        if (!applyId) return;
+
+        const perfTrace = PERF.start('cachedFetchRefreshApply', { id: applyId, activeId: state.id, mode: state.mode });
+        requestAnimationFrame(() => {
+            if (applyId !== state.id) {
+                PERF.end(perfTrace, { status: 'skipped' });
+                return;
+            }
+            setLockIdx(getActiveData()?.length - 1 || -1);
+            renderMASelector();
+            draw();
+            safeUpdateSidebar();
+            PERF.mark(perfTrace, 'render');
+            PERF.end(perfTrace, { status: 'applied' });
+        });
+    }, 32);
+}
+
 function getFinalVerdict(decision) {
     const action = decision.simpleAction;
     if (['清仓离场', '规避风险'].includes(action)) return { label:'强制防守', text:'核心防守或破位信号触发，严格规避系统性风险。' };
@@ -366,6 +437,7 @@ async function clearAllCache() {
     } 
     state.rawData = {}; 
     state.weeklyData = {}; 
+    derivedIndicatorCache.clear();
     localStorage.removeItem('quant_strategy'); 
     location.reload(); 
 }
@@ -378,8 +450,9 @@ async function handleClearCache() {
 }
 
 async function cachedFetch(id) {
-    let firstLoad = true;
+    const perfTrace = PERF.start('cachedFetch', { id, activeId: state.id, mode: state.mode });
     const cachedResult = await dbGet(id);
+    PERF.mark(perfTrace, 'dbGet');
     if (cachedResult && cachedResult.data && cachedResult.data.length > 0 && id === state.id) {
         setRawData(id, cachedResult.data);
         setLockIdx(getActiveData()?.length - 1 || -1);
@@ -387,36 +460,94 @@ async function cachedFetch(id) {
         hideLoading();
         renderMASelector();
         requestAnimationFrame(() => { draw(); safeUpdateSidebar(); });
-        firstLoad = false;
+        PERF.mark(perfTrace, 'use-cache', { points: cachedResult.data.length });
+        PERF.end(perfTrace, { status: 'cache-first', firstLoad: false });
+        scheduleCachedFetchRefresh(id);
+        return;
     }
 
     const fresh = await syncData(id);
+    PERF.mark(perfTrace, 'syncData', { points: fresh?.length || 0 });
     if (!fresh || fresh.length === 0) {
-        if (firstLoad) {
-            document.getElementById('loading').innerHTML = `<div class="loading-wrap" style="flex-direction:column;gap:16px;"><div class="text-bull" style="font-size:14px;font-weight:700;">数据加载失败</div><button onclick="location.reload()" style="padding:8px 24px;background:var(--blue);border:none;border-radius:4px;color:#fff;cursor:pointer;font-weight:600;outline:none;">重试</button></div>`;
-        }
+        document.getElementById('loading').innerHTML = `<div class="loading-wrap" style="flex-direction:column;gap:16px;"><div class="text-bull" style="font-size:14px;font-weight:700;">数据加载失败</div><button onclick="location.reload()" style="padding:8px 24px;background:var(--blue);border:none;border-radius:4px;color:#fff;cursor:pointer;font-weight:600;outline:none;">重试</button></div>`;
+        PERF.end(perfTrace, { status: 'no-fresh-data', firstLoad: true });
         return;
     }
 
     const old = state.rawData[id];
-    const hasUpdate = !old || fresh.length > old.length || fresh[fresh.length-1].date !== old[old.length-1].date;
+    const hasUpdate = getDataMutationMeta(old, fresh).mode !== 'unchanged';
+    const shouldApplyFresh = !old || !old.length || hasUpdate;
     
-    if (firstLoad || hasUpdate) {
+    if (shouldApplyFresh) {
         setRawData(id, fresh);
         setLockIdx(getActiveData()?.length - 1 || -1);
         await dbSet(id, fresh);
-        if (typeof syncWatchlistSignalSnapshot === 'function') {
+        PERF.mark(perfTrace, 'dbSet');
+        if (typeof syncWatchlistSignalSnapshotFast === 'function') {
             const matched = (state.watchlist || []).find(stock => codeToSecid(stock.code) === id);
-            if (matched) syncWatchlistSignalSnapshot(matched.code, fresh);
+            if (matched) syncWatchlistSignalSnapshotFast(matched.code, fresh);
+            PERF.mark(perfTrace, 'watchlist');
         }
         if (id === state.id) {
-            if (firstLoad) { hideLoading(); renderMASelector(); }
+            hideLoading();
+            renderMASelector();
             updateAllIndicators();
             requestAnimationFrame(() => { draw(); safeUpdateSidebar(); });
         }
+        PERF.mark(perfTrace, 'apply-fresh', { hasUpdate, firstLoad: !old || !old.length });
+    } else if (id === state.id) {
+        hideLoading();
+        renderMASelector();
+        requestAnimationFrame(() => { draw(); safeUpdateSidebar(); });
+        PERF.mark(perfTrace, 'reuse-state', { points: old.length });
     }
     if (state.mode === 'index') renderIndexList(); 
-    if (state.mode === 'stock') renderWatchlist();
+    if (state.mode === 'stock' && typeof scheduleWatchlistRender === 'function') scheduleWatchlistRender();
+    PERF.end(perfTrace, { status: shouldApplyFresh ? (hasUpdate ? 'updated' : 'initial') : 'unchanged', firstLoad: !old || !old.length });
+}
+
+function scheduleCachedFetchRefresh(id) {
+    if (cachedFetchRefreshJobs.has(id)) return cachedFetchRefreshJobs.get(id);
+    const job = (async () => {
+        const perfTrace = PERF.start('cachedFetchRefresh', { id, activeId: state.id, mode: state.mode });
+        const fresh = await syncData(id);
+        PERF.mark(perfTrace, 'syncData', { points: fresh?.length || 0 });
+        if (!fresh || fresh.length === 0) {
+            PERF.end(perfTrace, { status: 'no-fresh-data' });
+            return;
+        }
+
+        const old = state.rawData[id];
+        const hasUpdate = getDataMutationMeta(old, fresh).mode !== 'unchanged';
+        if (!hasUpdate) {
+            PERF.end(perfTrace, { status: 'unchanged' });
+            return;
+        }
+
+        setRawData(id, fresh);
+        PERF.mark(perfTrace, 'apply-raw');
+        await dbSet(id, fresh);
+        PERF.mark(perfTrace, 'dbSet');
+        if (typeof syncWatchlistSignalSnapshotFast === 'function') {
+            const matched = (state.watchlist || []).find(stock => codeToSecid(stock.code) === id);
+            if (matched) syncWatchlistSignalSnapshotFast(matched.code, fresh);
+            PERF.mark(perfTrace, 'watchlist');
+        }
+        if (id === state.id) {
+            scheduleCachedFetchRefreshApply(id);
+            PERF.mark(perfTrace, 'queue-active-apply');
+        }
+        if (state.mode === 'index') {
+            renderIndexList();
+            PERF.mark(perfTrace, 'render-index-list');
+        }
+        if (state.mode === 'stock' && typeof scheduleWatchlistRender === 'function') scheduleWatchlistRender();
+        PERF.end(perfTrace, { status: 'updated' });
+    })().finally(() => {
+        cachedFetchRefreshJobs.delete(id);
+    });
+    cachedFetchRefreshJobs.set(id, job);
+    return job;
 }
 
 async function preloadCacheOnly() {

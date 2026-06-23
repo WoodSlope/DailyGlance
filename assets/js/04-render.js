@@ -19,6 +19,14 @@ function clearStaleTooltips() {
     Object.values(state.charts).forEach(c => { if (c) { if (c.tooltip) c.tooltip.setActiveElements([], {x: 0, y: 0}); c.update('none'); } });
 }
 
+function redrawChartsFast() {
+    Object.values(state.charts).forEach(c => {
+        if (!c) return;
+        if (typeof c.draw === 'function') c.draw();
+        else c.update('none');
+    });
+}
+
 const freezePlugin = {
     id: 'freezePlugin',
     beforeEvent: (c, args) => { if (state.isFrozen && args.event.type !== 'click' && args.event.type !== 'touchstart' && args.event.type !== 'touchend') return false; }
@@ -83,6 +91,7 @@ const bsMarkerPlugin = {
 
 let hoverRAF = null;
 let pendingHoverIdx = -1;
+let chartPointerResetBound = false;
 
 function resolveVisibleDataIndex(activeData, renderedIndex) {
     if (!activeData || renderedIndex < 0) return -1;
@@ -98,9 +107,7 @@ function refreshHoverSelection() {
     setLockIdx(pendingHoverIdx);
     pendingHoverIdx = -1;
     safeUpdateSidebar();
-    for (const chart of Object.values(state.charts)) {
-        if (chart) chart.update('none');
-    }
+    redrawChartsFast();
 }
 
 function resetHoverSelectionToLatest() {
@@ -116,19 +123,22 @@ function resetHoverSelectionToLatest() {
     if (state.lockIdx === latestIdx) return;
     setLockIdx(latestIdx);
     safeUpdateSidebar();
-    for (const chart of Object.values(state.charts)) {
-        if (chart) chart.update('none');
-    }
+    redrawChartsFast();
+}
+
+function bindChartPointerReset() {
+    if (chartPointerResetBound) return;
+    const container = document.querySelector('.integrated-container');
+    if (!container) return;
+    container.addEventListener('mouseleave', () => {
+        resetHoverSelectionToLatest();
+    });
+    chartPointerResetBound = true;
 }
 
 function handleChartHover(e, els) {
     const type = e?.native?.type || e?.type; 
     if (type === 'mousemove' && state.isFrozen) return;
-
-    if (type === 'mouseout' || type === 'mouseleave') {
-        resetHoverSelectionToLatest();
-        return;
-    }
     
     if (els && els.length) {
         const activeData = getActiveData(); if (!activeData) return;
@@ -144,7 +154,7 @@ function handleChartClick(e, els) {
     if (!els || !els.length) {
         state.isFrozen = false;
         resetHoverSelectionToLatest();
-        Object.values(state.charts).forEach(c => c && c.update('none'));
+        redrawChartsFast();
         return;
     }
     const activeData = getActiveData(); if (!activeData) return;
@@ -153,16 +163,19 @@ function handleChartClick(e, els) {
         pendingHoverIdx = -1;
         if (state.isFrozen && state.lockIdx === ti) state.isFrozen = false; else { state.isFrozen = true; setLockIdx(ti); }
         if (hoverRAF) cancelAnimationFrame(hoverRAF);
-        hoverRAF = requestAnimationFrame(() => { safeUpdateSidebar(); Object.values(state.charts).forEach(c => c && c.update('none')); });
+        hoverRAF = requestAnimationFrame(() => { safeUpdateSidebar(); redrawChartsFast(); });
     }
 }
 
 function draw() {
+    const perfTrace = PERF.start('draw', { id: state.id, mode: state.mode, period: state.period, range: state.range });
+    bindChartPointerReset();
     document.querySelectorAll('.empty-hint').forEach(e => e.remove());
     const currentFd = getActiveData(); 
-    if(!currentFd || !currentFd.length) { clearCharts(); return; }
+    if(!currentFd || !currentFd.length) { clearCharts(); PERF.end(perfTrace, { status: 'empty' }); return; }
     
     updateAllIndicators();
+    PERF.mark(perfTrace, 'indicators');
     const actualRange = state.period === 'weekly' ? Math.ceil(state.range / 5) : state.range;
     const slice = currentFd.slice(-actualRange);
     const labels = slice.map(d => d.date);
@@ -265,6 +278,7 @@ function draw() {
             options: kdjOpts, plugins: [localAlignPlugin, freezePlugin] 
         });
     }
+    PERF.end(perfTrace, { points: slice.length });
 }
 
 function generateAnalysisHTML(idx, full, meta) {
@@ -470,10 +484,11 @@ function generateAnalysisHTML(idx, full, meta) {
 }
 
 function safeUpdateSidebar() {
+    const perfTrace = PERF.start('sidebar', { id: state.id, mode: state.mode, period: state.period });
     const rd = getActiveData();
     if (rd && rd.length > 0) {
         const safeIdx = getSafeIndex(rd); 
-        if (safeIdx < 0 || !rd[safeIdx]) return;
+        if (safeIdx < 0 || !rd[safeIdx]) { PERF.end(perfTrace, { status: 'invalid-index' }); return; }
         setLockIdx(safeIdx);
         
         const item = rd[safeIdx];
@@ -481,16 +496,19 @@ function safeUpdateSidebar() {
         
         if (state.mode === 'index') {
             updateLeftMarketContext(item.date);
+            PERF.mark(perfTrace, 'left-context');
         }
 
         if (renderCache.has(cacheKey)) { 
             applySidebarHTML(renderCache.get(cacheKey), cacheKey); 
             updateNavCapsuleVisuals(safeIdx, rd.length); 
+            PERF.end(perfTrace, { status: 'cache-hit', date: item.date });
             return; 
         }
 
         const prev = safeIdx > 0 ? rd[safeIdx - 1] : null;
         const htmlBundle = generateSidebarBundle(item, prev, safeIdx, rd);
+        PERF.mark(perfTrace, 'bundle');
         
         if (renderCache.size >= SYS_CONFIG.RENDER_CACHE_SIZE) {
             renderCache.delete(renderCache.keys().next().value);
@@ -499,12 +517,14 @@ function safeUpdateSidebar() {
         
         applySidebarHTML(htmlBundle, cacheKey);
         updateNavCapsuleVisuals(safeIdx, rd.length);
+        PERF.end(perfTrace, { status: 'cache-miss', date: item.date });
     } else {
         applySidebarHTML({ priceHtml: '', analysisHtml: '', isHide: true });
         if (state.mode === 'index') { 
             const ctx = document.getElementById('leftMarketContext'); 
             if(ctx) ctx.innerHTML = ''; 
         }
+        PERF.end(perfTrace, { status: 'empty-data' });
     }
 }
 

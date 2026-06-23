@@ -336,6 +336,10 @@ const WATCHLIST_STATUS_META = {
     pending: { label: '待定' }
 };
 
+let watchlistRenderRAF = 0;
+let watchlistSnapshotFlushHandle = 0;
+const watchlistSnapshotQueue = new Map();
+
 function resolveWatchlistStatus(decision) {
     if (!decision) return { ...WATCHLIST_STATUS_META.pending, action: '信号待同步', toneClass: 'tone-dim' };
 
@@ -359,6 +363,29 @@ function resolveWatchlistStatus(decision) {
 function setWatchlistStatusSnapshot(code, status) {
     const item = state.watchlist.find(stock => stock.code === code);
     if (item) item._navStatus = status || null;
+}
+
+function scheduleWatchlistRender() {
+    if (watchlistRenderRAF) return;
+    watchlistRenderRAF = requestAnimationFrame(() => {
+        watchlistRenderRAF = 0;
+        if (state.mode === 'stock') renderWatchlist();
+    });
+}
+
+function applyWatchlistDecisionSnapshot(code, decision, date) {
+    const status = resolveWatchlistStatus(decision);
+    setWatchlistStatusSnapshot(code, { ...status, strategy: state.strategy, date: date || '' });
+}
+
+function primeWatchlistStatusSnapshot(code, date) {
+    const item = state.watchlist.find(stock => stock.code === code);
+    if (!item) return;
+    if (item._navStatus && item._navStatus.strategy === state.strategy) {
+        item._navStatus = { ...item._navStatus, date: date || item._navStatus.date || '' };
+        return;
+    }
+    setWatchlistStatusSnapshot(code, { ...WATCHLIST_STATUS_META.pending, action: '信号同步中', toneClass: 'tone-dim', strategy: state.strategy, date: date || '' });
 }
 
 function getLatestDecisionFromData(full) {
@@ -407,6 +434,50 @@ function computeWatchlistDecisionSnapshot(full) {
     }
 }
 
+function flushWatchlistSnapshotQueue(deadline) {
+    watchlistSnapshotFlushHandle = 0;
+    let processed = 0;
+    const canContinue = () => !deadline || deadline.didTimeout || deadline.timeRemaining() > 6 || processed === 0;
+    while (watchlistSnapshotQueue.size && canContinue()) {
+        const [code, full] = watchlistSnapshotQueue.entries().next().value;
+        watchlistSnapshotQueue.delete(code);
+        syncWatchlistSignalSnapshot(code, full);
+        processed++;
+    }
+    if (watchlistSnapshotQueue.size) scheduleWatchlistSnapshotQueue();
+    scheduleWatchlistRender();
+}
+
+function scheduleWatchlistSnapshotQueue() {
+    if (watchlistSnapshotFlushHandle) return;
+    if (typeof window.requestIdleCallback === 'function') {
+        watchlistSnapshotFlushHandle = window.requestIdleCallback(flushWatchlistSnapshotQueue, { timeout: 240 });
+        return;
+    }
+    watchlistSnapshotFlushHandle = window.setTimeout(() => flushWatchlistSnapshotQueue(), 48);
+}
+
+function queueWatchlistSignalSnapshot(code, full) {
+    if (!code || !full?.length) return;
+    primeWatchlistStatusSnapshot(code, full[full.length - 1]?.date || '');
+    watchlistSnapshotQueue.set(code, full);
+    scheduleWatchlistSnapshotQueue();
+}
+
+function syncWatchlistSignalSnapshotFast(code, full) {
+    const last = full?.[full.length - 1];
+    if (!last) {
+        setWatchlistStatusSnapshot(code, { ...WATCHLIST_STATUS_META.pending, action: '暂无数据', strategy: state.strategy, date: '' });
+        return;
+    }
+    const decision = getLatestDecisionFromData(full);
+    if (decision) {
+        applyWatchlistDecisionSnapshot(code, decision, last.date);
+        return;
+    }
+    queueWatchlistSignalSnapshot(code, full);
+}
+
 function syncWatchlistSignalSnapshot(code, full) {
     const last = full?.[full.length - 1];
     if (!last) {
@@ -415,15 +486,15 @@ function syncWatchlistSignalSnapshot(code, full) {
     }
 
     const decision = computeWatchlistDecisionSnapshot(full);
-    const status = resolveWatchlistStatus(decision);
-    setWatchlistStatusSnapshot(code, { ...status, strategy: state.strategy, date: last.date });
+    applyWatchlistDecisionSnapshot(code, decision, last.date);
 }
 
 function refreshWatchlistSignalSnapshots() {
     state.watchlist.forEach(stock => {
         const full = state.rawData[codeToSecid(stock.code)];
-        syncWatchlistSignalSnapshot(stock.code, full);
+        syncWatchlistSignalSnapshotFast(stock.code, full);
     });
+    scheduleWatchlistRender();
 }
 
 async function addToWatchlist(code, name) { 
@@ -482,7 +553,7 @@ async function updateAllWatchlistData() {
             if (data && data.length >= 30 && isValidPrice(data[data.length - 1].close, secid)) {
                 setRawData(secid, data);
                 await dbSet(secid, data);
-                syncWatchlistSignalSnapshot(stock.code, data);
+                syncWatchlistSignalSnapshotFast(stock.code, data);
                 results.push({ code: stock.code, success: true });
             } else {
                 setWatchlistStatusSnapshot(stock.code, { ...WATCHLIST_STATUS_META.pending, action: '数据不足', strategy: state.strategy, date: data?.[data.length - 1]?.date || '' });
@@ -492,7 +563,7 @@ async function updateAllWatchlistData() {
             const cached = await dbGet(secid);
             if (cached && cached.data && cached.data.length >= 30) {
                 setRawData(secid, cached.data);
-                syncWatchlistSignalSnapshot(stock.code, cached.data);
+                syncWatchlistSignalSnapshotFast(stock.code, cached.data);
                 results.push({ code: stock.code, success: true, source: 'cache' });
             } else {
                 setWatchlistStatusSnapshot(stock.code, { ...WATCHLIST_STATUS_META.pending, action: '同步失败', strategy: state.strategy, date: '' });
@@ -500,10 +571,12 @@ async function updateAllWatchlistData() {
             }
         }
     }
+    scheduleWatchlistRender();
     return results;
 }
 
 async function selectIndex(id) {
+    const perfTrace = PERF.start('selectIndex', { id });
     if (!getIndexConfig(id)) return;
     const selectionSeq = ++globalSelectionSeq;
     const config = getIndexConfig(id);
@@ -525,21 +598,18 @@ async function selectIndex(id) {
 
     try {
         await cachedFetch(id);
+        PERF.mark(perfTrace, 'cachedFetch');
         if (selectionSeq !== globalSelectionSeq || state.id !== id) return;
-        const data = getActiveData();
-        if (data && data.length) {
-            setLockIdx(data.length - 1);
-            updateAllIndicators();
-            draw();
-            safeUpdateSidebar();
-        }
         renderIndexList();
+        PERF.mark(perfTrace, 'renderIndexList');
     } finally {
         if (selectionSeq === globalSelectionSeq) hideLoading();
+        PERF.end(perfTrace, { selected: state.id, selectionSeq });
     }
 }
 
 async function selectStock(code, name) {
+    const perfTrace = PERF.start('selectStock', { code });
     const safeCode = String(code || '').trim();
     const safeName = String(name || safeCode).trim();
     if (!/^\d{6}$/.test(safeCode)) return;
@@ -565,20 +635,22 @@ async function selectStock(code, name) {
     showLoading(`加载 ${safeName} 数据...`);
 
     try {
-        const data = await syncData(secid);
+        await cachedFetch(secid);
+        PERF.mark(perfTrace, 'cachedFetch');
         if (selectionSeq !== globalSelectionSeq || state.id !== secid || state.stockId !== safeCode) return;
-
-        if (data && data.length >= 30 && isValidPrice(data[data.length - 1].close, secid)) {
-            setRawData(secid, data);
-            await dbSet(secid, data);
-            setLockIdx(getActiveData()?.length - 1 || -1);
-            updateAllIndicators();
-            syncWatchlistSignalSnapshot(safeCode, data);
-            draw();
-            safeUpdateSidebar();
-        } else {
-            throw new Error('数据不足或价格无效');
+        const data = getActiveData();
+        if (!(data && data.length >= 30 && isValidPrice(data[data.length - 1].close, secid))) {
+            setRawData(secid, null);
+            clearCharts();
+            const cPrice = document.getElementById('cardPrice');
+            const cAnalysis = document.getElementById('cardAnalysis');
+            if (cPrice) {
+                cPrice.style.display = 'flex';
+                cPrice.innerHTML = '<div class="stock-empty">该股票数据暂时加载失败，请稍后重试或更换标的。</div>';
+            }
+            if (cAnalysis) cAnalysis.style.display = 'none';
         }
+        PERF.mark(perfTrace, 'post-check', { points: data?.length || 0 });
     } catch(e) {
         if (selectionSeq !== globalSelectionSeq || state.id !== secid || state.stockId !== safeCode) return;
         setRawData(secid, null);
@@ -596,6 +668,7 @@ async function selectStock(code, name) {
             renderWatchlist();
             debounceWatchlistUpdate();
         }
+        PERF.end(perfTrace, { selected: state.stockId, selectionSeq });
     }
 }
 
@@ -813,6 +886,69 @@ function toggleHelp() {
     if(o) o.classList.toggle('show'); 
 }
 
+function renderPerfPanel() {
+    const panel = document.getElementById('perfPanel');
+    if (!panel) return;
+
+    const traces = (window.__DG_PERF__?.traces || []).slice().reverse();
+    const listHtml = traces.length ? traces.map(item => {
+        const meta = Object.entries(item.meta || {}).map(([k, v]) => `${k}: ${v}`).join(' · ');
+        const steps = (item.steps || []).map(step => `
+            <div class="perf-step">
+                <span class="step-name">${escapeHTML(step.step)}</span>
+                <span class="mono">${step.duration}ms</span>
+            </div>
+        `).join('');
+        return `
+            <div class="perf-item">
+                <div class="perf-item-head">
+                    <div class="perf-item-title">${escapeHTML(item.label)}</div>
+                    <div class="perf-item-total mono">${item.total}ms</div>
+                </div>
+                <div class="perf-item-meta">${escapeHTML(meta || '无额外信息')}</div>
+                <div class="perf-steps">${steps || '<div class="perf-item-meta">无分步记录</div>'}</div>
+            </div>
+        `;
+    }).join('') : '<div class="perf-empty">先操作几次切换、刷新或图表交互，这里会出现最近性能记录。</div>';
+
+    panel.innerHTML = `
+        <div class="sg-header">
+            <h2>性能诊断</h2>
+            <button class="sg-close" onclick="togglePerfPanel()">×</button>
+        </div>
+        <div class="sg-body">
+            <div class="perf-toolbar">
+                <button type="button" onclick="renderPerfPanel()">刷新</button>
+                <button type="button" onclick="copyPerfSummary()">复制摘要</button>
+                <button type="button" onclick="clearPerfSummary()">清空记录</button>
+            </div>
+            <div class="perf-list">${listHtml}</div>
+        </div>
+    `;
+}
+
+function togglePerfPanel() {
+    const overlay = document.getElementById('perfOverlay');
+    if (!overlay) return;
+    if (!overlay.classList.contains('show')) renderPerfPanel();
+    overlay.classList.toggle('show');
+}
+
+async function copyPerfSummary() {
+    const text = JSON.stringify(window.__DG_PERF__?.summary() || [], null, 2);
+    try {
+        await navigator.clipboard.writeText(text);
+        await customAlert('性能摘要已复制。');
+    } catch (e) {
+        await customAlert('复制失败，请稍后重试。');
+    }
+}
+
+function clearPerfSummary() {
+    if (window.__DG_PERF__) window.__DG_PERF__.traces = [];
+    renderPerfPanel();
+}
+
 async function switchStrategy(name) { 
     if(!STRATEGIES[name]) return;
     const confirmed = await customConfirm(`确定切换到 [${name}]？\n${STRATEGIES[name].desc}`); 
@@ -999,12 +1135,12 @@ async function init() {
         }, SYS_CONFIG.THROTTLE_MS);
     }
 
-    await ensureMarketTemperatureData(); 
     await preloadCacheOnly(); 
-    refreshWatchlistSignalSnapshots();
+    await ensureMarketTemperatureData(); 
     await cachedFetch('sh'); 
     
     hideLoading();
+    requestAnimationFrame(() => refreshWatchlistSignalSnapshots());
 }
 
 // 启动应用

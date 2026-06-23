@@ -13,6 +13,18 @@ const Calcs = {
         }
         return r;
     },
+    maIncremental: (data, n, prev = [], startIdx = 0) => {
+        if (!Array.isArray(prev) || !prev.length || startIdx <= 0) return Calcs.ma(data, n);
+        const r = prev.slice(0, data.length);
+        const begin = Math.max(0, startIdx);
+        for (let i = begin; i < Math.min(data.length, n - 1); i++) r[i] = null;
+        for (let i = Math.max(n - 1, begin); i < data.length; i++) {
+            let s = 0;
+            for (let j = 0; j < n; j++) s += data[i - j]?.close || 0;
+            r[i] = s / n;
+        }
+        return r;
+    },
     macd: (data) => {
         let e12 = [], e26 = [], diff = [], dea = [], bar = [];
         for (let i = 0; i < data.length; i++) {
@@ -21,6 +33,24 @@ const Calcs = {
             else { e12[i] = c * 2 / 13 + e12[i - 1] * 11 / 13; e26[i] = c * 2 / 27 + e26[i - 1] * 25 / 27; }
             diff[i] = e12[i] - e26[i];
             dea[i] = (i === 0) ? diff[i] : (diff[i] * 2 / 11 + dea[i - 1] * 9 / 11);
+            bar[i] = diff[i] - dea[i];
+        }
+        return { _e12: e12, _e26: e26, diff, dea, bar };
+    },
+    macdIncremental: (data, prev, startIdx = 0) => {
+        if (!prev?._e12?.length || !prev?._e26?.length || !prev?.diff?.length || !prev?.dea?.length || startIdx <= 0) return Calcs.macd(data);
+        const e12 = prev._e12.slice(0, data.length);
+        const e26 = prev._e26.slice(0, data.length);
+        const diff = prev.diff.slice(0, data.length);
+        const dea = prev.dea.slice(0, data.length);
+        const bar = prev.bar.slice(0, data.length);
+        const begin = Math.max(1, startIdx);
+        for (let i = begin; i < data.length; i++) {
+            const c = data[i]?.close || 0;
+            e12[i] = c * 2 / 13 + (e12[i - 1] || 0) * 11 / 13;
+            e26[i] = c * 2 / 27 + (e26[i - 1] || 0) * 25 / 27;
+            diff[i] = e12[i] - e26[i];
+            dea[i] = diff[i] * 2 / 11 + (dea[i - 1] || 0) * 9 / 11;
             bar[i] = diff[i] - dea[i];
         }
         return { _e12: e12, _e26: e26, diff, dea, bar };
@@ -38,6 +68,36 @@ const Calcs = {
         }
         return { val: r, _g: g, _l: l, _ag: ag, _al: al };
     },
+    rsiIncremental: (data, prev, n = 14, startIdx = 0) => {
+        if (!prev?.val?.length || !prev?._g?.length || !prev?._l?.length || !prev?._ag?.length || !prev?._al?.length || startIdx <= 1) return Calcs.rsi(data, n);
+        const r = prev.val.slice(0, data.length);
+        const g = prev._g.slice(0, data.length);
+        const l = prev._l.slice(0, data.length);
+        const ag = prev._ag.slice(0, data.length);
+        const al = prev._al.slice(0, data.length);
+        const begin = Math.max(1, startIdx);
+        for (let i = begin; i < data.length; i++) {
+            const d = (data[i]?.close || 0) - (data[i - 1]?.close || 0);
+            g[i] = d > 0 ? d : 0;
+            l[i] = d < 0 ? -d : 0;
+        }
+        for (let i = begin; i < data.length; i++) {
+            if (i < n) {
+                ag[i] = ag[i - 1] || 0;
+                al[i] = al[i - 1] || 0;
+                r[i] = null;
+            } else if (i === n) {
+                ag[i] = g.slice(1, n + 1).reduce((a, b) => a + b, 0) / n;
+                al[i] = l.slice(1, n + 1).reduce((a, b) => a + b, 0) / n;
+                r[i] = 100 - 100 / (1 + (ag[i] / (al[i] || 0.0001)));
+            } else {
+                ag[i] = (ag[i - 1] * (n - 1) + g[i]) / n;
+                al[i] = (al[i - 1] * (n - 1) + l[i]) / n;
+                r[i] = 100 - 100 / (1 + (ag[i] / (al[i] || 0.0001)));
+            }
+        }
+        return { val: r, _g: g, _l: l, _ag: ag, _al: al };
+    },
     kdj: (data, n = 9) => {
         let k = [], d = [], j = []; let prevK = 50, prevD = 50;
         for (let i = 0; i < data.length; i++) {
@@ -49,8 +109,39 @@ const Calcs = {
             k.push(curK); d.push(curD); j.push(curJ); prevK = curK; prevD = curD;
         }
         return { k, d, j };
+    },
+    kdjIncremental: (data, prev, n = 9, startIdx = 0) => {
+        if (!prev?.k?.length || !prev?.d?.length || !prev?.j?.length || startIdx <= 0) return Calcs.kdj(data, n);
+        const k = prev.k.slice(0, data.length);
+        const d = prev.d.slice(0, data.length);
+        const j = prev.j.slice(0, data.length);
+        const begin = Math.max(0, startIdx - n + 1);
+        for (let i = begin; i < Math.min(data.length, n - 1); i++) k[i] = d[i] = j[i] = null;
+        let prevK = begin > 0 ? (k[begin - 1] ?? 50) : 50;
+        let prevD = begin > 0 ? (d[begin - 1] ?? 50) : 50;
+        for (let i = Math.max(n - 1, begin); i < data.length; i++) {
+            let hn = -Infinity, ln = Infinity;
+            for (let jdx = i - n + 1; jdx <= i; jdx++) {
+                const bar = data[jdx];
+                const high = bar?.high || 0;
+                const low = bar?.low || 0;
+                if (high > hn) hn = high;
+                if (low < ln) ln = low;
+            }
+            const rsv = hn === ln ? 50 : (((data[i]?.close || 0) - ln) / (hn - ln) * 100);
+            const curK = (2 / 3) * prevK + (1 / 3) * rsv;
+            const curD = (2 / 3) * prevD + (1 / 3) * curK;
+            k[i] = curK;
+            d[i] = curD;
+            j[i] = 3 * curK - 2 * curD;
+            prevK = curK;
+            prevD = curD;
+        }
+        return { k, d, j };
     }
 };
+
+const DECISION_REBUILD_LOOKBACK = 80;
 
 function calculateBollinger(data, idx) { 
     if(idx < 19 || !data[idx]) return null; 
@@ -62,8 +153,8 @@ function calculateBollinger(data, idx) {
 
 function getCalendarWeeksUntil(full, idx) { return (!full || idx < 0) ? [] : (state.period === 'weekly' ? full.slice(0, idx + 1) : convertDailyToWeekly(full.slice(0, idx + 1))); }
 
-function getWeeklyData(full, idx) { 
-    const weeks = getCalendarWeeksUntil(full, idx); if(weeks.length < 6) return null; 
+function getWeeklyData(full, idx, weeksOverride = null) { 
+    const weeks = weeksOverride || getCalendarWeeksUntil(full, idx); if(weeks.length < 6) return null; 
     const cur = weeks[weeks.length - 1], prev = weeks[weeks.length - 2]; 
     const ma5w = weeks.slice(-5).reduce((s, w) => s + (w?.close || 0), 0) / 5, prevMa5w = weeks.slice(-6, -1).reduce((s, w) => s + (w?.close || 0), 0) / 5, avgPrevVol = weeks.slice(-5, -1).reduce((s, w) => s + (w?.vol || 0), 0) / 4; 
     return { aboveMA5W: cur.close > ma5w && prev.close <= prevMa5w, volUp: avgPrevVol > 0 && cur.vol > avgPrevVol * 1.2 }; 
@@ -108,8 +199,8 @@ class SignalContext {
     get body() { return Math.abs((this.item.close || 0) - (this.item.open || 0)); }
     get kdj() { return {K: this.ind.kdj?.k?.[this.idx], D: this.ind.kdj?.d?.[this.idx], J: this.ind.kdj?.j?.[this.idx], prevK: this.ind.kdj?.k?.[this.idx-1] || 50, prevD: this.ind.kdj?.d?.[this.idx-1] || 50}; }
     get lookback30() { return this._lb30 || (this._lb30 = this.full.slice(Math.max(0, this.idx - 30), this.idx)); }
-    get wd() { return this._wd || (this._wd = getWeeklyData(this.full, this.idx)); }
     get weeklySeries() { return this._weeks || (this._weeks = getCalendarWeeksUntil(this.full, this.idx)); }
+    get wd() { return this._wd || (this._wd = getWeeklyData(this.full, this.idx, this.weeklySeries)); }
     get weeklySupport() { if(this._weeklySupport !== undefined) return this._weeklySupport; const recentWeeks = this.weeklySeries.slice(Math.max(0, this.weeklySeries.length - 21), -1); return (this._weeklySupport = recentWeeks.length ? Math.min(...recentWeeks.map(d => d?.low || 0)) : 0); }
     get boll() { return this._boll || (this._boll = calculateBollinger(this.full, this.idx)); }
     get consecutiveBullish() { if(this._cb !== undefined) return this._cb; let c = 0; for(let i = this.idx - 1; i >= Math.max(0, this.idx - 5); i--) { if(this.full[i]?.close > this.full[i]?.open) c++; else break; } return (this._cb = c); }
@@ -405,18 +496,93 @@ function updateAllIndicators(incrementalIdx = -1) {
     const full = getActiveData(); if(!full || !full.length) return;
     const nextKey = getIndicatorKey(full);
     if (incrementalIdx === -1 && state.indicatorKey === nextKey && state.indicators.macd && state.indicators.rsi && state.indicators.kdj) return;
-    
-    if (incrementalIdx === -1 || !state.indicators.macd || full.length < 60) {
-        MA_OPTIONS.forEach(n => state.indicators.ma[n] = Calcs.ma(full, n));
-        state.indicators.macd = Calcs.macd(full); state.indicators.rsi = Calcs.rsi(full); state.indicators.kdj = Calcs.kdj(full);
-        let prevPos = 0;
-        for(let i = 0; i < full.length; i++) {
-            if (full[i]?._signals && full[i]._signalVersion === SIGNAL_VERSION && full[i]._strategy === state.strategy && i !== full.length - 1 && full[i]._decision) { prevPos = full[i]._decision.position; continue; }
-            if (full[i]) {
-                full[i]._signals = calculateDailySignals(i, full, state.indicators); full[i]._signalVersion = SIGNAL_VERSION; full[i]._strategy = state.strategy;
-                full[i]._decision = computeDecisionForIndex(i, full, prevPos); prevPos = full[i]._decision.position;
-            }
+    const cacheKey = nextKey;
+
+    const mutation = incrementalIdx >= 0
+        ? { mode: 'incremental', startIdx: incrementalIdx }
+        : (state.pendingIndicatorMutation || { mode: 'full', startIdx: 0 });
+    const shouldFullRebuild = !state.indicators.macd || full.length < 60 || mutation.mode === 'full';
+
+    if (mutation.mode === 'unchanged' && state.indicators.macd) {
+        state.indicatorKey = nextKey;
+        state.pendingIndicatorMutation = null;
+        return;
+    }
+
+    if (incrementalIdx === -1 && mutation.mode === 'full' && derivedIndicatorCache.has(cacheKey)) {
+        const cached = derivedIndicatorCache.get(cacheKey);
+        state.indicators.ma = cached.indicators.ma;
+        state.indicators.macd = cached.indicators.macd;
+        state.indicators.rsi = cached.indicators.rsi;
+        state.indicators.kdj = cached.indicators.kdj;
+        for (let i = 0; i < full.length; i++) {
+            if (!full[i] || !cached.rows[i]) continue;
+            full[i]._signals = cached.rows[i]._signals;
+            full[i]._signalVersion = cached.rows[i]._signalVersion;
+            full[i]._strategy = cached.rows[i]._strategy;
+            full[i]._decision = cached.rows[i]._decision;
+        }
+        state.indicatorKey = nextKey;
+        state.pendingIndicatorMutation = null;
+        return;
+    }
+
+    const calcStart = shouldFullRebuild ? 0 : Math.max(0, mutation.startIdx || 0);
+    MA_OPTIONS.forEach(n => {
+        state.indicators.ma[n] = shouldFullRebuild
+            ? Calcs.ma(full, n)
+            : Calcs.maIncremental(full, n, state.indicators.ma?.[n], calcStart);
+    });
+    state.indicators.macd = shouldFullRebuild
+        ? Calcs.macd(full)
+        : Calcs.macdIncremental(full, state.indicators.macd, calcStart);
+    state.indicators.rsi = shouldFullRebuild
+        ? Calcs.rsi(full)
+        : Calcs.rsiIncremental(full, state.indicators.rsi, 14, calcStart);
+    state.indicators.kdj = shouldFullRebuild
+        ? Calcs.kdj(full)
+        : Calcs.kdjIncremental(full, state.indicators.kdj, 9, calcStart);
+
+    const rebuildStart = shouldFullRebuild
+        ? 0
+        : Math.max(0, Math.min(full.length - 1, mutation.startIdx || 0) - DECISION_REBUILD_LOOKBACK);
+
+    let prevPos = 0;
+    if (!shouldFullRebuild && rebuildStart > 0) {
+        prevPos = full[rebuildStart - 1]?._decision?.position || 0;
+    }
+
+    for(let i = shouldFullRebuild ? 0 : rebuildStart; i < full.length; i++) {
+        if (!shouldFullRebuild && i !== full.length - 1 && full[i]?._signals && full[i]._signalVersion === SIGNAL_VERSION && full[i]._strategy === state.strategy && full[i]._decision && i < rebuildStart) {
+            prevPos = full[i]._decision.position;
+            continue;
+        }
+        if (full[i]) {
+            full[i]._signals = calculateDailySignals(i, full, state.indicators);
+            full[i]._signalVersion = SIGNAL_VERSION;
+            full[i]._strategy = state.strategy;
+            full[i]._decision = computeDecisionForIndex(i, full, prevPos);
+            prevPos = full[i]._decision.position;
         }
     }
+
     state.indicatorKey = nextKey;
+    state.pendingIndicatorMutation = null;
+    derivedIndicatorCache.set(cacheKey, {
+        indicators: {
+            ma: { ...state.indicators.ma },
+            macd: state.indicators.macd,
+            rsi: state.indicators.rsi,
+            kdj: state.indicators.kdj
+        },
+        rows: full.map(item => item ? ({
+            _signals: item._signals,
+            _signalVersion: item._signalVersion,
+            _strategy: item._strategy,
+            _decision: item._decision
+        }) : null)
+    });
+    if (derivedIndicatorCache.size > SYS_CONFIG.RENDER_CACHE_SIZE) {
+        derivedIndicatorCache.delete(derivedIndicatorCache.keys().next().value);
+    }
 }
