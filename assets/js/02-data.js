@@ -183,13 +183,27 @@ async function syncDataIncremental(id) {
 async function syncData(id) { 
     const cached = await getCachedData(id), now = getBJDate(), today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`; 
     const hasEnough = cached && cached.length >= 30; 
+    const isIndex = !!getIndexConfig(id);
+
+    const canMergeRealtimeBar = (series, rtBar) => {
+        if (!rtBar || !series || !series.length) return false;
+        if (isIndex) return true;
+        const lastBar = series[series.length - 1];
+        if (!lastBar || lastBar.date !== today) return false;
+        if (!lastBar.close || !isValidPrice(lastBar.close, id)) return false;
+        return Math.abs(rtBar.close - lastBar.close) / lastBar.close <= SYS_CONFIG.EX_RIGHT_TOLERANCE;
+    };
     
     if(isMarketOpen()) { 
         if(hasEnough) { 
             const incremental = await syncDataIncremental(id); 
             if(incremental && incremental.length > 0) { await dbSet(id, incremental); cached.length = 0; Array.prototype.push.apply(cached, incremental); } 
             const rt = await requestManager.fetchRealtimeWithThrottle(id); 
-            if(rt) { if(cached[cached.length-1].date === today) cached[cached.length-1] = rt; else cached.push(rt); await dbSet(id, cached); } 
+            if (canMergeRealtimeBar(cached, rt)) {
+                if (cached[cached.length - 1].date === today) cached[cached.length - 1] = rt;
+                else cached.push(rt);
+                await dbSet(id, cached);
+            }
             return cached; 
         } 
         const data = await syncDataWithHistory(id); 
@@ -391,6 +405,10 @@ async function cachedFetch(id) {
         setRawData(id, fresh);
         setLockIdx(getActiveData()?.length - 1 || -1);
         await dbSet(id, fresh);
+        if (typeof syncWatchlistSignalSnapshot === 'function') {
+            const matched = (state.watchlist || []).find(stock => codeToSecid(stock.code) === id);
+            if (matched) syncWatchlistSignalSnapshot(matched.code, fresh);
+        }
         if (id === state.id) {
             if (firstLoad) { hideLoading(); renderMASelector(); }
             updateAllIndicators();

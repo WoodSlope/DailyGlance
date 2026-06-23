@@ -315,7 +315,7 @@ function getExitSignalEvidence(meta, decision) {
     const directDesc = direct.length ? direct.map(s => `${s} ${logicMap[s] || getUserSignalText(s)}`).join(' / ') : '无直接离场信号';
     const windowDesc = windowExits.length ? windowExits.map(s => `${s} ${logicMap[s] || getUserSignalText(s)}`).join(' / ') : '近窗内无额外离场形态';
     const exitText = decision?.exit?.detail || '暂无明确离场依据';
-    return { direct, directDesc, windowDesc, exitText };
+    return { direct, window: windowExits, directDesc, windowDesc, exitText };
 }
 
 function getPositionDriverText(meta, market, risk, exit, base, position, prevPos) {

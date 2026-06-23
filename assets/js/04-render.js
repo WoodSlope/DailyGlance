@@ -82,38 +82,78 @@ const bsMarkerPlugin = {
 };
 
 let hoverRAF = null;
+let pendingHoverIdx = -1;
+
+function resolveVisibleDataIndex(activeData, renderedIndex) {
+    if (!activeData || renderedIndex < 0) return -1;
+    const actualRange = state.period === 'weekly' ? Math.ceil(state.range / 5) : state.range;
+    const startIdx = Math.max(0, activeData.length - actualRange);
+    const targetIdx = startIdx + renderedIndex;
+    return (targetIdx >= 0 && targetIdx < activeData.length) ? targetIdx : -1;
+}
+
+function refreshHoverSelection() {
+    hoverRAF = null;
+    if (pendingHoverIdx < 0 || pendingHoverIdx === state.lockIdx) return;
+    setLockIdx(pendingHoverIdx);
+    pendingHoverIdx = -1;
+    safeUpdateSidebar();
+    for (const chart of Object.values(state.charts)) {
+        if (chart) chart.update('none');
+    }
+}
+
+function resetHoverSelectionToLatest() {
+    if (state.isFrozen) return;
+    const activeData = getActiveData();
+    if (!activeData || !activeData.length) return;
+    const latestIdx = activeData.length - 1;
+    pendingHoverIdx = -1;
+    if (hoverRAF) {
+        cancelAnimationFrame(hoverRAF);
+        hoverRAF = null;
+    }
+    if (state.lockIdx === latestIdx) return;
+    setLockIdx(latestIdx);
+    safeUpdateSidebar();
+    for (const chart of Object.values(state.charts)) {
+        if (chart) chart.update('none');
+    }
+}
 
 function handleChartHover(e, els) {
     const type = e?.native?.type || e?.type; 
     if (type === 'mousemove' && state.isFrozen) return;
+
+    if (type === 'mouseout' || type === 'mouseleave') {
+        resetHoverSelectionToLatest();
+        return;
+    }
     
     if (els && els.length) {
         const activeData = getActiveData(); if (!activeData) return;
-        const actualRange = state.period === 'weekly' ? Math.ceil(state.range / 5) : state.range;
-        const dataItem = activeData.slice(-actualRange)[els[0].index];
-        if (dataItem) {
-            const ti = activeData.indexOf(dataItem);
-            if (ti >= 0 && state.lockIdx !== ti) {
-                setLockIdx(ti);
-                if(hoverRAF) cancelAnimationFrame(hoverRAF);
-                hoverRAF = requestAnimationFrame(() => { safeUpdateSidebar(); Object.values(state.charts).forEach(c => c && c.update('none')); });
-            }
+        const ti = resolveVisibleDataIndex(activeData, els[0].index);
+        if (ti >= 0 && state.lockIdx !== ti) {
+            pendingHoverIdx = ti;
+            if (!hoverRAF) hoverRAF = requestAnimationFrame(refreshHoverSelection);
         }
     }
 }
 
 function handleChartClick(e, els) {
-    if (!els || !els.length) { state.isFrozen = false; Object.values(state.charts).forEach(c => c && c.update('none')); return; }
+    if (!els || !els.length) {
+        state.isFrozen = false;
+        resetHoverSelectionToLatest();
+        Object.values(state.charts).forEach(c => c && c.update('none'));
+        return;
+    }
     const activeData = getActiveData(); if (!activeData) return;
-    const actualRange = state.period === 'weekly' ? Math.ceil(state.range / 5) : state.range;
-    const dataItem = activeData.slice(-actualRange)[els[0].index];
-    if (dataItem) {
-        const ti = activeData.indexOf(dataItem);
-        if (ti >= 0) {
-            if (state.isFrozen && state.lockIdx === ti) state.isFrozen = false; else { state.isFrozen = true; setLockIdx(ti); }
-            if(hoverRAF) cancelAnimationFrame(hoverRAF);
-            hoverRAF = requestAnimationFrame(() => { safeUpdateSidebar(); Object.values(state.charts).forEach(c => c && c.update('none')); });
-        }
+    const ti = resolveVisibleDataIndex(activeData, els[0].index);
+    if (ti >= 0) {
+        pendingHoverIdx = -1;
+        if (state.isFrozen && state.lockIdx === ti) state.isFrozen = false; else { state.isFrozen = true; setLockIdx(ti); }
+        if (hoverRAF) cancelAnimationFrame(hoverRAF);
+        hoverRAF = requestAnimationFrame(() => { safeUpdateSidebar(); Object.values(state.charts).forEach(c => c && c.update('none')); });
     }
 }
 
@@ -336,11 +376,13 @@ function generateAnalysisHTML(idx, full, meta) {
     const isDirectExitContext = decision.exit.level !== '无明确离场' || exitEvidence.direct.length;
     const guardValue = hasExitContext ? displayExitLevel : decision.risk.level;
     const guardTextClass = isDirectExitContext || decision.risk.score < 60 ? 'text-warn' : 'text-main';
-    const guardExitText = isDirectExitContext
-        ? (decision.exit.detail || exitEvidence.exitText)
-        : (hasExitContext ? `近窗：${exitEvidence.windowDesc}` : decision.exit.detail);
-    const guardHoldingText = diagnosis ? `${diagnosis.displayStatus || diagnosis.status}：${diagnosis.action}` : '';
-    const guardHint = [riskFlags, guardExitText, guardHoldingText].filter(Boolean).join('；');
+    const guardSignals = [
+        ...exitEvidence.direct,
+        ...(exitEvidence.window || []).filter(sig => !exitEvidence.direct.includes(sig))
+    ].slice(0, 3);
+    const guardSignalSummary = guardSignals.length ? `信号 ${guardSignals.join(' / ')}` : '';
+    const guardHoldingText = diagnosis ? (diagnosis.displayStatus || diagnosis.status) : '';
+    const guardHint = [riskFlags, guardSignalSummary, guardHoldingText].filter(Boolean).join(' · ');
 
     let panelClass = 'panel-neutral';
     const a = decision.simpleAction;
@@ -412,7 +454,7 @@ function generateAnalysisHTML(idx, full, meta) {
                     </div>
                     <div class="right-side">
                         <div class="v ${guardTextClass}">${escapeHTML(guardValue)}</div>
-                        <div class="h">${escapeHTML(guardHint)}</div>
+                        <div class="h">${escapeHTML(guardHint || '暂无额外风控提示')}</div>
                     </div>
                 </div>
             </div>

@@ -328,6 +328,104 @@ async function saveWatchlist() {
     await dbSet('watchlist_list', state.watchlist); 
 }
 
+const WATCHLIST_STATUS_META = {
+    candidate: { label: '候选' },
+    hold: { label: '持有' },
+    observe: { label: '观察' },
+    defend: { label: '防守' },
+    pending: { label: '待定' }
+};
+
+function resolveWatchlistStatus(decision) {
+    if (!decision) return { ...WATCHLIST_STATUS_META.pending, action: '信号待同步', toneClass: 'tone-dim' };
+
+    const action = decision.simpleAction || '';
+    const toneClass = decision.simpleColorClass ? decision.simpleColorClass.replace('text-', 'tone-') : 'tone-dim';
+    if (['轻仓建仓', '积极建仓', '缓慢加仓', '顺势加仓'].includes(action)) {
+        return { ...WATCHLIST_STATUS_META.candidate, action, toneClass };
+    }
+    if (['轻仓持有', '积极持有', '顺势抱单'].includes(action)) {
+        return { ...WATCHLIST_STATUS_META.hold, action, toneClass };
+    }
+    if (['防守减仓', '执行离场', '清仓离场', '规避风险'].includes(action)) {
+        return { ...WATCHLIST_STATUS_META.defend, action, toneClass };
+    }
+    if (['持币观望', '谨慎持有'].includes(action)) {
+        return { ...WATCHLIST_STATUS_META.observe, action, toneClass };
+    }
+    return { ...WATCHLIST_STATUS_META.observe, action: action || '观察中', toneClass };
+}
+
+function setWatchlistStatusSnapshot(code, status) {
+    const item = state.watchlist.find(stock => stock.code === code);
+    if (item) item._navStatus = status || null;
+}
+
+function getLatestDecisionFromData(full) {
+    const last = full?.[full.length - 1];
+    if (last?._decision && last._strategy === state.strategy && last._signalVersion === SIGNAL_VERSION) {
+        return last._decision;
+    }
+    return null;
+}
+
+function computeWatchlistDecisionSnapshot(full) {
+    if (!full || full.length < 60) return null;
+
+    const cachedDecision = getLatestDecisionFromData(full);
+    if (cachedDecision) return cachedDecision;
+
+    const localIndicators = { ma: {}, macd: null, rsi: null, kdj: null };
+    MA_OPTIONS.forEach(n => localIndicators.ma[n] = Calcs.ma(full, n));
+    localIndicators.macd = Calcs.macd(full);
+    localIndicators.rsi = Calcs.rsi(full);
+    localIndicators.kdj = Calcs.kdj(full);
+
+    const prevMode = state.mode;
+    const prevPeriod = state.period;
+    const prevIndicators = state.indicators;
+    let prevPos = 0;
+
+    try {
+        state.mode = 'stock';
+        state.period = 'daily';
+        state.indicators = localIndicators;
+
+        for (let i = 0; i < full.length; i++) {
+            if (!full[i]) continue;
+            full[i]._signals = calculateDailySignals(i, full, localIndicators);
+            full[i]._signalVersion = SIGNAL_VERSION;
+            full[i]._strategy = state.strategy;
+            full[i]._decision = computeDecisionForIndex(i, full, prevPos);
+            prevPos = full[i]._decision.position;
+        }
+        return full[full.length - 1]?._decision || null;
+    } finally {
+        state.mode = prevMode;
+        state.period = prevPeriod;
+        state.indicators = prevIndicators;
+    }
+}
+
+function syncWatchlistSignalSnapshot(code, full) {
+    const last = full?.[full.length - 1];
+    if (!last) {
+        setWatchlistStatusSnapshot(code, { ...WATCHLIST_STATUS_META.pending, action: '暂无数据', strategy: state.strategy, date: '' });
+        return;
+    }
+
+    const decision = computeWatchlistDecisionSnapshot(full);
+    const status = resolveWatchlistStatus(decision);
+    setWatchlistStatusSnapshot(code, { ...status, strategy: state.strategy, date: last.date });
+}
+
+function refreshWatchlistSignalSnapshots() {
+    state.watchlist.forEach(stock => {
+        const full = state.rawData[codeToSecid(stock.code)];
+        syncWatchlistSignalSnapshot(stock.code, full);
+    });
+}
+
 async function addToWatchlist(code, name) { 
     if(!state.watchlist.some(s => s.code === code)) { 
         if(state.watchlist.length >= 10) { 
@@ -343,6 +441,7 @@ async function addToWatchlist(code, name) {
 async function removeStock(code) { 
     state.watchlist = state.watchlist.filter(s => s.code !== code); 
     await saveWatchlist(); 
+    renderWatchlist();
     
     if(state.stockId === code) { 
         state.stockId = null; 
@@ -360,8 +459,6 @@ async function removeStock(code) {
         renderIndexList(); 
         clearCharts(); 
         cachedFetch('sh');
-    } else {
-        renderWatchlist(); 
     }
 }
 
@@ -385,16 +482,20 @@ async function updateAllWatchlistData() {
             if (data && data.length >= 30 && isValidPrice(data[data.length - 1].close, secid)) {
                 setRawData(secid, data);
                 await dbSet(secid, data);
+                syncWatchlistSignalSnapshot(stock.code, data);
                 results.push({ code: stock.code, success: true });
             } else {
+                setWatchlistStatusSnapshot(stock.code, { ...WATCHLIST_STATUS_META.pending, action: '数据不足', strategy: state.strategy, date: data?.[data.length - 1]?.date || '' });
                 results.push({ code: stock.code, success: false, reason: '数据不足' });
             }
         } catch (e) {
             const cached = await dbGet(secid);
             if (cached && cached.data && cached.data.length >= 30) {
                 setRawData(secid, cached.data);
+                syncWatchlistSignalSnapshot(stock.code, cached.data);
                 results.push({ code: stock.code, success: true, source: 'cache' });
             } else {
+                setWatchlistStatusSnapshot(stock.code, { ...WATCHLIST_STATUS_META.pending, action: '同步失败', strategy: state.strategy, date: '' });
                 results.push({ code: stock.code, success: false, reason: e.message });
             }
         }
@@ -472,6 +573,7 @@ async function selectStock(code, name) {
             await dbSet(secid, data);
             setLockIdx(getActiveData()?.length - 1 || -1);
             updateAllIndicators();
+            syncWatchlistSignalSnapshot(safeCode, data);
             draw();
             safeUpdateSidebar();
         } else {
@@ -542,6 +644,7 @@ function renderIndexList() {
         const config = INDEX_CONFIG[id];
         const active = state.id === id && state.mode === 'index' ? 'active' : '';
         const d = state.rawData[id];
+        const indexCode = (config.tencent || id).toUpperCase();
         const price = d?.length ? d[d.length-1].close : 0;
         const prev = d?.length > 1 ? d[d.length-2].close : (d?.length ? d[0].open : 1);
         const change = price - prev;
@@ -554,8 +657,15 @@ function renderIndexList() {
             
         return `
             <div class="nav-list-item ${active}" onclick="selectIndex('${id}')">
-                <span class="lname">${config.name}</span>
-                ${priceHtml}
+                <div class="nav-list-main">
+                    <div class="lname-wrap">
+                        <span class="lname">${config.name}</span>
+                    </div>
+                </div>
+                <div class="nav-list-sub">
+                    <span class="lcode mono">${escapeHTML(indexCode)}</span>
+                    <div class="lquote">${priceHtml}</div>
+                </div>
             </div>
         `;
     }).join('');
@@ -599,6 +709,15 @@ function renderWatchlist() {
     
     const lHtml = state.watchlist.map(s => {
         const d = state.rawData[codeToSecid(s.code)];
+        const lastDate = d?.length ? d[d.length - 1].date : '';
+        const rowStatus = s._navStatus && s._navStatus.strategy === state.strategy && s._navStatus.date === lastDate
+            ? s._navStatus
+            : (() => {
+                const fallback = resolveWatchlistStatus(getLatestDecisionFromData(d));
+                const status = { ...fallback, strategy: state.strategy, date: lastDate };
+                setWatchlistStatusSnapshot(s.code, status);
+                return status;
+            })();
         const price = d?.length ? d[d.length-1].close : 0;
         const prev = d?.length > 1 ? d[d.length-2].close : (d?.length ? d[0].open : 1);
         const change = price - prev;
@@ -607,10 +726,20 @@ function renderWatchlist() {
         
         return `
             <div class="nav-list-item ${s.code === state.stockId ? 'active' : ''}" onclick="selectStock('${escapeJSArg(s.code)}','${escapeJSArg(s.name)}')">
-                <span class="lname">${escapeHTML(s.name)}</span>
-                <span class="lprice mono ${cl}">${price > 0 ? price.toFixed(2) : '--'}</span>
-                <span class="lchange mono ${cl}">${pct !== 0 ? (change >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '--'}</span>
-                <span class="wl-close" onclick="event.stopPropagation();removeStock('${escapeJSArg(s.code)}')">×</span>
+                <div class="nav-list-main">
+                    <div class="lname-wrap">
+                        <span class="lname">${escapeHTML(s.name)}</span>
+                        <span class="wl-status ${rowStatus.toneClass}" title="${escapeHTML(rowStatus.action)}">${rowStatus.label}</span>
+                    </div>
+                    <button type="button" class="wl-close" title="移除自选股" aria-label="移除 ${escapeHTML(s.name)}" onclick="event.stopPropagation();removeStock('${escapeJSArg(s.code)}')">×</button>
+                </div>
+                <div class="nav-list-sub">
+                    <span class="lcode mono">${escapeHTML(s.code)}</span>
+                    <div class="lquote">
+                        <span class="lprice mono ${cl}">${price > 0 ? price.toFixed(2) : '--'}</span>
+                        <span class="lchange mono ${cl}">${pct !== 0 ? (change >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '--'}</span>
+                    </div>
+                </div>
             </div>
         `;
     }).join('');
@@ -698,7 +827,9 @@ async function switchStrategy(name) {
         updateAllIndicators(); 
         draw(); 
         safeUpdateSidebar(); 
-    }
+        refreshWatchlistSignalSnapshots();
+        renderWatchlist();
+    } 
 }
 
 function renderSettings() {
@@ -870,6 +1001,7 @@ async function init() {
 
     await ensureMarketTemperatureData(); 
     await preloadCacheOnly(); 
+    refreshWatchlistSignalSnapshots();
     await cachedFetch('sh'); 
     
     hideLoading();
