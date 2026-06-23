@@ -492,7 +492,18 @@ function safeUpdateSidebar() {
         setLockIdx(safeIdx);
         
         const item = rd[safeIdx];
-        const cacheKey = `${state.id}_${item.date}_${state.strategy}_${state.period}_${item.close}_${item.vol}`;
+        const decision = item._decision || null;
+        const cacheKey = [
+            state.id,
+            item.date,
+            state.strategy,
+            state.period,
+            item.close,
+            item.vol,
+            getDecisionSignature(decision),
+            SIGNAL_VERSION,
+            APP_BUILD
+        ].join('_');
         
         if (state.mode === 'index') {
             updateLeftMarketContext(item.date);

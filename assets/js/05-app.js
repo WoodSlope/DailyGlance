@@ -592,8 +592,10 @@ async function selectIndex(id) {
     document.getElementById('stockNavList').style.display = 'none';
     document.getElementById('btnBacktest').style.display = 'none';
 
+    resetIndicatorState();
     renderIndexList();
     clearCharts();
+    renderCache.clear();
     showLoading(`加载 ${config.name} 数据...`);
 
     try {
@@ -630,8 +632,10 @@ async function selectStock(code, name) {
     document.getElementById('stockNavList').style.display = 'block';
     document.getElementById('btnBacktest').style.display = 'flex';
 
+    resetIndicatorState();
     renderWatchlist();
     clearCharts();
+    renderCache.clear();
     showLoading(`加载 ${safeName} 数据...`);
 
     try {
@@ -1122,6 +1126,7 @@ async function init() {
     });
     
     renderMASelector();
+    renderIndexList();
     
     setInterval(() => { 
         const d = getBJDate(); 
@@ -1137,9 +1142,8 @@ async function init() {
 
     await preloadCacheOnly(); 
     await ensureMarketTemperatureData(); 
-    await cachedFetch('sh'); 
-    
-    hideLoading();
+    await selectIndex('sh'); 
+
     requestAnimationFrame(() => refreshWatchlistSignalSnapshots());
 }
 

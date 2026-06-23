@@ -18,6 +18,7 @@ let stockCache = [];
 const cachedFetchRefreshJobs = new Map();
 let cachedFetchRefreshApplyTimer = 0;
 let pendingCachedFetchRefreshApplyId = '';
+const historyRefreshMeta = new Map();
 
 function getBJDate() { return new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Shanghai"})); }
 function isMarketOpen() { const now = getBJDate(), day = now.getDay(), m = now.getHours() * 60 + now.getMinutes(); return day !== 0 && day !== 6 && m >= 9 * 60 + 15 && m <= 15 * 60 + 15; }
@@ -86,6 +87,9 @@ function setRawData(id, data) {
     if (id === state.id) {
         const indicatorScopePrefix = `${state.id}_${state.period}_${state.strategy}_`;
         const isSameIndicatorScope = typeof state.indicatorKey === 'string' && state.indicatorKey.startsWith(indicatorScopePrefix);
+        if (!isSameIndicatorScope) {
+            state.indicators = { ma: {}, macd: null, rsi: null, kdj: null };
+        }
         state.pendingIndicatorMutation = isSameIndicatorScope ? getDataMutationMeta(prevData, data) : { mode: 'full', startIdx: 0 };
         markIndicatorsDirty();
     }
@@ -206,13 +210,36 @@ async function syncDataWithHistory(id) {
     return null; 
 }
 
+function getHistoryRefreshMeta(id) {
+    return historyRefreshMeta.get(id) || { lastSuccessAt: 0, lastAttemptAt: 0, lastDate: '' };
+}
+
+function setHistoryRefreshMeta(id, patch = {}) {
+    historyRefreshMeta.set(id, { ...getHistoryRefreshMeta(id), ...patch });
+}
+
+function shouldSkipHistoryRefresh(id, cached) {
+    if (!cached || !cached.length) return false;
+    const meta = getHistoryRefreshMeta(id);
+    const now = Date.now();
+    const lastDate = cached[cached.length - 1]?.date || '';
+    if (lastDate && lastDate < getLastTradingDate()) return false;
+    if (meta.lastDate && meta.lastDate !== lastDate) return false;
+    if (meta.lastSuccessAt && now - meta.lastSuccessAt < SYS_CONFIG.HISTORY_FRESH_MS) return true;
+    if (meta.lastAttemptAt && now - meta.lastAttemptAt < SYS_CONFIG.HISTORY_REFRESH_COOLDOWN_MS) return true;
+    return false;
+}
+
 async function syncDataIncremental(id) { 
     try { 
         const cached = await dbGet(id); 
         if(!cached || !cached.data || !cached.data.length) return await syncDataWithHistory(id); 
+        if (shouldSkipHistoryRefresh(id, cached.data)) return cached.data;
         
+        setHistoryRefreshMeta(id, { lastAttemptAt: Date.now(), lastDate: cached.data[cached.data.length - 1]?.date || '' });
         const fresh = await syncDataWithHistory(id); 
         if(!fresh || !fresh.length) return cached.data; 
+        setHistoryRefreshMeta(id, { lastSuccessAt: Date.now(), lastDate: fresh[fresh.length - 1]?.date || '' });
 
         const lastCached = cached.data[cached.data.length - 1];
         const matchingFresh = fresh.find(d => d.date === lastCached.date);
@@ -230,6 +257,7 @@ async function syncData(id) {
     const cached = await getCachedData(id), now = getBJDate(), today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`; 
     const hasEnough = cached && cached.length >= 30; 
     const isIndex = !!getIndexConfig(id);
+    const cachedLastDate = cached && cached.length ? (cached[cached.length - 1]?.date || '') : '';
 
     const canMergeRealtimeBar = (series, rtBar) => {
         if (!rtBar || !series || !series.length) return false;
@@ -252,8 +280,9 @@ async function syncData(id) {
             }
             return cached; 
         } 
+        setHistoryRefreshMeta(id, { lastAttemptAt: Date.now(), lastDate: cachedLastDate });
         const data = await syncDataWithHistory(id); 
-        if(data && data.length >= 30) { await dbSet(id, data); return data; } 
+        if(data && data.length >= 30) { setHistoryRefreshMeta(id, { lastSuccessAt: Date.now(), lastDate: data[data.length - 1]?.date || '' }); await dbSet(id, data); return data; } 
         return hasEnough ? cached : null; 
     } else { 
         if(hasEnough) { 
@@ -261,8 +290,9 @@ async function syncData(id) {
             if(incremental && incremental.length > 0) { await dbSet(id, incremental); return incremental; } 
             return cached; 
         } 
+        setHistoryRefreshMeta(id, { lastAttemptAt: Date.now(), lastDate: cachedLastDate });
         const data = await syncDataWithHistory(id); 
-        if(data && data.length >= 30) { await dbSet(id, data); return data; } 
+        if(data && data.length >= 30) { setHistoryRefreshMeta(id, { lastSuccessAt: Date.now(), lastDate: data[data.length - 1]?.date || '' }); await dbSet(id, data); return data; } 
         return null; 
     } 
 }
@@ -451,6 +481,7 @@ async function handleClearCache() {
 
 async function cachedFetch(id) {
     const perfTrace = PERF.start('cachedFetch', { id, activeId: state.id, mode: state.mode });
+    const fetchStateKey = `${state.mode}_${state.id}_${state.period}_${state.strategy}`;
     const cachedResult = await dbGet(id);
     PERF.mark(perfTrace, 'dbGet');
     if (cachedResult && cachedResult.data && cachedResult.data.length > 0 && id === state.id) {
@@ -459,7 +490,14 @@ async function cachedFetch(id) {
         updateAllIndicators();
         hideLoading();
         renderMASelector();
-        requestAnimationFrame(() => { draw(); safeUpdateSidebar(); });
+        if (state.mode === 'index') renderIndexList();
+        if (state.mode === 'stock' && typeof scheduleWatchlistRender === 'function') scheduleWatchlistRender();
+        requestAnimationFrame(() => {
+            const currentStateKey = `${state.mode}_${state.id}_${state.period}_${state.strategy}`;
+            if (currentStateKey !== fetchStateKey || id !== state.id) return;
+            draw();
+            safeUpdateSidebar();
+        });
         PERF.mark(perfTrace, 'use-cache', { points: cachedResult.data.length });
         PERF.end(perfTrace, { status: 'cache-first', firstLoad: false });
         scheduleCachedFetchRefresh(id);
@@ -492,13 +530,23 @@ async function cachedFetch(id) {
             hideLoading();
             renderMASelector();
             updateAllIndicators();
-            requestAnimationFrame(() => { draw(); safeUpdateSidebar(); });
+            requestAnimationFrame(() => {
+                const currentStateKey = `${state.mode}_${state.id}_${state.period}_${state.strategy}`;
+                if (currentStateKey !== fetchStateKey || id !== state.id) return;
+                draw();
+                safeUpdateSidebar();
+            });
         }
         PERF.mark(perfTrace, 'apply-fresh', { hasUpdate, firstLoad: !old || !old.length });
     } else if (id === state.id) {
         hideLoading();
         renderMASelector();
-        requestAnimationFrame(() => { draw(); safeUpdateSidebar(); });
+        requestAnimationFrame(() => {
+            const currentStateKey = `${state.mode}_${state.id}_${state.period}_${state.strategy}`;
+            if (currentStateKey !== fetchStateKey || id !== state.id) return;
+            draw();
+            safeUpdateSidebar();
+        });
         PERF.mark(perfTrace, 'reuse-state', { points: old.length });
     }
     if (state.mode === 'index') renderIndexList(); 

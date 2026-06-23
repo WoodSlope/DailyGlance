@@ -6,7 +6,8 @@
 const rootStyle = getComputedStyle(document.documentElement);
 const getCssVar = (name) => rootStyle.getPropertyValue(name).trim();
 
-const SYS_CONFIG = { THROTTLE_MS: 30000, REQ_TIMEOUT: 5000, UPDATE_COOLDOWN: 60000, VOL_SURGE_RATIO: 1.5, VOL_SHRINK_RATIO: 0.9, EX_RIGHT_TOLERANCE: 0.02, RENDER_CACHE_SIZE: 50 };
+const APP_BUILD = '2026-06-23-01';
+const SYS_CONFIG = { THROTTLE_MS: 30000, REQ_TIMEOUT: 5000, UPDATE_COOLDOWN: 60000, VOL_SURGE_RATIO: 1.5, VOL_SHRINK_RATIO: 0.9, EX_RIGHT_TOLERANCE: 0.02, RENDER_CACHE_SIZE: 50, HISTORY_FRESH_MS: 15000, HISTORY_REFRESH_COOLDOWN_MS: 8000 };
 
 const MA_OPTIONS = [5, 10, 20, 30, 60, 120, 250];
 const MA_COLORS = { 5: '#ffffff', 10: '#f5a623', 20: '#c084fc', 30: '#60a5fa', 60: '#f472b6', 120: '#4ade80', 250: '#94a3b8' };
@@ -79,6 +80,18 @@ window.__DG_PERF__ = PERF;
 function clearDerivedCaches() { renderCache.clear(); dateIndexCache.clear(); }
 
 const SIGNAL_VERSION = 'v4.1.2';
+window.__DG_BUILD__ = APP_BUILD;
+
+function getDecisionSignature(decision) {
+    if (!decision) return 'none';
+    return [
+        decision.simpleAction || '',
+        decision.position ?? '',
+        decision.market?.label || '',
+        decision.risk?.score ?? '',
+        decision.exit?.level || ''
+    ].join('|');
+}
 const SIGNAL_SCORES = { 'B1':3,'B2':3,'B3':2,'B4':2,'B5':2,'B6':2,'B7':1,'B8':1,'B9':4,'B10':2,'B11':2,'B12':3,'B13':3,'B14':2,'B15':2,'B16':3 };
 const SIGNAL_DESC = {
     'B1':{desc:'均线多头'}, 'B2':{desc:'MACD金叉'}, 'B3':{desc:'上穿20日线'}, 'B4':{desc:'放量突破新高'}, 'B5':{desc:'阳包阴'}, 'B6':{desc:'缩量回踩不破'}, 'B7':{desc:'RSI超卖回升'}, 'B8':{desc:'KDJ金叉'}, 'B9':{desc:'MACD底背离'}, 'B10':{desc:'MA20上穿MA60'}, 'B11':{desc:'均线回踩不破'}, 'B12':{desc:'零轴上金叉'}, 'B13':{desc:'长级别走强'}, 'B14':{desc:'平台放量突破'}, 'B15':{desc:'均线二次金叉'}, 'B16':{desc:'回踩周线支撑企稳'},

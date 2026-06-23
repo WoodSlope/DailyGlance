@@ -492,6 +492,12 @@ function getIndicatorKey(data = getActiveData()) {
 
 function markIndicatorsDirty() { state.indicatorKey = ''; }
 
+function resetIndicatorState() {
+    state.indicators = { ma: {}, macd: null, rsi: null, kdj: null };
+    state.pendingIndicatorMutation = { mode: 'full', startIdx: 0 };
+    markIndicatorsDirty();
+}
+
 function updateAllIndicators(incrementalIdx = -1) {
     const full = getActiveData(); if(!full || !full.length) return;
     const nextKey = getIndicatorKey(full);
