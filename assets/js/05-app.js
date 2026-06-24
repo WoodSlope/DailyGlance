@@ -534,6 +534,7 @@ async function removeStock(code) {
 }
 
 let watchlistUpdateTimer = null;
+let watchlistAutoRefreshTimer = 0;
 
 function debounceWatchlistUpdate() {
     if (watchlistUpdateTimer) clearTimeout(watchlistUpdateTimer);
@@ -573,6 +574,16 @@ async function updateAllWatchlistData() {
     }
     scheduleWatchlistRender();
     return results;
+}
+
+function startWatchlistAutoRefresh() {
+    if (watchlistAutoRefreshTimer || !isMarketOpen()) return;
+    watchlistAutoRefreshTimer = setInterval(async () => {
+        if (state.mode !== 'stock' || state.tab !== 'stock') return;
+        if (!state.watchlist || state.watchlist.length === 0) return;
+        await updateAllWatchlistData();
+        renderWatchlist();
+    }, 90000);
 }
 
 async function selectIndex(id) {
@@ -1138,6 +1149,7 @@ async function init() {
             if(state.mode === 'index') cachedFetch(state.id); 
             else if(state.mode === 'stock' && state.id) cachedFetch(state.id); 
         }, SYS_CONFIG.THROTTLE_MS);
+        startWatchlistAutoRefresh();
     }
 
     await preloadCacheOnly(); 
