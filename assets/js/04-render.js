@@ -19,6 +19,21 @@ function clearStaleTooltips() {
     Object.values(state.charts).forEach(c => { if (c) { if (c.tooltip) c.tooltip.setActiveElements([], {x: 0, y: 0}); c.update('none'); } });
 }
 
+function updateFreezeBadge() {
+    var badge = document.getElementById('freezeBadge');
+    if (!badge) return;
+    if (state.isFrozen) {
+        var rd = getActiveData();
+        var safeIdx = rd ? getSafeIndex(rd) : -1;
+        var date = rd && safeIdx >= 0 && safeIdx < rd.length ? rd[safeIdx].date : '';
+        var dateEl = badge.querySelector('.freeze-badge-date');
+        if (dateEl) dateEl.textContent = date ? ' \u00b7 ' + date : '';
+        badge.style.display = 'flex';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
 function redrawChartsFast() {
     Object.values(state.charts).forEach(c => {
         if (!c) return;
@@ -155,6 +170,7 @@ function handleChartClick(e, els) {
         state.isFrozen = false;
         resetHoverSelectionToLatest();
         redrawChartsFast();
+        updateFreezeBadge();
         return;
     }
     const activeData = getActiveData(); if (!activeData) return;
@@ -163,7 +179,7 @@ function handleChartClick(e, els) {
         pendingHoverIdx = -1;
         if (state.isFrozen && state.lockIdx === ti) state.isFrozen = false; else { state.isFrozen = true; setLockIdx(ti); }
         if (hoverRAF) cancelAnimationFrame(hoverRAF);
-        hoverRAF = requestAnimationFrame(() => { safeUpdateSidebar(); redrawChartsFast(); });
+        hoverRAF = requestAnimationFrame(() => { safeUpdateSidebar(); redrawChartsFast(); updateFreezeBadge(); });
     }
 }
 
@@ -172,7 +188,7 @@ function draw() {
     bindChartPointerReset();
     document.querySelectorAll('.empty-hint').forEach(e => e.remove());
     const currentFd = getActiveData(); 
-    if(!currentFd || !currentFd.length) { clearCharts(); PERF.end(perfTrace, { status: 'empty' }); return; }
+    if(!currentFd || !currentFd.length) { clearCharts(); updateFreezeBadge(); PERF.end(perfTrace, { status: 'empty' }); return; }
     
     updateAllIndicators();
     PERF.mark(perfTrace, 'indicators');
@@ -279,6 +295,7 @@ function draw() {
         });
     }
     PERF.end(perfTrace, { points: slice.length });
+    updateFreezeBadge();
 }
 
 function generateAnalysisHTML(idx, full, meta) {
@@ -570,10 +587,22 @@ function applySidebarHTML(bundle, cacheKey = '') {
     
     if (cacheKey && cPrice.dataset.key === cacheKey) return; 
     
+    var oldPriceEl = cPrice.querySelector('.price-main');
+    var oldPrice = oldPriceEl ? parseFloat(oldPriceEl.textContent) : null;
+    
     cPrice.innerHTML = bundle.priceHtml; 
     cAnalysis.innerHTML = bundle.analysisHtml;
     
     if (cacheKey) cPrice.dataset.key = cacheKey;
+    
+    var newPriceEl = cPrice.querySelector('.price-main');
+    if (newPriceEl && oldPrice !== null && !isNaN(oldPrice)) {
+        var newPrice = parseFloat(newPriceEl.textContent);
+        if (!isNaN(newPrice) && newPrice !== oldPrice) {
+            newPriceEl.classList.add('price-pulse');
+            setTimeout(function() { newPriceEl.classList.remove('price-pulse'); }, 400);
+        }
+    }
 }
 
 function generateSidebarBundle(item, prev, safeIdx, rd) {

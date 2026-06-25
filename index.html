@@ -2,13 +2,17 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>DailyGlance 量化终端</title>
 <link rel="icon" href="assets/icons/favicon.svg" type="image/svg+xml">
 <link rel="alternate icon" href="assets/icons/favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="assets/icons/favicon.png">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<link rel="stylesheet" href="assets/css/dailyglance.css?v=20260623-01">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>window.Chart || document.write('<script src="https://unpkg.com/chart.js@4.4.3/dist/chart.umd.min.js"><\/script>')</script>
+<link rel="stylesheet" href="assets/css/dailyglance.css?v=20260625-06">
 </head>
 <body>
 
@@ -142,7 +146,7 @@
             </div>
         </div>
         <div class="integrated-container">
-            <div class="main-chart-box"><canvas id="mainChart"></canvas></div>
+            <div class="main-chart-box"><div id="freezeBadge" class="freeze-badge" style="display:none;"><span>历史浏览</span><span class="freeze-badge-date mono"></span></div><canvas id="mainChart"></canvas></div>
             <div class="volume-chart-box"><canvas id="volumeChart"></canvas></div>
             <div class="macd-chart-box"><canvas id="macdChart"></canvas></div>
             <div class="kdj-chart-box"><canvas id="kdjChart"></canvas></div>
@@ -150,15 +154,17 @@
     </section>
     
     <aside class="info-section">
+        <div id="lastRefreshBar" class="refresh-bar" style="display:none;"><span class="refresh-dot"></span><span class="text-dim mono" style="font-size:11px;">更新于 <span id="lastRefreshTime">--:--:--</span></span></div>
         <div id="cardPrice" style="display: none;"></div>
         <div id="cardAnalysis" style="display: none;"></div>
     </aside>
 </main>
 
-<script src="assets/js/01-config-ui.js?v=20260623-01"></script>
-<script src="assets/js/02-data.js?v=20260623-01"></script>
-<script src="assets/js/03-calculations.js?v=20260623-01"></script>
-<script src="assets/js/04-render.js?v=20260623-01"></script>
-<script src="assets/js/05-app.js?v=20260623-01"></script>
+<div id="toastContainer"></div>
+<script src="assets/js/01-config-ui.js?v=20260625-06"></script>
+<script src="assets/js/02-data.js?v=20260625-06"></script>
+<script src="assets/js/03-calculations.js?v=20260625-06"></script>
+<script src="assets/js/04-render.js?v=20260625-06"></script>
+<script src="assets/js/05-app.js?v=20260625-06"></script>
 </body>
 </html>

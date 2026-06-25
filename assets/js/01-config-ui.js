@@ -6,8 +6,8 @@
 const rootStyle = getComputedStyle(document.documentElement);
 const getCssVar = (name) => rootStyle.getPropertyValue(name).trim();
 
-const APP_BUILD = '2026-06-23-01';
-const SYS_CONFIG = { THROTTLE_MS: 30000, REQ_TIMEOUT: 5000, UPDATE_COOLDOWN: 60000, VOL_SURGE_RATIO: 1.5, VOL_SHRINK_RATIO: 0.9, EX_RIGHT_TOLERANCE: 0.02, RENDER_CACHE_SIZE: 50, HISTORY_FRESH_MS: 15000, HISTORY_REFRESH_COOLDOWN_MS: 8000 };
+const APP_BUILD = '2026-06-25-06';
+const SYS_CONFIG = { THROTTLE_MS: 30000, REQ_TIMEOUT: 5000, UPDATE_COOLDOWN: 60000, VOL_SURGE_RATIO: 1.5, VOL_SHRINK_RATIO: 0.9, EX_RIGHT_TOLERANCE: 0.02, RENDER_CACHE_SIZE: 50, HISTORY_FRESH_MS: 15000, HISTORY_REFRESH_COOLDOWN_MS: 8000, SIDEBAR_SYNC_CONCURRENCY: 3 };
 
 const MA_OPTIONS = [5, 10, 20, 30, 60, 120, 250];
 const MA_COLORS = { 5: '#ffffff', 10: '#f5a623', 20: '#c084fc', 30: '#60a5fa', 60: '#f472b6', 120: '#4ade80', 250: '#94a3b8' };
@@ -143,6 +143,63 @@ const customConfirm = (msg) => new Promise(resolve => {
     cancelBtn.onclick = () => close(false); okBtn.onclick = () => close(true);
     m.classList.add('show'); okBtn.focus();
 });
+
+// === P1-6: 轻量 Toast 组件（非阻塞） ===
+let _toastSeq = 0;
+function showToast(msg, type, duration) {
+    type = type || 'info'; duration = duration || 3000;
+    const container = document.getElementById('toastContainer');
+    if (!container) return 0;
+    const id = ++_toastSeq;
+    const toast = document.createElement('div');
+    toast.className = 'toast toast-' + type;
+    toast.dataset.id = id;
+    toast.textContent = msg;
+    container.appendChild(toast);
+    requestAnimationFrame(function() { toast.classList.add('show'); });
+    toast._timer = setTimeout(function() { _dismissToast(id); }, duration);
+    return id;
+}
+function showToastWithAction(msg, actionLabel, onAction, type, duration) {
+    type = type || 'info'; duration = duration || 4000;
+    const container = document.getElementById('toastContainer');
+    if (!container) return 0;
+    const id = ++_toastSeq;
+    const toast = document.createElement('div');
+    toast.className = 'toast toast-' + type + ' toast-with-action';
+    toast.dataset.id = id;
+    const msgSpan = document.createElement('span');
+    msgSpan.className = 'toast-msg';
+    msgSpan.textContent = msg;
+    var btn = document.createElement('button');
+    btn.className = 'toast-action';
+    btn.textContent = actionLabel;
+    btn.onclick = function() { clearTimeout(toast._timer); _dismissToast(id); if (onAction) onAction(); };
+    toast.appendChild(msgSpan);
+    toast.appendChild(btn);
+    container.appendChild(toast);
+    requestAnimationFrame(function() { toast.classList.add('show'); });
+    toast._timer = setTimeout(function() { _dismissToast(id); }, duration);
+    return id;
+}
+function _dismissToast(id) {
+    var container = document.getElementById('toastContainer');
+    if (!container) return;
+    var toast = container.querySelector('.toast[data-id="' + id + '"]');
+    if (!toast) return;
+    clearTimeout(toast._timer);
+    toast.classList.remove('show');
+    setTimeout(function() { if (toast.parentNode) toast.remove(); }, 300);
+}
+function dismissToast(id) { _dismissToast(id); }
+
+// === P1-5: 数据刷新时间戳 ===
+function markRefreshTime() {
+    var el = document.getElementById('lastRefreshTime');
+    var bar = document.getElementById('lastRefreshBar');
+    if (el) el.textContent = new Date().toLocaleTimeString('en-GB', { hour12: false });
+    if (bar) bar.style.display = 'flex';
+}
 
 document.addEventListener('keydown', (e) => {
     const modal = document.getElementById('customModal'), help = document.getElementById('helpOverlay'), settings = document.getElementById('settingsOverlay');

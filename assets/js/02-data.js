@@ -204,7 +204,59 @@ function getRealtimePriceJSONP(id) {
     });
 }
 
-async function syncDataWithHistory(id) { 
+// 受控并发：最多 concurrency 个 fn 同时执行
+function pLimit(items, concurrency, fn) {
+    const results = new Array(items.length);
+    let nextIdx = 0;
+    async function worker() {
+        while (nextIdx < items.length) {
+            const idx = nextIdx++;
+            try { results[idx] = await fn(items[idx], idx); }
+            catch (e) { results[idx] = undefined; }
+        }
+    }
+    const workers = [];
+    for (let i = 0; i < Math.min(concurrency, items.length); i++) workers.push(worker());
+    return Promise.all(workers).then(() => results);
+}
+
+// 批量实时行情：1 次 JSONP 拿多个标的的实时价格
+function batchGetRealtimePrices(ids) {
+    return new Promise(resolve => {
+        if (!ids || !ids.length) return resolve({});
+        const symToId = {}, symbols = [];
+        for (const id of ids) { const sym = resolveTencentSymbol(id); symToId[sym] = id; symbols.push(sym); }
+        const script = document.createElement('script');
+        script.src = `https://qt.gtimg.cn/q=${symbols.join(',')}`;
+        script.charset = 'GBK';
+        let cl = false;
+        const cleanup = () => { if (cl) return; cl = true; clearTimeout(timer); if (script.parentNode) script.remove(); };
+        const timer = setTimeout(() => { cleanup(); resolve({}); }, 5000);
+        const results = {};
+        script.onload = () => {
+            cleanup();
+            const now = getBJDate(), localDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+            for (const sym of symbols) {
+                const varName = 'v_' + sym, id = symToId[sym];
+                if (typeof window[varName] !== 'undefined') {
+                    const fields = window[varName].split('~');
+                    if (fields.length >= 6) {
+                        const price = parseFloat(fields[3]) || 0;
+                        if (price > 0) {
+                            results[id] = { date: localDate, open: parseFloat(fields[5])||price, high: parseFloat(fields[33])||price, low: parseFloat(fields[34])||price, close: price, vol: parseInt(fields[36])||0, amt: parseFloat(fields[37])||0 };
+                        }
+                    }
+                    delete window[varName];
+                }
+            }
+            resolve(results);
+        };
+        script.onerror = () => { cleanup(); resolve({}); };
+        document.head.appendChild(script);
+    });
+}
+
+async function syncDataWithHistory(id) {
     let data = await jsonpFetchEastmoneyKline(id); if(data && data.length >= 30) return data; 
     data = await jsonpFetchTencentKline(id); if(data && data.length >= 30) return data; 
     return null; 
@@ -261,9 +313,12 @@ async function syncData(id) {
 
     const canMergeRealtimeBar = (series, rtBar) => {
         if (!rtBar || !series || !series.length) return false;
-        if (isIndex) return true;
         const lastBar = series[series.length - 1];
-        if (!lastBar || lastBar.date !== today) return false;
+        if (!lastBar || !isValidPrice(rtBar.close, id)) return false;
+        // 实时 bar 日期必须 >= 最后一根历史 bar 日期，避免跨日跳空/重复
+        if (rtBar.date < lastBar.date) return false;
+        if (isIndex) return true;
+        if (lastBar.date !== today) return false;
         if (!lastBar.close || !isValidPrice(lastBar.close, id)) return false;
         return Math.abs(rtBar.close - lastBar.close) / lastBar.close <= SYS_CONFIG.EX_RIGHT_TOLERANCE;
     };
@@ -312,11 +367,16 @@ async function handleUpdateData(forceFull = false) {
     
     const now = Date.now(), lastClick = lastUpdateClicks.get(state.id) || 0;
     if(!forceFull && now - lastClick < SYS_CONFIG.UPDATE_COOLDOWN) { await customAlert(`频繁请求限制。此标的更新需等待 ${Math.ceil((SYS_CONFIG.UPDATE_COOLDOWN-(now-lastClick))/1000)} 秒。`); return; } 
-    lastUpdateClicks.set(state.id, now); 
     
     const info = await checkCacheNeedUpdate(state.id); 
-    const confirmed = await customConfirm(info.needUpdate ? `需要更新：${info.reason}\n继续？` : '数据已是最新，确认强制同步？');
-    if(!confirmed) return;
+    if(info.needUpdate) {
+        lastUpdateClicks.set(state.id, Date.now());
+        showToast(info.reason + '，正在同步...', 'info', 2000);
+    } else {
+        const confirmed = await customConfirm('数据已是最新，确认强制同步？');
+        if(!confirmed) return;
+        lastUpdateClicks.set(state.id, Date.now());
+    }
     
     btn.disabled = true; btn.innerHTML = SVG_ICONS.SPIN; 
     try { 
@@ -375,6 +435,7 @@ function scheduleCachedFetchRefreshApply(id) {
             renderMASelector();
             draw();
             safeUpdateSidebar();
+            markRefreshTime();
             PERF.mark(perfTrace, 'render');
             PERF.end(perfTrace, { status: 'applied' });
         });
@@ -551,6 +612,7 @@ async function cachedFetch(id) {
     }
     if (state.mode === 'index') renderIndexList(); 
     if (state.mode === 'stock' && typeof scheduleWatchlistRender === 'function') scheduleWatchlistRender();
+    markRefreshTime();
     PERF.end(perfTrace, { status: shouldApplyFresh ? (hasUpdate ? 'updated' : 'initial') : 'unchanged', firstLoad: !old || !old.length });
 }
 

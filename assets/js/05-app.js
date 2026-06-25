@@ -510,31 +510,48 @@ async function addToWatchlist(code, name) {
 }
 
 async function removeStock(code) { 
-    state.watchlist = state.watchlist.filter(s => s.code !== code); 
-    await saveWatchlist(); 
+    var stock = state.watchlist.find(function(s) { return s.code === code; });
+    if (!stock) return;
+    if (stock._pendingRemove) return;
+    
+    stock._pendingRemove = true;
     renderWatchlist();
     
-    if(state.stockId === code) { 
-        state.stockId = null; 
-        state.id = 'sh'; 
-        state.mode = 'index'; 
-        state.isFrozen = false;
+    showToastWithAction(
+        '\u5df2\u79fb\u9664 ' + stock.name,
+        '\u64a4\u9500',
+        function() { stock._pendingRemove = false; renderWatchlist(); },
+        'info', 3000
+    );
+    
+    setTimeout(async function() {
+        if (!stock._pendingRemove) return;
+        state.watchlist = state.watchlist.filter(s => s.code !== code); 
+        await saveWatchlist(); 
+        renderWatchlist();
         
-        document.querySelectorAll('#mainTabs .nav-btn').forEach(btn => btn.classList.remove('active')); 
-        document.querySelector('#mainTabs .nav-btn[data-tab="index"]').classList.add('active');
-        document.getElementById('indexNavList').style.display = 'block'; 
-        document.getElementById('stockNavList').style.display = 'none'; 
-        document.getElementById('btnBacktest').style.display = 'none'; 
-        
-        globalSelectionSeq++; 
-        renderIndexList(); 
-        clearCharts(); 
-        cachedFetch('sh');
-    }
+        if(state.stockId === code) { 
+            state.stockId = null; 
+            state.id = 'sh'; 
+            state.mode = 'index'; 
+            state.isFrozen = false;
+            
+            document.querySelectorAll('#mainTabs .nav-btn').forEach(btn => btn.classList.remove('active')); 
+            document.querySelector('#mainTabs .nav-btn[data-tab="index"]').classList.add('active');
+            document.getElementById('indexNavList').style.display = 'block'; 
+            document.getElementById('stockNavList').style.display = 'none'; 
+            document.getElementById('btnBacktest').style.display = 'none'; 
+            
+            globalSelectionSeq++; 
+            renderIndexList(); 
+            clearCharts(); 
+            cachedFetch('sh');
+        }
+    }, 3000);
 }
 
 let watchlistUpdateTimer = null;
-let watchlistAutoRefreshTimer = 0;
+let sidebarFullSyncTimer = 0;
 
 function debounceWatchlistUpdate() {
     if (watchlistUpdateTimer) clearTimeout(watchlistUpdateTimer);
@@ -545,48 +562,107 @@ function debounceWatchlistUpdate() {
 }
 
 async function updateAllWatchlistData() {
-    const results = [];
-    for (const stock of state.watchlist) {
+    if (!state.watchlist || !state.watchlist.length) return [];
+    const stocks = state.watchlist.filter(s => codeToSecid(s.code) !== state.id);
+    const results = await pLimit(stocks, SYS_CONFIG.SIDEBAR_SYNC_CONCURRENCY, async (stock) => {
         const secid = codeToSecid(stock.code);
-        if (secid === state.id) continue;
         try {
             const data = await syncData(secid);
             if (data && data.length >= 30 && isValidPrice(data[data.length - 1].close, secid)) {
                 setRawData(secid, data);
                 await dbSet(secid, data);
                 syncWatchlistSignalSnapshotFast(stock.code, data);
-                results.push({ code: stock.code, success: true });
+                return { code: stock.code, success: true };
             } else {
                 setWatchlistStatusSnapshot(stock.code, { ...WATCHLIST_STATUS_META.pending, action: '数据不足', strategy: state.strategy, date: data?.[data.length - 1]?.date || '' });
-                results.push({ code: stock.code, success: false, reason: '数据不足' });
+                return { code: stock.code, success: false, reason: '数据不足' };
             }
         } catch (e) {
             const cached = await dbGet(secid);
             if (cached && cached.data && cached.data.length >= 30) {
                 setRawData(secid, cached.data);
                 syncWatchlistSignalSnapshotFast(stock.code, cached.data);
-                results.push({ code: stock.code, success: true, source: 'cache' });
+                return { code: stock.code, success: true, source: 'cache' };
             } else {
                 setWatchlistStatusSnapshot(stock.code, { ...WATCHLIST_STATUS_META.pending, action: '同步失败', strategy: state.strategy, date: '' });
-                results.push({ code: stock.code, success: false, reason: e.message });
+                return { code: stock.code, success: false, reason: e.message };
             }
         }
-    }
+    });
     scheduleWatchlistRender();
     return results;
 }
 
-function startWatchlistAutoRefresh() {
-    if (watchlistAutoRefreshTimer || !isMarketOpen()) return;
-    watchlistAutoRefreshTimer = setInterval(async () => {
-        if (state.mode !== 'stock' || state.tab !== 'stock') return;
-        if (!state.watchlist || state.watchlist.length === 0) return;
-        await updateAllWatchlistData();
-        renderWatchlist();
+let _sidebarRefreshFailCount = 0;
+async function refreshSidebarRealtime() {
+    let ids = [];
+    if (state.tab === 'index' || state.mode === 'index') {
+        ids = INDEX_IDS.filter(id => id !== state.id);
+    } else if (state.tab === 'stock' || state.mode === 'stock') {
+        ids = (state.watchlist || []).map(s => codeToSecid(s.code)).filter(id => id && id !== state.id);
+    }
+    if (!ids.length) return;
+    const prices = await batchGetRealtimePrices(ids);
+    if (!Object.keys(prices).length) {
+        _sidebarRefreshFailCount++;
+        if (_sidebarRefreshFailCount >= 2) {
+            showToast('\u884c\u60c5\u8fde\u63a5\u5f02\u5e38\uff0c\u4fa7\u8fb9\u680f\u4ef7\u683c\u53ef\u80fd\u5ef6\u8fdf', 'warn', 4000);
+        }
+        return;
+    }
+    _sidebarRefreshFailCount = 0;
+    let changed = false;
+    for (const [id, rtBar] of Object.entries(prices)) {
+        const series = state.rawData[id];
+        if (!series || !series.length) continue;
+        const lastBar = series[series.length - 1];
+        if (!lastBar || !isValidPrice(rtBar.close, id)) continue;
+        if (rtBar.date < lastBar.date) continue;
+        if (lastBar.date === rtBar.date) {
+            series[series.length - 1] = rtBar;
+            changed = true;
+        }
+    }
+    if (changed) {
+        if (state.tab === 'index' || state.mode === 'index') renderIndexList();
+        if (state.tab === 'stock' || state.mode === 'stock') scheduleWatchlistRender();
+        markRefreshTime();
+    }
+}
+
+function startSidebarFullSync() {
+    if (sidebarFullSyncTimer) return;
+    sidebarFullSyncTimer = setInterval(async () => {
+        if (document.hidden) return;
+        if (!isMarketOpen()) return;
+        if (state.tab === 'index' || state.mode === 'index') {
+            const ids = INDEX_IDS.filter(id => id !== state.id);
+            let failCnt = 0;
+            await pLimit(ids, SYS_CONFIG.SIDEBAR_SYNC_CONCURRENCY, async (id) => {
+                try {
+                    const data = await syncData(id);
+                    if (data && data.length >= 30) { setRawData(id, data); await dbSet(id, data); }
+                } catch(e) { failCnt++; }
+            });
+            if (failCnt >= 2) showToast('\u90e8\u5206\u6307\u6570\u5386\u53f2\u6570\u636e\u540c\u6b65\u5931\u8d25', 'warn', 4000);
+            renderIndexList();
+        } else if (state.tab === 'stock' || state.mode === 'stock') {
+            if (!state.watchlist || !state.watchlist.length) return;
+            const results = await updateAllWatchlistData();
+            const failCount = results ? results.filter(r => !r.success).length : 0;
+            if (failCount >= 2) showToast('\u90e8\u5206\u81ea\u9009\u80a1\u6570\u636e\u540c\u6b65\u5931\u8d25', 'warn', 4000);
+        }
     }, 90000);
 }
 
-async function selectIndex(id) {
+// P0-3: 切换标的防抖 — 快速连点只执行最后一次，避免浪费网络请求
+let _selectDebounceTimer = 0;
+function selectIndex(id) {
+    clearTimeout(_selectDebounceTimer);
+    _selectDebounceTimer = setTimeout(() => _selectIndexImpl(id), 120);
+}
+
+async function _selectIndexImpl(id) {
     const perfTrace = PERF.start('selectIndex', { id });
     if (!getIndexConfig(id)) return;
     const selectionSeq = ++globalSelectionSeq;
@@ -604,10 +680,11 @@ async function selectIndex(id) {
     document.getElementById('btnBacktest').style.display = 'none';
 
     resetIndicatorState();
+    // P0-1: showLoading 提前到 clearCharts 之前，避免图表区一帧空白闪烁
+    showLoading(`加载 ${config.name} 数据...`);
     renderIndexList();
     clearCharts();
     renderCache.clear();
-    showLoading(`加载 ${config.name} 数据...`);
 
     try {
         await cachedFetch(id);
@@ -621,7 +698,12 @@ async function selectIndex(id) {
     }
 }
 
-async function selectStock(code, name) {
+function selectStock(code, name) {
+    clearTimeout(_selectDebounceTimer);
+    _selectDebounceTimer = setTimeout(() => _selectStockImpl(code, name), 120);
+}
+
+async function _selectStockImpl(code, name) {
     const perfTrace = PERF.start('selectStock', { code });
     const safeCode = String(code || '').trim();
     const safeName = String(name || safeCode).trim();
@@ -644,10 +726,11 @@ async function selectStock(code, name) {
     document.getElementById('btnBacktest').style.display = 'flex';
 
     resetIndicatorState();
+    // P0-1: showLoading 提前到 clearCharts 之前，避免图表区一帧空白闪烁
+    showLoading(`加载 ${safeName} 数据...`);
     renderWatchlist();
     clearCharts();
     renderCache.clear();
-    showLoading(`加载 ${safeName} 数据...`);
 
     try {
         await cachedFetch(secid);
@@ -813,13 +896,13 @@ function renderWatchlist() {
         const cl = change >= 0 ? 'up' : 'down';
         
         return `
-            <div class="nav-list-item ${s.code === state.stockId ? 'active' : ''}" onclick="selectStock('${escapeJSArg(s.code)}','${escapeJSArg(s.name)}')">
+            <div class="nav-list-item ${s.code === state.stockId ? 'active' : ''}${s._pendingRemove ? ' pending-remove' : ''}" ${s._pendingRemove ? '' : `onclick="selectStock('${escapeJSArg(s.code)}','${escapeJSArg(s.name)}')"`}>
                 <div class="nav-list-main">
                     <div class="lname-wrap">
                         <span class="lname">${escapeHTML(s.name)}</span>
                         <span class="wl-status ${rowStatus.toneClass}" title="${escapeHTML(rowStatus.action)}">${rowStatus.label}</span>
                     </div>
-                    <button type="button" class="wl-close" title="移除自选股" aria-label="移除 ${escapeHTML(s.name)}" onclick="event.stopPropagation();removeStock('${escapeJSArg(s.code)}')">×</button>
+                    ${s._pendingRemove ? '' : `<button type="button" class="wl-close" title="移除自选股" aria-label="移除 ${escapeHTML(s.name)}" onclick="event.stopPropagation();removeStock('${escapeJSArg(s.code)}')">×</button>`}
                 </div>
                 <div class="nav-list-sub">
                     <span class="lcode mono">${escapeHTML(s.code)}</span>
@@ -873,6 +956,7 @@ function prevDay() {
         setLockIdx(state.lockIdx - 1); 
         clearStaleTooltips(); 
         safeUpdateSidebar(); 
+        updateFreezeBadge();
     } 
 }
 
@@ -883,6 +967,7 @@ function nextDay() {
         setLockIdx(state.lockIdx + 1); 
         clearStaleTooltips(); 
         safeUpdateSidebar(); 
+        updateFreezeBadge();
     } 
 }
 
@@ -893,6 +978,7 @@ function resetLatest() {
         setLockIdx(rd.length - 1); 
         clearStaleTooltips(); 
         safeUpdateSidebar(); 
+        updateFreezeBadge();
     } 
 }
 
@@ -1070,10 +1156,15 @@ async function init() {
         Object.assign(STRATEGY, STRATEGIES[savedStrategy]); 
     }
     
+    let resizeRAF = 0;
     window.addEventListener('resize', () => { 
-        ['main', 'vol', 'macd', 'kdj'].forEach(k => { 
-            if(state.charts[k]) state.charts[k].resize(); 
-        }); 
+        if (resizeRAF) return;
+        resizeRAF = requestAnimationFrame(() => {
+            resizeRAF = 0;
+            ['main', 'vol', 'macd', 'kdj'].forEach(k => { 
+                if(state.charts[k]) state.charts[k].resize(); 
+            }); 
+        });
     });
 
     document.querySelectorAll('.nav-btn').forEach(btn => {
@@ -1140,21 +1231,41 @@ async function init() {
     renderIndexList();
     
     setInterval(() => { 
+        if (document.hidden) return;
         const d = getBJDate(); 
         document.getElementById('liveClock').innerText = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`; 
     }, 1000);
     
-    if(isMarketOpen()) {
-        setInterval(() => { 
-            if(state.mode === 'index') cachedFetch(state.id); 
-            else if(state.mode === 'stock' && state.id) cachedFetch(state.id); 
-        }, SYS_CONFIG.THROTTLE_MS);
-        startWatchlistAutoRefresh();
-    }
+    // 30s 批量侧边栏价格刷新：1 次 JSONP 拿全部侧边栏标的实时价格
+    setInterval(() => {
+        if (document.hidden) return;
+        if (!isMarketOpen()) return;
+        refreshSidebarRealtime();
+    }, SYS_CONFIG.THROTTLE_MS);
+
+    // 30s 当前标的完整同步：增量历史 + 实时合并 + 图表重绘
+    setInterval(() => { 
+        if (document.hidden) return;
+        if (!isMarketOpen()) return;
+        if(state.mode === 'index') cachedFetch(state.id); 
+        else if(state.mode === 'stock' && state.id) cachedFetch(state.id); 
+    }, SYS_CONFIG.THROTTLE_MS);
+
+    // 90s 侧边栏全量历史同步：受控并发（并发数 3），覆盖大盘和自选
+    startSidebarFullSync();
+
+    // P0-4: 后台切回前台时若在交易时段，立即刷新侧边栏 + 当前标的
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) return;
+        if (!isMarketOpen()) return;
+        refreshSidebarRealtime();
+        if (state.mode === 'index') cachedFetch(state.id);
+        else if (state.mode === 'stock' && state.id) cachedFetch(state.id);
+    });
 
     await preloadCacheOnly(); 
     await ensureMarketTemperatureData(); 
-    await selectIndex('sh'); 
+    await _selectIndexImpl('sh');  // init 直接调用 impl，跳过防抖
 
     requestAnimationFrame(() => refreshWatchlistSignalSnapshots());
 }
