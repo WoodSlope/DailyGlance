@@ -418,7 +418,8 @@ function computeWatchlistDecisionSnapshot(full) {
         state.period = 'daily';
         state.indicators = localIndicators;
 
-        for (let i = 0; i < full.length; i++) {
+        const startIdx = Math.max(0, full.length - 80);
+        for (let i = startIdx; i < full.length; i++) {
             if (!full[i]) continue;
             full[i]._signals = calculateDailySignals(i, full, localIndicators);
             full[i]._signalVersion = SIGNAL_VERSION;
@@ -624,8 +625,8 @@ async function refreshSidebarRealtime() {
         }
     }
     if (changed) {
-        if (state.tab === 'index' || state.mode === 'index') renderIndexList();
-        if (state.tab === 'stock' || state.mode === 'stock') scheduleWatchlistRender();
+        if (state.tab === 'index' || state.mode === 'index') refreshIndexListQuotes();
+        if (state.tab === 'stock' || state.mode === 'stock') refreshWatchlistQuotes();
         markRefreshTime();
     }
 }
@@ -823,8 +824,8 @@ function renderIndexList() {
         const cl = change >= 0 ? 'up' : 'down';
         
         const priceHtml = price > 0 
-            ? `<span class="lprice mono ${cl}">${price.toFixed(2)}</span><span class="lchange mono ${cl}">${pct !== 0 ? (change >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '--'}</span>` 
-            : '<span class="lprice">--</span><span class="lchange">--</span>';
+            ? `<span class="lprice mono ${cl}" data-code="${id}">${price.toFixed(2)}</span><span class="lchange mono ${cl}" data-code="${id}">${pct !== 0 ? (change >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '--'}</span>` 
+            : '<span class="lprice" data-code="${id}">--</span><span class="lchange" data-code="${id}">--</span>';
             
         return `
             <div class="nav-list-item ${active}" onclick="selectIndex('${id}')">
@@ -896,7 +897,7 @@ function renderWatchlist() {
         const cl = change >= 0 ? 'up' : 'down';
         
         return `
-            <div class="nav-list-item ${s.code === state.stockId ? 'active' : ''}${s._pendingRemove ? ' pending-remove' : ''}" ${s._pendingRemove ? '' : `onclick="selectStock('${escapeJSArg(s.code)}','${escapeJSArg(s.name)}')"`}>
+            <div class="nav-list-item ${s.code === state.stockId ? 'active' : ''}${s._pendingRemove ? ' pending-remove' : ''}" data-code="${s.code}" ${s._pendingRemove ? '' : `onclick="selectStock('${escapeJSArg(s.code)}','${escapeJSArg(s.name)}')"`}>
                 <div class="nav-list-main">
                     <div class="lname-wrap">
                         <span class="lname">${escapeHTML(s.name)}</span>
@@ -907,8 +908,8 @@ function renderWatchlist() {
                 <div class="nav-list-sub">
                     <span class="lcode mono">${escapeHTML(s.code)}</span>
                     <div class="lquote">
-                        <span class="lprice mono ${cl}">${price > 0 ? price.toFixed(2) : '--'}</span>
-                        <span class="lchange mono ${cl}">${pct !== 0 ? (change >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '--'}</span>
+                        <span class="lprice mono ${cl}" data-code="${s.code}">${price > 0 ? price.toFixed(2) : '--'}</span>
+                        <span class="lchange mono ${cl}" data-code="${s.code}">${pct !== 0 ? (change >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '--'}</span>
                     </div>
                 </div>
             </div>
@@ -920,6 +921,48 @@ function renderWatchlist() {
         ${sHtml}
         <div>${lHtml}</div>
     `;
+}
+
+function refreshWatchlistQuotes() {
+    (state.watchlist || []).forEach(s => {
+        const d = state.rawData[codeToSecid(s.code)];
+        const price = d?.length ? d[d.length - 1].close : 0;
+        const prev = d?.length > 1 ? d[d.length - 2].close : (d?.length ? d[0].open : 1);
+        const change = price - prev;
+        const pct = (change / prev * 100) || 0;
+        const cl = change >= 0 ? 'up' : 'down';
+        const priceEl = document.querySelector(`#stockNavList .lprice[data-code="${s.code}"]`);
+        const changeEl = document.querySelector(`#stockNavList .lchange[data-code="${s.code}"]`);
+        if (priceEl) {
+            priceEl.textContent = price > 0 ? price.toFixed(2) : '--';
+            priceEl.className = `lprice mono ${cl}`;
+        }
+        if (changeEl) {
+            changeEl.textContent = pct !== 0 ? (change >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '--';
+            changeEl.className = `lchange mono ${cl}`;
+        }
+    });
+}
+
+function refreshIndexListQuotes() {
+    INDEX_IDS.forEach(id => {
+        const d = state.rawData[id];
+        const price = d?.length ? d[d.length - 1].close : 0;
+        const prev = d?.length > 1 ? d[d.length - 2].close : (d?.length ? d[0].open : 1);
+        const change = price - prev;
+        const pct = (change / prev * 100) || 0;
+        const cl = change >= 0 ? 'up' : 'down';
+        const priceEl = document.querySelector(`#indexNavList .lprice[data-code="${id}"]`);
+        const changeEl = document.querySelector(`#indexNavList .lchange[data-code="${id}"]`);
+        if (priceEl) {
+            priceEl.textContent = price > 0 ? price.toFixed(2) : '--';
+            priceEl.className = `lprice mono ${cl}`;
+        }
+        if (changeEl) {
+            changeEl.textContent = pct !== 0 ? (change >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '--';
+            changeEl.className = `lchange mono ${cl}`;
+        }
+    });
 }
 
 function toggleMA(n) { 
@@ -950,36 +993,39 @@ function renderMASelector() {
     }
 }
 
-function prevDay() { 
-    if(state.lockIdx > 0) { 
-        state.isFrozen = true; 
-        setLockIdx(state.lockIdx - 1); 
-        clearStaleTooltips(); 
-        safeUpdateSidebar(); 
+function prevDay() {
+    if(state.lockIdx > 0) {
+        state.isFrozen = true;
+        setLockIdx(state.lockIdx - 1);
+        clearStaleTooltips();
+        draw();
+        safeUpdateSidebar();
         updateFreezeBadge();
-    } 
+    }
 }
 
-function nextDay() { 
-    const rd = getActiveData(); 
-    if(rd && state.lockIdx < rd.length - 1) { 
-        state.isFrozen = true; 
-        setLockIdx(state.lockIdx + 1); 
-        clearStaleTooltips(); 
-        safeUpdateSidebar(); 
+function nextDay() {
+    const rd = getActiveData();
+    if(rd && state.lockIdx < rd.length - 1) {
+        state.isFrozen = true;
+        setLockIdx(state.lockIdx + 1);
+        clearStaleTooltips();
+        draw();
+        safeUpdateSidebar();
         updateFreezeBadge();
-    } 
+    }
 }
 
-function resetLatest() { 
-    const rd = getActiveData(); 
-    if(rd) { 
-        state.isFrozen = false; 
-        setLockIdx(rd.length - 1); 
-        clearStaleTooltips(); 
-        safeUpdateSidebar(); 
+function resetLatest() {
+    const rd = getActiveData();
+    if(rd) {
+        state.isFrozen = false;
+        setLockIdx(rd.length - 1);
+        clearStaleTooltips();
+        draw();
+        safeUpdateSidebar();
         updateFreezeBadge();
-    } 
+    }
 }
 
 function toggleHelp() { 
@@ -1243,13 +1289,15 @@ async function init() {
         refreshSidebarRealtime();
     }, SYS_CONFIG.THROTTLE_MS);
 
-    // 30s 当前标的完整同步：增量历史 + 实时合并 + 图表重绘
-    setInterval(() => { 
-        if (document.hidden) return;
-        if (!isMarketOpen()) return;
-        if(state.mode === 'index') cachedFetch(state.id); 
-        else if(state.mode === 'stock' && state.id) cachedFetch(state.id); 
-    }, SYS_CONFIG.THROTTLE_MS);
+    // 30s 当前标的完整同步：增量历史 + 实时合并 + 图表重绘（延迟 15s 启动，与侧边栏刷新错峰）
+    setTimeout(() => {
+        setInterval(() => { 
+            if (document.hidden) return;
+            if (!isMarketOpen()) return;
+            if(state.mode === 'index') cachedFetch(state.id); 
+            else if(state.mode === 'stock' && state.id) cachedFetch(state.id); 
+        }, SYS_CONFIG.THROTTLE_MS);
+    }, SYS_CONFIG.THROTTLE_MS / 2);
 
     // 90s 侧边栏全量历史同步：受控并发（并发数 3），覆盖大盘和自选
     startSidebarFullSync();

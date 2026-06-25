@@ -251,8 +251,13 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 .ma-checkbox input { display: none; }
 .ma-checkbox .check-box { width: 12px; height: 12px; border: 2px solid; border-radius: 3px; transition: all var(--transition-instant); }
 
-.integrated-container { flex: 1; display: flex; flex-direction: column; background: var(--dark-bg); border: 1px solid var(--border-color); border-radius: var(--radius-sm); min-height: 0; overflow: hidden; }
-.main-chart-box { flex: 5; position: relative; min-height: 0; }
+.integrated-container { flex: 1; display: flex; flex-direction: column; background: var(--dark-bg); border: 1px solid var(--border-color); border-radius: var(--radius-sm); min-height: 0; overflow: hidden; position: relative; }
+.main-chart-box { flex: 5; position: relative; min-height: 0; z-index: 1; }
+.crosshair-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 5; display: none; }
+.crosshair-overlay.active { display: block; }
+.crosshair-line { position: absolute; top: 0; bottom: 0; width: 0; will-change: transform; transition: none; }
+.crosshair-line::before { content: ''; position: absolute; top: 0; bottom: 0; left: 0; border-left: 1px dashed rgba(255,255,255,0.2); }
+.crosshair-overlay.frozen .crosshair-line::before { border-left-style: solid; border-left-color: var(--blue); border-left-width: 1.5px; }
 .volume-chart-box, .macd-chart-box, .kdj-chart-box { flex: 1.5; position: relative; border-top: 1px solid var(--border-color); min-height: 0; }
 .main-chart-box canvas, .volume-chart-box canvas, .macd-chart-box canvas, .kdj-chart-box canvas { width: 100% !important; height: 100% !important; touch-action: pan-y; }
 
@@ -405,5 +410,5 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 /* =========================================
    P1-9: 冻结状态徽章
 ========================================= */
-.freeze-badge { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 10; background: rgba(61, 109, 249, 0.12); border: 1px solid rgba(61, 109, 249, 0.28); border-radius: 999px; padding: var(--space-1) var(--space-3); font-size: var(--text-sm); font-weight: 700; color: var(--blue); display: flex; align-items: center; gap: var(--space-1); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); pointer-events: none; white-space: nowrap; }
+.freeze-badge { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 10; background: rgba(61, 109, 249, 0.12); border: 1px solid rgba(61, 109, 249, 0.28); border-radius: 999px; padding: var(--space-1) var(--space-3); font-size: var(--text-sm); font-weight: 700; color: var(--blue); display: flex; align-items: center; gap: var(--space-1); pointer-events: none; white-space: nowrap; }
 .freeze-badge .freeze-badge-date { font-size: var(--text-xs); opacity: 0.8; }

@@ -12,7 +12,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>window.Chart || document.write('<script src="https://unpkg.com/chart.js@4.4.3/dist/chart.umd.min.js"><\/script>')</script>
-<link rel="stylesheet" href="assets/css/dailyglance.css?v=20260625-06">
+<link rel="stylesheet" href="assets/css/dailyglance.css?v=20260625-09">
 </head>
 <body>
 
@@ -146,6 +146,9 @@
             </div>
         </div>
         <div class="integrated-container">
+            <div id="crosshairOverlay" class="crosshair-overlay">
+                <div id="crosshairLine" class="crosshair-line"></div>
+            </div>
             <div class="main-chart-box"><div id="freezeBadge" class="freeze-badge" style="display:none;"><span>历史浏览</span><span class="freeze-badge-date mono"></span></div><canvas id="mainChart"></canvas></div>
             <div class="volume-chart-box"><canvas id="volumeChart"></canvas></div>
             <div class="macd-chart-box"><canvas id="macdChart"></canvas></div>
@@ -161,10 +164,10 @@
 </main>
 
 <div id="toastContainer"></div>
-<script src="assets/js/01-config-ui.js?v=20260625-06"></script>
-<script src="assets/js/02-data.js?v=20260625-06"></script>
-<script src="assets/js/03-calculations.js?v=20260625-06"></script>
-<script src="assets/js/04-render.js?v=20260625-06"></script>
-<script src="assets/js/05-app.js?v=20260625-06"></script>
+<script src="assets/js/01-config-ui.js?v=20260625-09"></script>
+<script src="assets/js/02-data.js?v=20260625-09"></script>
+<script src="assets/js/03-calculations.js?v=20260625-09"></script>
+<script src="assets/js/04-render.js?v=20260625-09"></script>
+<script src="assets/js/05-app.js?v=20260625-09"></script>
 </body>
 </html>

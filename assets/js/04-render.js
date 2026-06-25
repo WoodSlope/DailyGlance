@@ -52,8 +52,8 @@ const localAlignPlugin = {
     afterDatasetsDraw: c => {
         const { ctx, chartArea: { top, bottom, left, right }, scales: { x, y } } = c;
         const dss = c.data.datasets.find(d => d.isCandle === true && d.candleData);
-        const colorUpHex = getCssVar('--up-color') || '#f6465d', colorDownHex = getCssVar('--down-color') || '#0ecb81';
-
+const colorUpHex = getCssVar('--up-color') || '#f6465d', colorDownHex = getCssVar('--down-color') || '#0ecb81';
+        
         if (dss && dss.candleData) {
             const w = Math.min((x.width / c.data.labels.length) * 0.8, 20);
             dss.candleData.forEach((d, i) => {
@@ -63,24 +63,29 @@ const localAlignPlugin = {
                 ctx.fillStyle = cl; ctx.fillRect(px - w / 2, Math.min(y.getPixelForValue(d.o), y.getPixelForValue(d.c)), w, Math.max(Math.abs(y.getPixelForValue(d.o) - y.getPixelForValue(d.c)), 1.5));
             });
         }
-        const actData = getActiveData();
-        if (actData) {
-            const safeIdx = getSafeIndex(actData);
-            if (safeIdx >= 0 && safeIdx < actData.length) {
-                const targetDate = actData[safeIdx].date; const li = c.data.labels.indexOf(targetDate);
-                if (li >= 0) {
-                    const px = x.getPixelForValue(li);
-                    if (px >= left && px <= right) {
-                        ctx.save(); ctx.beginPath(); 
-                        if (state.isFrozen) { ctx.setLineDash([]); ctx.strokeStyle = getCssVar('--blue') || '#3d6df9'; ctx.lineWidth = 1.5; } 
-                        else { ctx.setLineDash([4, 4]); ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1; }
-                        ctx.moveTo(px, top); ctx.lineTo(px, bottom); ctx.stroke(); ctx.restore();
-                    }
-                }
-            }
-        }
     }
 };
+
+function updateCrosshairOverlay() {
+    const overlay = document.getElementById('crosshairOverlay');
+    const line = document.getElementById('crosshairLine');
+    if (!overlay || !line) return;
+    const mainChart = state.charts.main;
+    if (!mainChart) return;
+    const actData = getActiveData();
+    if (!actData || !actData.length) { overlay.classList.remove('active'); return; }
+    const safeIdx = getSafeIndex(actData);
+    if (safeIdx < 0 || safeIdx >= actData.length) { overlay.classList.remove('active'); return; }
+    const li = mainChart.data.labels.indexOf(actData[safeIdx].date);
+    if (li < 0) { overlay.classList.remove('active'); return; }
+    const xScale = mainChart.scales.x;
+    const px = xScale.getPixelForValue(li);
+    if (px < 0 || px > xScale.width) { overlay.classList.remove('active'); return; }
+    line.style.transform = 'translateX(' + px + 'px)';
+    overlay.classList.add('active');
+    if (state.isFrozen) overlay.classList.add('frozen');
+    else overlay.classList.remove('frozen');
+}
 
 const bsMarkerPlugin = {
     id: 'bsMarkerPlugin',
@@ -122,7 +127,11 @@ function refreshHoverSelection() {
     setLockIdx(pendingHoverIdx);
     pendingHoverIdx = -1;
     safeUpdateSidebar();
-    redrawChartsFast();
+    updateCrosshairOverlay();
+    // 确保 Chart.js 交互状态同步，防止悬停十字线不动
+    if (!state.isFrozen) {
+        Object.values(state.charts).forEach(c => { if (c && typeof c.update === 'function') c.update('none'); });
+    }
 }
 
 function resetHoverSelectionToLatest() {
@@ -135,10 +144,10 @@ function resetHoverSelectionToLatest() {
         cancelAnimationFrame(hoverRAF);
         hoverRAF = null;
     }
-    if (state.lockIdx === latestIdx) return;
+    if (state.lockIdx === latestIdx) { updateCrosshairOverlay(); return; }
     setLockIdx(latestIdx);
     safeUpdateSidebar();
-    redrawChartsFast();
+    updateCrosshairOverlay();
 }
 
 function bindChartPointerReset() {
@@ -170,6 +179,8 @@ function handleChartClick(e, els) {
         state.isFrozen = false;
         resetHoverSelectionToLatest();
         redrawChartsFast();
+        // 强制刷新 Chart.js 交互状态，确保 onHover 及时恢复
+        Object.values(state.charts).forEach(c => { if (c && typeof c.update === 'function') c.update('none'); });
         updateFreezeBadge();
         return;
     }
@@ -179,7 +190,7 @@ function handleChartClick(e, els) {
         pendingHoverIdx = -1;
         if (state.isFrozen && state.lockIdx === ti) state.isFrozen = false; else { state.isFrozen = true; setLockIdx(ti); }
         if (hoverRAF) cancelAnimationFrame(hoverRAF);
-        hoverRAF = requestAnimationFrame(() => { safeUpdateSidebar(); redrawChartsFast(); updateFreezeBadge(); });
+        hoverRAF = requestAnimationFrame(() => { safeUpdateSidebar(); redrawChartsFast(); updateFreezeBadge(); updateCrosshairOverlay(); });
     }
 }
 
@@ -296,6 +307,7 @@ function draw() {
     }
     PERF.end(perfTrace, { points: slice.length });
     updateFreezeBadge();
+    updateCrosshairOverlay();
 }
 
 function generateAnalysisHTML(idx, full, meta) {
