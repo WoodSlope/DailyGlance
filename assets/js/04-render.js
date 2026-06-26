@@ -104,17 +104,25 @@ const macdBarPlugin = {
 const localAlignPlugin = {
     id: 'localAlignPlugin',
     afterDatasetsDraw: c => {
-        const { ctx, chartArea: { top, bottom, left, right }, scales: { x, y } } = c;
+        const { ctx, chartArea } = c;
+        if (!chartArea) return;
+        const { top, bottom, left, right } = chartArea;
+        const x = c.scales.x, y = c.scales.y;
+        if (!x || !y) return;
         const dss = c.data.datasets.find(d => d.isCandle === true && d.candleData);
-const colorUpHex = getCssVar('--up-color') || '#f6465d', colorDownHex = getCssVar('--down-color') || '#0ecb81';
+        const colorUpHex = getCssVar('--up-color') || '#f6465d', colorDownHex = getCssVar('--down-color') || '#0ecb81';
         
         if (dss && dss.candleData) {
             const w = Math.min((x.width / c.data.labels.length) * 0.8, 20);
             dss.candleData.forEach((d, i) => {
                 if (!d) return;
-                const px = x.getPixelForValue(i), cl = d.c >= d.o ? colorUpHex : colorDownHex;
-                ctx.strokeStyle = cl; ctx.beginPath(); ctx.moveTo(px, y.getPixelForValue(d.h)); ctx.lineTo(px, y.getPixelForValue(d.l)); ctx.stroke();
-                ctx.fillStyle = cl; ctx.fillRect(px - w / 2, Math.min(y.getPixelForValue(d.o), y.getPixelForValue(d.c)), w, Math.max(Math.abs(y.getPixelForValue(d.o) - y.getPixelForValue(d.c)), 1.5));
+                const px = x.getPixelForValue(i);
+                const ho = y.getPixelForValue(d.h), lo = y.getPixelForValue(d.l);
+                const co = y.getPixelForValue(d.c), oo = y.getPixelForValue(d.o);
+                if (isNaN(px) || isNaN(ho) || isNaN(lo) || isNaN(co) || isNaN(oo)) return;
+                const cl = d.c >= d.o ? colorUpHex : colorDownHex;
+                ctx.strokeStyle = cl; ctx.beginPath(); ctx.moveTo(px, ho); ctx.lineTo(px, lo); ctx.stroke();
+                ctx.fillStyle = cl; ctx.fillRect(px - w / 2, Math.min(oo, co), w, Math.max(Math.abs(oo - co), 1.5));
             });
         }
     }
@@ -165,7 +173,11 @@ function updateCrosshairOverlay() {
 const bsMarkerPlugin = {
     id: 'bsMarkerPlugin',
     afterDatasetsDraw: c => {
-        const { ctx, chartArea: { top, bottom, left, right }, scales: { x, y } } = c;
+        const { ctx, chartArea } = c;
+        if (!chartArea) return;
+        const { top, bottom, left, right } = chartArea;
+        const x = c.scales.x, y = c.scales.y;
+        if (!x || !y) return;
         const dss = c.data.datasets.find(d => d.isCandle === true && d.candleData);
         if (!dss || state.period === 'weekly') return; 
 
@@ -176,9 +188,17 @@ const bsMarkerPlugin = {
         ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = 'bold 11px "JetBrains Mono", monospace';
         slice.forEach((d, i) => {
             const px = x.getPixelForValue(i);
-            if (px < left || px > right || !d._decision) return;
-            if (d._decision.bsMark === 'B') { ctx.fillStyle = colorUpHex; let py = Math.min(y.getPixelForValue(d.low) + 14, bottom - 8); ctx.fillText('B', px, py); } 
-            else if (d._decision.bsMark === 'S') { ctx.fillStyle = colorDownHex; let py = Math.max(y.getPixelForValue(d.high) - 14, top + 8); ctx.fillText('S', px, py); }
+            if (isNaN(px) || px < left || px > right || !d._decision) return;
+            if (d._decision.bsMark === 'B') { 
+                ctx.fillStyle = colorUpHex; 
+                const py = y.getPixelForValue(d.low);
+                if (!isNaN(py)) { ctx.fillText('B', px, Math.min(py + 14, bottom - 8)); }
+            } 
+            else if (d._decision.bsMark === 'S') { 
+                ctx.fillStyle = colorDownHex; 
+                const py = y.getPixelForValue(d.high);
+                if (!isNaN(py)) { ctx.fillText('S', px, Math.max(py - 14, top + 8)); }
+            }
         });
         ctx.restore();
     }
@@ -293,16 +313,15 @@ function draw() {
     const getLayout = () => ({ padding: { left: 8, right: 8, top: 10, bottom: 0 } });
     const getYScale = (isVol = false) => ({
         position: 'right', 
-        display: !isVol,
         beginAtZero: isVol ? true : undefined,
-        grid: { color: isVol ? 'transparent' : 'rgba(255,255,255,0.04)' }, 
+        grid: { color: 'rgba(255,255,255,0.04)' }, 
         ticks: { 
             color: colorDim, 
             font: { family: "'JetBrains Mono', monospace", size: 10 }, 
             padding: 12,
             callback: isVol ? (v => v >= 100000000 ? (v / 100000000).toFixed(1) + '亿' : (v >= 10000 ? (v / 10000).toFixed(0) + '万' : v)) : undefined
         }, 
-        afterFit: (scale) => { scale.width = isVol ? 0 : 60; } 
+        afterFit: (scale) => { scale.width = 60; } 
     });
 
     const getBaseOptions = () => ({
@@ -775,7 +794,7 @@ function applySidebarHTML(bundle, cacheKey = '') {
     }
 
     // 分析区：同样用淡入过渡
-    if (analysisHtml !== prevAnalysisHash) {
+    if (analysisHash !== prevAnalysisHash) {
         cAnalysis.style.opacity = '0';
         cAnalysis.innerHTML = analysisHtml;
         cAnalysis.dataset.ah = String(analysisHash);
