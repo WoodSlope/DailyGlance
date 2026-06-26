@@ -258,6 +258,10 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 .crosshair-line { position: absolute; top: 0; bottom: 0; width: 0; will-change: transform; transition: none; }
 .crosshair-line::before { content: ''; position: absolute; top: 0; bottom: 0; left: 0; border-left: 1px dashed rgba(255,255,255,0.2); }
 .crosshair-overlay.frozen .crosshair-line::before { border-left-style: solid; border-left-color: var(--blue); border-left-width: 1.5px; }
+.crosshair-h-line { position: absolute; left: 0; right: 0; height: 0; will-change: transform; transition: none; z-index: 5; display: none; pointer-events: none; }
+.crosshair-h-line.active { display: block; }
+.crosshair-h-line::before { content: ''; position: absolute; left: 0; right: 0; top: 0; border-top: 1px dashed rgba(255,255,255,0.2); }
+.main-chart-box.frozen .crosshair-h-line::before { border-top-style: solid; border-top-color: var(--blue); border-top-width: 1.5px; }
 .volume-chart-box, .macd-chart-box, .kdj-chart-box { flex: 1.5; position: relative; border-top: 1px solid var(--border-color); min-height: 0; }
 .main-chart-box canvas, .volume-chart-box canvas, .macd-chart-box canvas, .kdj-chart-box canvas { width: 100% !important; height: 100% !important; touch-action: pan-y; }
 
@@ -265,7 +269,7 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 .price-hero-compact { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; margin-top: 12px; }
 .price-main { font-size: var(--text-hero); font-weight: 800; line-height: 1; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
 .price-sub { font-size: var(--text-2xl); font-weight: 600; }
-#cardPrice, #cardAnalysis { width: 100%; flex-direction: column; gap: var(--space-3); min-width: 0; }
+#cardPrice, #cardAnalysis { width: 100%; flex-direction: column; gap: var(--space-3); min-width: 0; transition: opacity 0.15s ease; }
 #cardPrice > *, #cardAnalysis > * { width: 100%; min-width: 0; flex-shrink: 0; }
 
 .nav-capsule { background: var(--inner-bg); border-radius: var(--radius-sm); padding: 3px; border: 1px solid var(--border-light); display: flex; box-shadow: inset 0 1px 3px rgba(0,0,0,0.2); user-select: none; }

@@ -1275,6 +1275,11 @@ async function init() {
     
     renderMASelector();
     renderIndexList();
+
+    // 同步 range 按钮 active 状态到当前 state.range
+    document.querySelectorAll('#rangeTabs .seg-btn').forEach(btn => {
+        btn.classList.toggle('active', parseInt(btn.dataset.range) === state.range);
+    });
     
     setInterval(() => { 
         if (document.hidden) return;

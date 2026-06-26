@@ -93,7 +93,13 @@ function setRawData(id, data) {
         state.pendingIndicatorMutation = isSameIndicatorScope ? getDataMutationMeta(prevData, data) : { mode: 'full', startIdx: 0 };
         markIndicatorsDirty();
     }
-    clearDerivedCaches();
+    // 增量更新（同日价格变动）只清 lookup 缓存，保留 renderCache 防止面板闪烁
+    const mutation = prevData ? getDataMutationMeta(prevData, data) : { mode: 'full', startIdx: 0 };
+    if (mutation.mode === 'incremental') {
+        clearLookupCacheOnly();
+    } else {
+        clearDerivedCaches();
+    }
 }
 
 function barsEqual(a, b) {
@@ -448,9 +454,8 @@ function scheduleCachedFetchRefreshApply(id) {
                 // 用户在浏览历史，只重绘图表（数据可能新增了 bar），不改变 lockIdx，不刷新侧边栏
                 draw();
             } else if (oldDate && oldDate === newLatestDate) {
-                // 同日价格更新：只更新价格显示，不重建分析面板
+                // 同日价格更新：只更新价格显示，不重建分析面板，不重绘图表（避免卡顿）
                 setLockIdx(rd.length - 1);
-                draw();
                 if (typeof updateSidebarPriceOnly === 'function') updateSidebarPriceOnly();
             } else {
                 // 新日 K 线或首次加载：全量更新

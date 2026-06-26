@@ -47,6 +47,60 @@ const freezePlugin = {
     beforeEvent: (c, args) => { if (state.isFrozen && args.event.type !== 'click' && args.event.type !== 'touchstart' && args.event.type !== 'touchend') return false; }
 };
 
+// 成交量柱 plugin：用 canvas 手绘，像素级对齐 K 线蜡烛
+const volumeBarPlugin = {
+    id: 'volumeBarPlugin',
+    afterDatasetsDraw: c => {
+        const dss = c.data.datasets.find(d => d.isVolData === true && d.volData);
+        if (!dss || !dss.volData) return;
+        const { ctx, chartArea } = c;
+        if (!chartArea) return;
+        const { bottom, top } = chartArea;
+        const x = c.scales.x, y = c.scales.y;
+        if (!x || !y) return;
+        const colorUpHex = getCssVar('--up-color') || '#f6465d';
+        const colorDownHex = getCssVar('--down-color') || '#0ecb81';
+        const barW = Math.min((x.width / c.data.labels.length) * 0.8, 20);
+        dss.volData.forEach((d, i) => {
+            if (!d || d.vol == null) return;
+            const px = x.getPixelForValue(i);
+            const vy = y.getPixelForValue(d.vol);
+            if (isNaN(px) || isNaN(vy)) return;
+            const vyClamped = Math.max(top, Math.min(bottom, vy));
+            ctx.fillStyle = d.isUp ? colorUpHex + '80' : colorDownHex + '80';
+            ctx.fillRect(px - barW / 2, vyClamped, barW, Math.max(bottom - vyClamped, 0.5));
+        });
+    }
+};
+
+// MACD 柱 plugin：跟 volume 一样用 canvas 手绘，正负值从中线向上下延伸
+const macdBarPlugin = {
+    id: 'macdBarPlugin',
+    afterDatasetsDraw: c => {
+        const dss = c.data.datasets.find(d => d.isMacdBar === true && d.macdBarData);
+        if (!dss || !dss.macdBarData) return;
+        const { ctx, chartArea } = c;
+        if (!chartArea) return;
+        const { bottom, top } = chartArea;
+        const x = c.scales.x, y = c.scales.y;
+        if (!x || !y) return;
+        const colorUpHex = getCssVar('--up-color') || '#f6465d';
+        const colorDownHex = getCssVar('--down-color') || '#0ecb81';
+        const barW = Math.min((x.width / c.data.labels.length) * 0.8, 20);
+        const zeroY = Math.min(bottom, Math.max(top, y.getPixelForValue(0)));
+        dss.macdBarData.forEach((v, i) => {
+            if (v == null) return;
+            const px = x.getPixelForValue(i);
+            const vy = y.getPixelForValue(v);
+            if (isNaN(px) || isNaN(vy)) return;
+            const vyClamped = Math.min(bottom, Math.max(top, vy));
+            const barY = Math.min(zeroY, vyClamped);
+            ctx.fillStyle = v >= 0 ? colorUpHex + '80' : colorDownHex + '80';
+            ctx.fillRect(px - barW / 2, barY, barW, Math.max(Math.abs(zeroY - vyClamped), 0.5));
+        });
+    }
+};
+
 const localAlignPlugin = {
     id: 'localAlignPlugin',
     afterDatasetsDraw: c => {
@@ -69,22 +123,43 @@ const colorUpHex = getCssVar('--up-color') || '#f6465d', colorDownHex = getCssVa
 function updateCrosshairOverlay() {
     const overlay = document.getElementById('crosshairOverlay');
     const line = document.getElementById('crosshairLine');
+    const hLine = document.getElementById('crosshairHLine');
     if (!overlay || !line) return;
     const mainChart = state.charts.main;
     if (!mainChart) return;
     const actData = getActiveData();
-    if (!actData || !actData.length) { overlay.classList.remove('active'); return; }
+    if (!actData || !actData.length) { overlay.classList.remove('active'); if (hLine) hLine.classList.remove('active'); return; }
     const safeIdx = getSafeIndex(actData);
-    if (safeIdx < 0 || safeIdx >= actData.length) { overlay.classList.remove('active'); return; }
+    if (safeIdx < 0 || safeIdx >= actData.length) { overlay.classList.remove('active'); if (hLine) hLine.classList.remove('active'); return; }
     const li = mainChart.data.labels.indexOf(actData[safeIdx].date);
-    if (li < 0) { overlay.classList.remove('active'); return; }
+    if (li < 0) { overlay.classList.remove('active'); if (hLine) hLine.classList.remove('active'); return; }
     const xScale = mainChart.scales.x;
+    const yScale = mainChart.scales.y;
     const px = xScale.getPixelForValue(li);
-    if (px < xScale.left || px > xScale.right) { overlay.classList.remove('active'); return; }
+    if (px < xScale.left || px > xScale.right) { overlay.classList.remove('active'); if (hLine) hLine.classList.remove('active'); return; }
+
+    // 竖线
     line.style.transform = 'translateX(' + px + 'px)';
     overlay.classList.add('active');
     if (state.isFrozen) overlay.classList.add('frozen');
     else overlay.classList.remove('frozen');
+
+    // 横线（只在主图）
+    if (hLine && yScale) {
+        var py = yScale.getPixelForValue(actData[safeIdx].close);
+        if (py >= yScale.top && py <= yScale.bottom) {
+            hLine.style.transform = 'translateY(' + py + 'px)';
+            hLine.classList.add('active');
+        } else {
+            hLine.classList.remove('active');
+        }
+        // 主图 frozen 状态切换
+        var mainBox = document.querySelector('.main-chart-box');
+        if (mainBox) {
+            if (state.isFrozen) mainBox.classList.add('frozen');
+            else mainBox.classList.remove('frozen');
+        }
+    }
 }
 
 const bsMarkerPlugin = {
@@ -164,8 +239,14 @@ function handleChartHover(e, els) {
         const activeData = getActiveData(); if (!activeData) return;
         const ti = resolveVisibleDataIndex(activeData, els[0].index);
         if (ti >= 0 && state.lockIdx !== ti) {
-            pendingHoverIdx = ti;
-            if (!hoverRAF) hoverRAF = requestAnimationFrame(refreshHoverSelection);
+            setLockIdx(ti);
+            // 十字线同步更新，零延迟跟随鼠标
+            updateCrosshairOverlay();
+            // 侧边栏用 RAF 节流，避免频繁 DOM 操作
+            if (!hoverRAF) hoverRAF = requestAnimationFrame(() => {
+                hoverRAF = null;
+                safeUpdateSidebar();
+            });
         }
     }
 }
@@ -173,9 +254,12 @@ function handleChartHover(e, els) {
 function handleChartClick(e, els) {
     if (!els || !els.length) {
         state.isFrozen = false;
-        resetHoverSelectionToLatest();
+        var rd = getActiveData();
+        setLockIdx(rd ? rd.length - 1 : -1);
         redrawChartsFast();
+        safeUpdateSidebar();
         updateFreezeBadge();
+        updateCrosshairOverlay();
         return;
     }
     const activeData = getActiveData(); if (!activeData) return;
@@ -209,14 +293,16 @@ function draw() {
     const getLayout = () => ({ padding: { left: 8, right: 8, top: 10, bottom: 0 } });
     const getYScale = (isVol = false) => ({
         position: 'right', 
-        grid: { color: 'rgba(255,255,255,0.04)' }, 
+        display: !isVol,
+        beginAtZero: isVol ? true : undefined,
+        grid: { color: isVol ? 'transparent' : 'rgba(255,255,255,0.04)' }, 
         ticks: { 
             color: colorDim, 
             font: { family: "'JetBrains Mono', monospace", size: 10 }, 
             padding: 12,
             callback: isVol ? (v => v >= 100000000 ? (v / 100000000).toFixed(1) + '亿' : (v >= 10000 ? (v / 10000).toFixed(0) + '万' : v)) : undefined
         }, 
-        afterFit: (scale) => { scale.width = 60; } 
+        afterFit: (scale) => { scale.width = isVol ? 0 : 60; } 
     });
 
     const getBaseOptions = () => ({
@@ -235,7 +321,8 @@ function draw() {
         if(!el) return;
         
         let existingChart = Chart.getChart(id);
-        if (existingChart && existingChart.canvas.dataset.scope !== currentScope) {
+        // 图表类型变更或 scope 变更时必须销毁重建，否则 scale 配置不会正确初始化
+        if (existingChart && (existingChart.canvas.dataset.scope !== currentScope || existingChart.config.type !== cfg.type)) {
             existingChart.destroy();
             existingChart = null;
         }
@@ -266,25 +353,37 @@ function draw() {
 
     const mainOpts = getBaseOptions();
     mainOpts.plugins = { legend: { display: false }, tooltip: { enabled: false } };
-    mainOpts.scales = { x: { display: false }, y: getYScale() };
+    mainOpts.scales = { x: { display: false, type: 'category', offset: false, bounds: 'ticks', grid: { offset: false } }, y: getYScale() };
     uc('main', 'mainChart', { type: 'line', data: { labels, datasets: ds }, options: mainOpts, plugins: [localAlignPlugin, bsMarkerPlugin, freezePlugin] });
     
-    const volColorsOp = slice.map(d => (d.close >= d.open ? colorUpHex : colorDownHex) + '80');
     const volOpts = getBaseOptions();
     volOpts.plugins = { legend: { display: false }, tooltip: { enabled: false } };
-    volOpts.scales = { x: { display: false }, y: getYScale(true) };
-    uc('vol', 'volumeChart', { type: 'bar', data: { labels, datasets: [{ data: slice.map(d => d.vol), backgroundColor: volColorsOp }] }, options: volOpts, plugins: [localAlignPlugin, freezePlugin] });
+    volOpts.scales = { x: { display: false, type: 'category', offset: false, bounds: 'ticks', grid: { offset: false } }, y: getYScale(true) };
+    // 成交量柱子用 plugin 手绘，data 全是 null，Chart.js 看不到实际 vol 值，需手动设 y 轴范围
+    const volMax = Math.max(...slice.map(d => d.vol));
+    volOpts.scales.y.min = 0;
+    if (volMax > 0) volOpts.scales.y.max = Math.ceil(volMax * 1.1);
+    uc('vol', 'volumeChart', { type: 'line', data: { labels, datasets: [{ isVolData: true, volData: slice.map(d => ({ vol: d.vol, isUp: d.close >= d.open })), data: slice.map(() => null), borderColor: 'transparent', pointRadius: 0 }] }, options: volOpts, plugins: [volumeBarPlugin, freezePlugin] });
     
     if(state.indicators.macd) {
         const md = state.indicators.macd;
-        const macdBarColors = md.bar.slice(-actualRange).map(v => v >= 0 ? colorUpHex + '80' : colorDownHex + '80');
         const macdOpts = getBaseOptions();
         macdOpts.plugins = { legend: { display: false }, tooltip: { enabled: false } };
-        macdOpts.scales = { x: { display: false }, y: getYScale() };
+        macdOpts.scales = { x: { display: false, type: 'category', offset: false, bounds: 'ticks', grid: { offset: false } }, y: getYScale() };
+        // 让 y 轴范围同时覆盖 diff/dea 线和 bar 柱子，否则柱子被压缩成1-2像素
+        const macdBarArr = md.bar.slice(-actualRange).filter(v => v != null);
+        if (macdBarArr.length) {
+            const allY = [...md.diff.slice(-actualRange), ...md.dea.slice(-actualRange), ...macdBarArr];
+            const yMin = Math.min(...allY.filter(v => v != null));
+            const yMax = Math.max(...allY.filter(v => v != null));
+            const pad = Math.max(Math.abs(yMax - yMin) * 0.1, 1);
+            macdOpts.scales.y.min = Math.floor(yMin - pad);
+            macdOpts.scales.y.max = Math.ceil(yMax + pad);
+        }
         uc('macd', 'macdChart', { 
             type: 'line', 
-            data: { labels, datasets: [ { data: md.diff.slice(-actualRange), borderColor: colorBlueHex, borderWidth: 1, pointRadius: 0, tension: 0.1 }, { data: md.dea.slice(-actualRange), borderColor: '#f5a623', borderWidth: 1, pointRadius: 0, tension: 0.1 }, { type: 'bar', data: md.bar.slice(-actualRange), backgroundColor: macdBarColors } ] }, 
-            options: macdOpts, plugins: [localAlignPlugin, freezePlugin] 
+            data: { labels, datasets: [ { data: md.diff.slice(-actualRange), borderColor: colorBlueHex, borderWidth: 1, pointRadius: 0, tension: 0.1 }, { data: md.dea.slice(-actualRange), borderColor: '#f5a623', borderWidth: 1, pointRadius: 0, tension: 0.1 }, { isMacdBar: true, macdBarData: md.bar.slice(-actualRange), data: md.bar.slice(-actualRange).map(() => null), borderColor: 'transparent', pointRadius: 0 } ] }, 
+            options: macdOpts, plugins: [macdBarPlugin, freezePlugin] 
         });
     }
     
@@ -292,7 +391,7 @@ function draw() {
         const kd = state.indicators.kdj;
         const kdjOpts = getBaseOptions();
         kdjOpts.plugins = { legend: { display: false }, tooltip: { enabled: false } };
-        kdjOpts.scales = { x: { display: false }, y: getYScale() };
+        kdjOpts.scales = { x: { display: false, type: 'category', offset: false, bounds: 'ticks', grid: { offset: false } }, y: getYScale() };
         uc('kdj', 'kdjChart', { 
             type: 'line', 
             data: { labels, datasets: [ { label: 'K', data: kd.k.slice(-actualRange), borderColor: '#f8fafc', borderWidth: 1, pointRadius: 0, tension: 0.1 }, { label: 'D', data: kd.d.slice(-actualRange), borderColor: '#f5a623', borderWidth: 1, pointRadius: 0, tension: 0.1 }, { label: 'J', data: kd.j.slice(-actualRange), borderColor: '#8b5cf6', borderWidth: 1, pointRadius: 0, tension: 0.1 } ] }, 
@@ -577,30 +676,44 @@ function updateSidebarPriceOnly() {
     const cPrice = document.getElementById('cardPrice');
     if (!cPrice) return;
 
-    const priceEl = cPrice.querySelector('.price-main');
-    if (priceEl) {
-        var oldP = parseFloat(priceEl.textContent);
-        priceEl.textContent = item.close.toFixed(2);
-        priceEl.className = 'price-main mono ' + cls;
-        if (!isNaN(oldP) && oldP !== item.close) {
-            priceEl.classList.add('price-pulse');
-            setTimeout(function() { priceEl.classList.remove('price-pulse'); }, 400);
+    // 辅助函数：只有值变了才更新文本 + pulse
+    function diffUpdate(el, newVal, newCls) {
+        if (!el) return;
+        var oldText = el.textContent;
+        var newText = String(newVal);
+        if (oldText === newText) return; // 值没变，不操作
+        el.textContent = newText;
+        if (newCls) el.className = (el.className.split(' ').filter(c => c !== 'up' && c !== 'down').join(' ') + ' ' + newCls).trim();
+        el.classList.add('price-pulse');
+        setTimeout(function() { el.classList.remove('price-pulse'); }, 400);
+    }
+
+    // 价格
+    diffUpdate(cPrice.querySelector('.price-main'), item.close.toFixed(2), cls);
+
+    // 涨跌幅
+    var subText = (ch >= 0 ? '+' : '') + ch.toFixed(2) + ' (' + (ch >= 0 ? '+' : '') + pct + '%)';
+    var subEl = cPrice.querySelector('.price-sub');
+    if (subEl) {
+        if (subEl.textContent !== subText) {
+            subEl.textContent = subText;
+            subEl.className = 'price-sub mono ' + cls;
+            subEl.classList.add('price-pulse');
+            setTimeout(function() { subEl.classList.remove('price-pulse'); }, 400);
         }
     }
-    const subEl = cPrice.querySelector('.price-sub');
-    if (subEl) {
-        subEl.textContent = (ch >= 0 ? '+' : '') + ch.toFixed(2) + ' (' + (ch >= 0 ? '+' : '') + pct + '%)';
-        subEl.className = 'price-sub mono ' + cls;
-    }
-    const vals = cPrice.querySelectorAll('.data-box-row .val');
+
+    // 今开 / 最高 / 最低 / 成交量
+    var vals = cPrice.querySelectorAll('.data-box-row .val');
     if (vals.length >= 4) {
-        vals[0].textContent = item.open.toFixed(2);
-        vals[1].textContent = item.high.toFixed(2);
-        vals[2].textContent = item.low.toFixed(2);
-        vals[3].textContent = fmt(item.vol) + '手';
+        diffUpdate(vals[0], item.open.toFixed(2));
+        diffUpdate(vals[1], item.high.toFixed(2));
+        diffUpdate(vals[2], item.low.toFixed(2));
+        diffUpdate(vals[3], fmt(item.vol) + '手');
     }
-    const amtVal = cPrice.querySelector('.amt-row .val');
-    if (amtVal) amtVal.textContent = fmt(item.amt);
+
+    // 成交额
+    diffUpdate(cPrice.querySelector('.amt-row .val'), fmt(item.amt));
 }
 
 function updateNavCapsuleVisuals(safeIdx, totalLen) {
@@ -616,32 +729,62 @@ function updateNavCapsuleVisuals(safeIdx, totalLen) {
     }
 }
 
+function hashString32(s) {
+    var h = 0, i = 0;
+    while (i < s.length) { h = ((h << 5) - h + s.charCodeAt(i++)) | 0; }
+    return h;
+}
+
 function applySidebarHTML(bundle, cacheKey = '') {
     const cPrice = document.getElementById('cardPrice');
     const cAnalysis = document.getElementById('cardAnalysis');
     if(!cPrice || !cAnalysis) return;
-    
-    if (bundle.isHide) { 
-        cPrice.style.display = 'none'; 
-        cAnalysis.style.display = 'none'; 
-        return; 
+
+    if (bundle.isHide) {
+        cPrice.style.display = 'none';
+        cAnalysis.style.display = 'none';
+        return;
     }
-    
-    cPrice.style.display = 'flex'; 
+
+    cPrice.style.display = 'flex';
     cPrice.style.flexDirection = 'column';
     cAnalysis.style.display = 'flex';
     cAnalysis.style.flexDirection = 'column';
-    
-    if (cacheKey && cPrice.dataset.key === cacheKey) return; 
-    
+
+    if (cacheKey && cPrice.dataset.key === cacheKey) return;
+
     var oldPriceEl = cPrice.querySelector('.price-main');
     var oldPrice = oldPriceEl ? parseFloat(oldPriceEl.textContent) : null;
-    
-    cPrice.innerHTML = bundle.priceHtml; 
-    cAnalysis.innerHTML = bundle.analysisHtml;
-    
+
+    // 用 hash 比对，避免脆弱的 innerHTML.trim 字符串比较导致误刷
+    var priceHtml = bundle.priceHtml || '';
+    var analysisHtml = bundle.analysisHtml || '';
+    var priceHash = hashString32(priceHtml);
+    var analysisHash = hashString32(analysisHtml);
+    var prevPriceHash = parseInt(cPrice.dataset.ph || '0', 10);
+    var prevAnalysisHash = parseInt(cAnalysis.dataset.ah || '0', 10);
+
+    // 价格区：用淡入过渡防白闪
+    if (priceHash !== prevPriceHash) {
+        cPrice.style.opacity = '0';
+        cPrice.innerHTML = priceHtml;
+        cPrice.dataset.ph = String(priceHash);
+        // 强制回流后恢复可见（浏览器会在下一帧渲染，不会看到空白帧）
+        cPrice.offsetHeight; 
+        cPrice.style.opacity = '';
+    }
+
+    // 分析区：同样用淡入过渡
+    if (analysisHtml !== prevAnalysisHash) {
+        cAnalysis.style.opacity = '0';
+        cAnalysis.innerHTML = analysisHtml;
+        cAnalysis.dataset.ah = String(analysisHash);
+        cAnalysis.offsetHeight;
+        cAnalysis.style.opacity = '';
+    }
+
     if (cacheKey) cPrice.dataset.key = cacheKey;
-    
+
     var newPriceEl = cPrice.querySelector('.price-main');
     if (newPriceEl && oldPrice !== null && !isNaN(oldPrice)) {
         var newPrice = parseFloat(newPriceEl.textContent);
