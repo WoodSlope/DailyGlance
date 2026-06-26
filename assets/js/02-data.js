@@ -431,10 +431,34 @@ function scheduleCachedFetchRefreshApply(id) {
                 PERF.end(perfTrace, { status: 'skipped' });
                 return;
             }
-            setLockIdx(getActiveData()?.length - 1 || -1);
+            const rd = getActiveData();
+            if (!rd || !rd.length) { PERF.end(perfTrace, { status: 'no-data' }); return; }
+
+            const newLatestDate = rd[rd.length - 1].date;
+            var oldDate = '';
+            var cPriceEl = document.getElementById('cardPrice');
+            if (cPriceEl) {
+                var headerEl = cPriceEl.querySelector('.header-meta-row .mono');
+                if (headerEl) oldDate = headerEl.textContent.trim().split('|')[0].trim();
+            }
+
             renderMASelector();
-            draw();
-            safeUpdateSidebar();
+
+            if (state.isFrozen) {
+                // 用户在浏览历史，只重绘图表（数据可能新增了 bar），不改变 lockIdx，不刷新侧边栏
+                draw();
+            } else if (oldDate && oldDate === newLatestDate) {
+                // 同日价格更新：只更新价格显示，不重建分析面板
+                setLockIdx(rd.length - 1);
+                draw();
+                if (typeof updateSidebarPriceOnly === 'function') updateSidebarPriceOnly();
+            } else {
+                // 新日 K 线或首次加载：全量更新
+                setLockIdx(rd.length - 1);
+                draw();
+                safeUpdateSidebar();
+            }
+
             markRefreshTime();
             PERF.mark(perfTrace, 'render');
             PERF.end(perfTrace, { status: 'applied' });

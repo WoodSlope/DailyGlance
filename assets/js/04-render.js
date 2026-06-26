@@ -80,7 +80,7 @@ function updateCrosshairOverlay() {
     if (li < 0) { overlay.classList.remove('active'); return; }
     const xScale = mainChart.scales.x;
     const px = xScale.getPixelForValue(li);
-    if (px < 0 || px > xScale.width) { overlay.classList.remove('active'); return; }
+    if (px < xScale.left || px > xScale.right) { overlay.classList.remove('active'); return; }
     line.style.transform = 'translateX(' + px + 'px)';
     overlay.classList.add('active');
     if (state.isFrozen) overlay.classList.add('frozen');
@@ -128,10 +128,6 @@ function refreshHoverSelection() {
     pendingHoverIdx = -1;
     safeUpdateSidebar();
     updateCrosshairOverlay();
-    // 确保 Chart.js 交互状态同步，防止悬停十字线不动
-    if (!state.isFrozen) {
-        Object.values(state.charts).forEach(c => { if (c && typeof c.update === 'function') c.update('none'); });
-    }
 }
 
 function resetHoverSelectionToLatest() {
@@ -179,8 +175,6 @@ function handleChartClick(e, els) {
         state.isFrozen = false;
         resetHoverSelectionToLatest();
         redrawChartsFast();
-        // 强制刷新 Chart.js 交互状态，确保 onHover 及时恢复
-        Object.values(state.charts).forEach(c => { if (c && typeof c.update === 'function') c.update('none'); });
         updateFreezeBadge();
         return;
     }
@@ -566,6 +560,47 @@ function safeUpdateSidebar() {
         }
         PERF.end(perfTrace, { status: 'empty-data' });
     }
+}
+
+function updateSidebarPriceOnly() {
+    const rd = getActiveData();
+    if (!rd || !rd.length) return;
+    const safeIdx = getSafeIndex(rd);
+    if (safeIdx < 0 || !rd[safeIdx]) return;
+    const item = rd[safeIdx];
+    const prev = safeIdx > 0 ? rd[safeIdx - 1] : null;
+    const ch = item.close - (prev ? prev.close : item.open);
+    const pct = (ch / (prev ? prev.close : item.open) * 100).toFixed(2);
+    const cls = ch >= 0 ? 'up' : 'down';
+    const fmt = v => !v ? '--' : (v >= 1e8 ? (v/1e8).toFixed(2)+'亿' : v >= 1e4 ? (v/1e4).toFixed(2)+'万' : v.toFixed(0));
+
+    const cPrice = document.getElementById('cardPrice');
+    if (!cPrice) return;
+
+    const priceEl = cPrice.querySelector('.price-main');
+    if (priceEl) {
+        var oldP = parseFloat(priceEl.textContent);
+        priceEl.textContent = item.close.toFixed(2);
+        priceEl.className = 'price-main mono ' + cls;
+        if (!isNaN(oldP) && oldP !== item.close) {
+            priceEl.classList.add('price-pulse');
+            setTimeout(function() { priceEl.classList.remove('price-pulse'); }, 400);
+        }
+    }
+    const subEl = cPrice.querySelector('.price-sub');
+    if (subEl) {
+        subEl.textContent = (ch >= 0 ? '+' : '') + ch.toFixed(2) + ' (' + (ch >= 0 ? '+' : '') + pct + '%)';
+        subEl.className = 'price-sub mono ' + cls;
+    }
+    const vals = cPrice.querySelectorAll('.data-box-row .val');
+    if (vals.length >= 4) {
+        vals[0].textContent = item.open.toFixed(2);
+        vals[1].textContent = item.high.toFixed(2);
+        vals[2].textContent = item.low.toFixed(2);
+        vals[3].textContent = fmt(item.vol) + '手';
+    }
+    const amtVal = cPrice.querySelector('.amt-row .val');
+    if (amtVal) amtVal.textContent = fmt(item.amt);
 }
 
 function updateNavCapsuleVisuals(safeIdx, totalLen) {
