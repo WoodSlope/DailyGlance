@@ -3,6 +3,74 @@
 // [5] 交互与生命周期 (Events & Lifecycle)
 // ==========================================
 
+function calculateBacktestSummary(full, options = {}) {
+    const initialCapital = options.initialCapital || 10000;
+    const costRate = options.costRate ?? 0.001;
+    const startIdx = Math.max(1, options.startIdx ?? 60);
+    let capital = initialCapital, peakCapital = initialCapital, maxDrawdown = 0;
+    let prevAdv = full[startIdx - 1]?._decision?.position || 0;
+    let entryCapital = 0, winCount = 0, totalTrades = 0;
+    const trades = [], closedTradeReturns = [];
+
+    for(let i = startIdx; i < full.length; i++) {
+        const item = full[i], prev = full[i-1], decision = item?._decision;
+        if (!item || !prev || !decision) continue;
+
+        if (prevAdv > 0) {
+            const dailyRet = (item.close - prev.close) / prev.close;
+            capital = capital * (1 + dailyRet * (prevAdv / 100));
+        }
+
+        if(capital > peakCapital) peakCapital = capital;
+        const dd = (peakCapital - capital) / peakCapital;
+        if(dd > maxDrawdown) maxDrawdown = dd;
+
+        if (decision.position !== prevAdv) {
+            const turnover = Math.abs(decision.position - prevAdv) / 100;
+            const cost = capital * turnover * costRate;
+            if (cost > 0) capital -= cost;
+
+            trades.push({
+                date: item.date,
+                action: decision.simpleAction,
+                posFrom: prevAdv,
+                posTo: decision.position,
+                price: item.close,
+                cost
+            });
+
+            if (prevAdv === 0 && decision.position > 0) {
+                entryCapital = capital;
+            } else if (decision.position === 0 && prevAdv > 0) {
+                totalTrades++;
+                const tradeRet = entryCapital ? (capital - entryCapital) / entryCapital : 0;
+                closedTradeReturns.push(tradeRet);
+                if (tradeRet > 0) winCount++;
+                entryCapital = 0;
+            }
+
+            if(capital > peakCapital) peakCapital = capital;
+            const postCostDd = (peakCapital - capital) / peakCapital;
+            if(postCostDd > maxDrawdown) maxDrawdown = postCostDd;
+        }
+        prevAdv = decision.position;
+    }
+
+    return {
+        capital,
+        ret: ((capital - initialCapital) / initialCapital * 100).toFixed(2),
+        maxDrawdown: (maxDrawdown * 100).toFixed(2),
+        winRate: totalTrades > 0 ? ((winCount / totalTrades) * 100).toFixed(1) : '0.0',
+        winCount,
+        totalTrades,
+        trades,
+        closedTradeReturns,
+        costRate,
+        startIdx,
+        sampleDays: Math.max(0, full.length - startIdx)
+    };
+}
+
 async function runBacktest() {
     if(state.mode !== 'stock' || !state.id) return customAlert("请先选择并查看一只具体的股票后再运行回测。");
     
@@ -21,45 +89,8 @@ async function runBacktest() {
         updateAllIndicators(); 
         await new Promise(r => setTimeout(r, 100)); 
         
-        let capital = 10000, peakCapital = 10000, maxDrawdown = 0;
-        const startIdx = Math.max(60, full.length - 250);
-        let prevAdv = 0, winCount = 0, totalTrades = 0, entryPrice = 0;
-        const trades = [];
-        
-        for(let i = startIdx; i < full.length; i++) {
-            const item = full[i], prev = full[i-1], decision = item._decision;
-            if (!decision) continue;
-            
-            if (prevAdv > 0) {
-                const dailyRet = (item.close - prev.close) / prev.close;
-                capital = capital * (1 + dailyRet * (prevAdv / 100));
-                if(capital > peakCapital) peakCapital = capital;
-                const dd = (peakCapital - capital) / peakCapital;
-                if(dd > maxDrawdown) maxDrawdown = dd;
-            }
-            
-            if (decision.position !== prevAdv) {
-                trades.push({ 
-                    date: item.date, 
-                    action: decision.simpleAction, 
-                    posFrom: prevAdv, 
-                    posTo: decision.position, 
-                    price: item.close 
-                });
-                
-                if (prevAdv === 0 && decision.position > 0) {
-                    entryPrice = item.close; 
-                } else if (decision.position === 0 && prevAdv > 0) { 
-                    totalTrades++; 
-                    if (item.close > entryPrice) winCount++; 
-                }
-            }
-            prevAdv = decision.position;
-        }
-        
-        const ret = ((capital - 10000) / 10000 * 100).toFixed(2);
-        const winRate = totalTrades > 0 ? ((winCount / totalTrades) * 100).toFixed(1) : 0;
-        const md = (maxDrawdown * 100).toFixed(2);
+        const summary = calculateBacktestSummary(full, { startIdx: 60, costRate: 0.001 });
+        const { ret, winRate, maxDrawdown: md, winCount, totalTrades, trades } = summary;
         
         hideLoading();
         
@@ -84,7 +115,7 @@ async function runBacktest() {
                 回测报告: ${state.stockId}
             </div>
             <div class="text-dim" style="font-size:12px;margin-bottom:20px;text-align:center;">
-                基于「${state.strategy}」过去 ${full.length - startIdx} 天实盘推演
+                基于「${state.strategy}」过去 ${summary.sampleDays} 天日线推演，调仓成本按单边 ${(summary.costRate * 100).toFixed(2)}% 估算
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;text-align:left;">
                 <div class="terminal-block" style="padding:14px;">
@@ -105,7 +136,7 @@ async function runBacktest() {
             </div>
             ${tradeListHtml}
             <div class="text-dim" style="margin-top:16px;font-size:10px;line-height:1.5;text-align:justify;">
-                注：交易记录按盘末收盘价触发，并严格叠加了大盘温控环境及个股极端防守系数。主图 B/S 仅标注重大的开平仓转折点，中途加减仓仅在回测记录中展示。
+                注：交易记录按盘末收盘价触发，收益按实际仓位比例滚动计算，并扣除调仓成本；未模拟涨跌停无法成交、盘中滑点和 T+1 约束。主图 B/S 仅标注重大的开平仓转折点，中途加减仓仅在回测记录中展示。
             </div>
         `;
         
@@ -126,8 +157,10 @@ async function runBacktest() {
 
 function searchLocalStocks(q) { 
     const qt = q.toLowerCase(); 
-    return STOCK_DATABASE.filter(s => s.Name.toLowerCase().includes(qt) || s.Code.includes(qt))
-        .concat(stockCache.filter(s => !STOCK_DATABASE.some(b => b.Code === s.Code) && (s.Name?.toLowerCase().includes(qt) || s.Code.includes(qt)))); 
+    return STOCK_DATABASE
+        .concat(stockCache.filter(s => !STOCK_DATABASE.some(b => b.Code === s.Code)))
+        .map(s => ({ Code: s.Code, Name: normalizeStockDisplayName(s.Code, s.Name) }))
+        .filter(s => s.Name.toLowerCase().includes(qt) || s.Code.includes(qt)); 
 }
 
 function jsonpSearchEastmoney(query) {
@@ -246,8 +279,8 @@ async function searchAndShowInSuggest(q) {
 
 function renderSuggest(container, res) { 
     container.innerHTML = res.map(x => `
-        <div class="stock-suggest-item" onclick="selectSuggestItem('${escapeJSArg(x.Code)}','${escapeJSArg(x.Name)}')">
-            <span class="ss-name">${escapeHTML(x.Name)}</span>
+        <div class="stock-suggest-item" onclick="selectSuggestItem('${escapeJSArg(x.Code)}','${escapeJSArg(normalizeStockDisplayName(x.Code, x.Name))}')">
+            <span class="ss-name">${escapeHTML(normalizeStockDisplayName(x.Code, x.Name))}</span>
             <span class="ss-code mono">${escapeHTML(x.Code)}</span>
         </div>
     `).join(''); 
@@ -259,7 +292,7 @@ function selectSuggestItem(code, name) {
     closeSuggestions(); 
     const i = document.getElementById('stockSearchInput');
     const safeCode = String(code || '').trim();
-    const safeName = String(name || '').trim(); 
+    const safeName = normalizeStockDisplayName(safeCode, name); 
     
     if(i) i.value = ''; 
     if(!/^\d{6}$/.test(safeCode)) return; 
@@ -318,7 +351,16 @@ function onSearchKeydown(e) {
 async function loadWatchlist() { 
     try { 
         const w = await dbGet('watchlist_list'); 
-        state.watchlist = (w && w.data) || []; 
+        const rawWatchlist = (w && w.data) || [];
+        state.watchlist = rawWatchlist.map(stock => ({
+            ...stock,
+            name: normalizeStockDisplayName(stock.code, stock.name)
+        }));
+        if (JSON.stringify(state.watchlist) !== JSON.stringify(rawWatchlist)) {
+            try {
+                await saveWatchlist();
+            } catch(e) {}
+        }
     } catch(e) { 
         state.watchlist = []; 
     } 
@@ -418,7 +460,11 @@ function computeWatchlistDecisionSnapshot(full) {
         state.period = 'daily';
         state.indicators = localIndicators;
 
-        const startIdx = Math.max(0, full.length - 80);
+        const tailStartIdx = Math.max(0, full.length - 80);
+        const priorDecision = tailStartIdx > 0 ? full[tailStartIdx - 1]?._decision : null;
+        const canUseTailRebuild = priorDecision && full[tailStartIdx - 1]?._strategy === state.strategy && full[tailStartIdx - 1]?._signalVersion === SIGNAL_VERSION;
+        const startIdx = canUseTailRebuild ? tailStartIdx : 0;
+        prevPos = canUseTailRebuild ? (priorDecision.position || 0) : 0;
         for (let i = startIdx; i < full.length; i++) {
             if (!full[i]) continue;
             full[i]._signals = calculateDailySignals(i, full, localIndicators);
@@ -499,15 +545,23 @@ function refreshWatchlistSignalSnapshots() {
 }
 
 async function addToWatchlist(code, name) { 
-    if(!state.watchlist.some(s => s.code === code)) { 
-        if(state.watchlist.length >= 10) { 
-            await customAlert('最多只能添加 10 只自选股。'); 
-            return; 
-        } 
-        state.watchlist.push({ code, name }); 
-        await saveWatchlist(); 
-        renderWatchlist(); 
+    const displayName = normalizeStockDisplayName(code, name);
+    const existing = state.watchlist.find(s => s.code === code);
+    if (existing) {
+        if (existing.name !== displayName) {
+            existing.name = displayName;
+            await saveWatchlist();
+            renderWatchlist();
+        }
+        return;
+    }
+    if(state.watchlist.length >= 10) { 
+        await customAlert('最多只能添加 10 只自选股。'); 
+        return; 
     } 
+    state.watchlist.push({ code, name: displayName }); 
+    await saveWatchlist(); 
+    renderWatchlist(); 
 }
 
 async function removeStock(code) { 
@@ -517,9 +571,10 @@ async function removeStock(code) {
     
     stock._pendingRemove = true;
     renderWatchlist();
+    const displayName = normalizeStockDisplayName(code, stock.name);
     
     showToastWithAction(
-        '\u5df2\u79fb\u9664 ' + stock.name,
+        '\u5df2\u79fb\u9664 ' + displayName,
         '\u64a4\u9500',
         function() { stock._pendingRemove = false; renderWatchlist(); },
         'info', 3000
@@ -707,7 +762,7 @@ function selectStock(code, name) {
 async function _selectStockImpl(code, name) {
     const perfTrace = PERF.start('selectStock', { code });
     const safeCode = String(code || '').trim();
-    const safeName = String(name || safeCode).trim();
+    const safeName = normalizeStockDisplayName(safeCode, name);
     if (!/^\d{6}$/.test(safeCode)) return;
 
     const selectionSeq = ++globalSelectionSeq;
@@ -825,7 +880,7 @@ function renderIndexList() {
         
         const priceHtml = price > 0 
             ? `<span class="lprice mono ${cl}" data-code="${id}">${price.toFixed(2)}</span><span class="lchange mono ${cl}" data-code="${id}">${pct !== 0 ? (change >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '--'}</span>` 
-            : '<span class="lprice" data-code="${id}">--</span><span class="lchange" data-code="${id}">--</span>';
+            : `<span class="lprice mono" data-code="${id}">--</span><span class="lchange mono" data-code="${id}">--</span>`;
             
         return `
             <div class="nav-list-item ${active}" onclick="selectIndex('${id}')">
@@ -880,6 +935,7 @@ function renderWatchlist() {
     }
     
     const lHtml = state.watchlist.map(s => {
+        const displayName = normalizeStockDisplayName(s.code, s.name);
         const d = state.rawData[codeToSecid(s.code)];
         const lastDate = d?.length ? d[d.length - 1].date : '';
         const rowStatus = s._navStatus && s._navStatus.strategy === state.strategy && s._navStatus.date === lastDate
@@ -897,13 +953,13 @@ function renderWatchlist() {
         const cl = change >= 0 ? 'up' : 'down';
         
         return `
-            <div class="nav-list-item ${s.code === state.stockId ? 'active' : ''}${s._pendingRemove ? ' pending-remove' : ''}" data-code="${s.code}" ${s._pendingRemove ? '' : `onclick="selectStock('${escapeJSArg(s.code)}','${escapeJSArg(s.name)}')"`}>
+            <div class="nav-list-item ${s.code === state.stockId ? 'active' : ''}${s._pendingRemove ? ' pending-remove' : ''}" data-code="${s.code}" ${s._pendingRemove ? '' : `onclick="selectStock('${escapeJSArg(s.code)}','${escapeJSArg(displayName)}')"`}>
                 <div class="nav-list-main">
                     <div class="lname-wrap">
-                        <span class="lname">${escapeHTML(s.name)}</span>
+                        <span class="lname">${escapeHTML(displayName)}</span>
                         <span class="wl-status ${rowStatus.toneClass}" title="${escapeHTML(rowStatus.action)}">${rowStatus.label}</span>
                     </div>
-                    ${s._pendingRemove ? '' : `<button type="button" class="wl-close" title="移除自选股" aria-label="移除 ${escapeHTML(s.name)}" onclick="event.stopPropagation();removeStock('${escapeJSArg(s.code)}')">×</button>`}
+                    ${s._pendingRemove ? '' : `<button type="button" class="wl-close" title="移除自选股" aria-label="移除 ${escapeHTML(displayName)}" onclick="event.stopPropagation();removeStock('${escapeJSArg(s.code)}')">×</button>`}
                 </div>
                 <div class="nav-list-sub">
                     <span class="lcode mono">${escapeHTML(s.code)}</span>
@@ -1007,8 +1063,9 @@ function prevDay() {
 function nextDay() {
     const rd = getActiveData();
     if(rd && state.lockIdx < rd.length - 1) {
-        state.isFrozen = true;
-        setLockIdx(state.lockIdx + 1);
+        const nextIdx = state.lockIdx + 1;
+        setLockIdx(nextIdx);
+        state.isFrozen = nextIdx < rd.length - 1;
         clearStaleTooltips();
         draw();
         safeUpdateSidebar();
@@ -1101,8 +1158,7 @@ async function switchStrategy(name) {
     const confirmed = await customConfirm(`确定切换到 [${name}]？\n${STRATEGIES[name].desc}`); 
     if(!confirmed) return;
     
-    state.strategy = name; 
-    Object.assign(STRATEGY, STRATEGIES[name]); 
+    setActiveStrategy(name); 
     localStorage.setItem('quant_strategy', name); 
     renderSettings(); 
     
@@ -1198,8 +1254,7 @@ async function init() {
     
     const savedStrategy = localStorage.getItem('quant_strategy');
     if(savedStrategy && STRATEGIES[savedStrategy]) { 
-        state.strategy = savedStrategy; 
-        Object.assign(STRATEGY, STRATEGIES[savedStrategy]); 
+        setActiveStrategy(savedStrategy); 
     }
     
     let resizeRAF = 0;
@@ -1250,10 +1305,15 @@ async function init() {
             
             document.querySelectorAll('#periodTabs .seg-btn').forEach(b => b.classList.remove('active')); 
             e.target.classList.add('active');
+            const prevPeriod = state.period;
+            const prevData = getActiveData();
+            const prevLock = getPeriodLock(prevPeriod);
+            const anchorDate = prevData?.[prevLock]?.date;
+
             state.period = p; 
             state.isFrozen = false; 
             
-            setLockIdx(alignLockToPeriod(p, getActiveData()?.[getPeriodLock(p === 'daily' ? 'weekly' : 'daily')]?.date)); 
+            setLockIdx(alignLockToPeriod(p, anchorDate)); 
             markIndicatorsDirty(); 
             clearStaleTooltips(); 
             draw(); 

@@ -172,6 +172,119 @@ function checkRecentDeadCross(full, ma5, ma20, idx) {
     return false; 
 }
 
+function checkOversoldStopFallRebound(ctx) {
+    if (ctx.idx < 64 || !ctx.item || !ctx.prev || !ctx.ma20) return false;
+    const window5 = ctx.lookback5WithToday;
+    if (window5.length < 5) return false;
+
+    const startClose = window5[0]?.close || 0;
+    const endClose = ctx.item.close || 0;
+    if (!startClose || !endClose) return false;
+
+    const fiveDayDrop = (endClose - startClose) / startClose;
+    const bearCount = window5.filter(d => d && d.close < d.open).length;
+    const belowMA20 = (endClose - ctx.ma20) / ctx.ma20;
+    const isOversold = belowMA20 <= -0.08 || ctx.rsiVal <= 30;
+    const lowerShadow = Math.max(0, Math.min(ctx.item.open || 0, ctx.item.close || 0) - (ctx.item.low || 0));
+    const range = Math.max((ctx.item.high || 0) - (ctx.item.low || 0), 0.0001);
+    const recoveredPrevLow = ctx.prev?.low && endClose > ctx.prev.low;
+    const bullishPin = lowerShadow / range >= 0.35 && endClose >= ctx.item.open;
+    const panicReversal = ctx.item.low < ctx.prev.low && recoveredPrevLow && endClose > ctx.item.open;
+
+    return fiveDayDrop <= -0.08 && bearCount >= 3 && isOversold && (bullishPin || panicReversal);
+}
+
+function checkBollLowerBandReclaim(ctx) {
+    if (ctx.idx < 64 || !ctx.item || !ctx.prev || !ctx.boll) return false;
+    const window5 = ctx.lookback5WithToday;
+    if (window5.length < 5) return false;
+
+    const startClose = window5[0]?.close || 0;
+    const endClose = ctx.item.close || 0;
+    if (!startClose || !endClose) return false;
+
+    const fiveDayDrop = (endClose - startClose) / startClose;
+    const bearCount = window5.filter(d => d && d.close < d.open).length;
+    const prevBoll = calculateBollinger(ctx.full, ctx.idx - 1);
+    const piercedLowerBand = (prevBoll && ctx.prev.low <= prevBoll.lower) || ctx.item.low <= ctx.boll.lower;
+    const reclaimedLowerBand = ctx.item.close > ctx.boll.lower;
+    const lowerShadow = Math.max(0, Math.min(ctx.item.open || 0, ctx.item.close || 0) - (ctx.item.low || 0));
+    const range = Math.max((ctx.item.high || 0) - (ctx.item.low || 0), 0.0001);
+    const hasStopFallShape = ctx.rsiVal <= 35 || (lowerShadow / range >= 0.3 && endClose >= ctx.item.open);
+
+    return fiveDayDrop <= -0.06 && bearCount >= 2 && piercedLowerBand && reclaimedLowerBand && hasStopFallShape;
+}
+
+function checkVolumePriceStalling(ctx) {
+    if (ctx.idx < 60 || !ctx.item || !ctx.prev) return false;
+    const prevHigh20 = ctx.high20;
+    if (!prevHigh20 || prevHigh20 === Infinity) return false;
+
+    const currentVol = ctx.item.vol || 0;
+    const prevVolWindow = ctx.full.slice(Math.max(0, ctx.idx - 5), ctx.idx).filter(Boolean);
+    const avgPrevVol = prevVolWindow.length
+        ? prevVolWindow.reduce((sum, item) => sum + (item.vol || 0), 0) / prevVolWindow.length
+        : 0;
+    if (!avgPrevVol || currentVol < avgPrevVol * 1.8) return false;
+
+    const prevClose = ctx.prev.close || 0;
+    const close = ctx.item.close || 0;
+    if (!prevClose || !close) return false;
+
+    const nearPressure = ctx.item.high >= prevHigh20 * 0.98 || close >= prevHigh20 * 0.97;
+    const dayChange = (close - prevClose) / prevClose;
+    const range = Math.max((ctx.item.high || 0) - (ctx.item.low || 0), 0.0001);
+    const bodyRatio = Math.abs(close - (ctx.item.open || close)) / range;
+    const upperShadowRatio = ((ctx.item.high || close) - Math.max(ctx.item.open || close, close)) / range;
+    const closePosition = (close - (ctx.item.low || close)) / range;
+    const priceStalled = dayChange <= 0.015 && dayChange >= -0.02;
+    const weakClose = upperShadowRatio >= 0.35 || bodyRatio <= 0.25 || closePosition <= 0.55;
+
+    return nearPressure && priceStalled && weakClose;
+}
+
+function checkVolumeRiseDivergence(ctx) {
+    if (ctx.idx < 80 || !ctx.item || !ctx.prev || !ctx.ma20) return false;
+
+    const close = ctx.item.close || 0;
+    const prevClose = ctx.prev.close || 0;
+    if (!close || !prevClose || close <= prevClose) return false;
+
+    const avgVol = (start, end) => {
+        let sum = 0, count = 0;
+        for (let i = start; i <= end; i++) {
+            const vol = ctx.full[i]?.vol || 0;
+            if (vol > 0) { sum += vol; count++; }
+        }
+        return count ? sum / count : 0;
+    };
+    const upDays = (start, end) => {
+        let count = 0;
+        for (let i = Math.max(1, start); i <= end; i++) {
+            if ((ctx.full[i]?.close || 0) > (ctx.full[i - 1]?.close || 0)) count++;
+        }
+        return count;
+    };
+
+    const close3 = ctx.full[ctx.idx - 3]?.close || 0;
+    const close5 = ctx.full[ctx.idx - 5]?.close || 0;
+    if (!close3 || !close5) return false;
+
+    const rise3 = (close - close3) / close3;
+    const rise5 = (close - close5) / close5;
+    const volRecent5 = avgVol(ctx.idx - 4, ctx.idx);
+    const volPrev5 = avgVol(ctx.idx - 9, ctx.idx - 5);
+    if (!volRecent5 || !volPrev5) return false;
+
+    const nearPressure = ctx.high20 && ctx.high20 !== Infinity && close >= ctx.high20 * 0.95;
+    const distMA20 = (close - ctx.ma20) / ctx.ma20;
+    const priceStillRising = rise5 >= 0.035 || rise3 >= 0.025;
+    const volumeShrinking = volRecent5 <= volPrev5 * 0.9;
+    const extendedOrHot = nearPressure || distMA20 >= 0.05 || ctx.rsiVal >= 60;
+
+    return priceStillRising && upDays(ctx.idx - 4, ctx.idx) >= 3 && volumeShrinking && extendedOrHot;
+}
+
 function checkConfirmedHighPullback(full, ind, idx, high20, prev) {
     if(high20 === Infinity || idx < 20 || !full[idx]) return false;
     const item = full[idx], atr = getATR(full, idx), atrPct = item.close ? atr / item.close : 0;
@@ -199,6 +312,7 @@ class SignalContext {
     get body() { return Math.abs((this.item.close || 0) - (this.item.open || 0)); }
     get kdj() { return {K: this.ind.kdj?.k?.[this.idx], D: this.ind.kdj?.d?.[this.idx], J: this.ind.kdj?.j?.[this.idx], prevK: this.ind.kdj?.k?.[this.idx-1] || 50, prevD: this.ind.kdj?.d?.[this.idx-1] || 50}; }
     get lookback30() { return this._lb30 || (this._lb30 = this.full.slice(Math.max(0, this.idx - 30), this.idx)); }
+    get lookback5WithToday() { return this._lb5t || (this._lb5t = this.full.slice(Math.max(0, this.idx - 4), this.idx + 1)); }
     get weeklySeries() { return this._weeks || (this._weeks = getCalendarWeeksUntil(this.full, this.idx)); }
     get wd() { return this._wd || (this._wd = getWeeklyData(this.full, this.idx, this.weeklySeries)); }
     get weeklySupport() { if(this._weeklySupport !== undefined) return this._weeklySupport; const recentWeeks = this.weeklySeries.slice(Math.max(0, this.weeklySeries.length - 21), -1); return (this._weeklySupport = recentWeeks.length ? Math.min(...recentWeeks.map(d => d?.low || 0)) : 0); }
@@ -223,6 +337,8 @@ const SIGNAL_RULES = [
     { id: 'B14', check: ctx => checkPlatformBreak(ctx.full, ctx.idx) && ctx.volRatio > SYS_CONFIG.VOL_SURGE_RATIO },
     { id: 'B15', check: ctx => ctx.prevMa5 <= ctx.prevMa20 && ctx.ma5 > ctx.ma20 && checkRecentDeadCross(ctx.full, ctx.ind.ma?.[5], ctx.ind.ma?.[20], ctx.idx) },
     { id: 'B16', check: ctx => ctx.weeklySupport > 0 && ctx.item.low <= ctx.weeklySupport * 1.03 && ctx.item.close > ctx.item.open && ctx.item.close > ctx.weeklySupport },
+    { id: 'B17', check: ctx => checkOversoldStopFallRebound(ctx) },
+    { id: 'B18', check: ctx => checkBollLowerBandReclaim(ctx) },
     
     { id: 'L1', check: ctx => ctx.prev && ctx.prev.close >= ctx.prevMa10 && ctx.item.close < ctx.ma10 && ctx.ma5 < ctx.prevMa5 },
     { id: 'L2', check: ctx => ctx.prevMa5 >= ctx.prevMa20 && ctx.ma5 < ctx.ma20 },
@@ -236,7 +352,9 @@ const SIGNAL_RULES = [
     { id: 'L10', check: ctx => ctx.lookback30.length > 0 && ctx.item.high >= Math.max(...ctx.lookback30.map(d=>d?.high||0)) && ctx.dif < Math.max(...(ctx.ind.macd?.diff?.slice(Math.max(0,ctx.idx-30),ctx.idx)||[])) && ctx.dif < ctx.prevDif },
     
     { id: 'W1', check: ctx => ctx.ma60 > 0 && (ctx.item.close - ctx.ma60) / ctx.ma60 > 0.25 },
-    { id: 'W2', check: ctx => ctx.prev && ctx.prev2 && ctx.prev3 && ctx.prev.close > ctx.prev.open && ctx.prev2.close > ctx.prev2.open && ctx.item.close > ctx.item.open && ctx.prev.vol > ctx.prev2.vol && ctx.item.vol < ctx.prev.vol }
+    { id: 'W2', check: ctx => ctx.prev && ctx.prev2 && ctx.prev3 && ctx.prev.close > ctx.prev.open && ctx.prev2.close > ctx.prev2.open && ctx.item.close > ctx.item.open && ctx.prev.vol > ctx.prev2.vol && ctx.item.vol < ctx.prev.vol },
+    { id: 'W3', check: ctx => checkVolumePriceStalling(ctx) },
+    { id: 'W4', check: ctx => checkVolumeRiseDivergence(ctx) }
 ];
 
 function calculateDailySignals(idx, full, ind) {
@@ -256,7 +374,7 @@ function calculateAllSignals(idx, full, ind) {
     
     let lastExitIdx = -1;
     for(let i = idx; i >= Math.max(0, idx - 60); i--) { 
-        if((full[i]?._signals || []).some(s => s.startsWith('L') && S.exitSignals?.includes(s) && ['L3', 'L4', 'L5', 'L9', 'L10'].includes(s))) { lastExitIdx = i; break; } 
+        if((full[i]?._signals || []).some(s => s.startsWith('L') && S.exitSignals?.includes(s) && ['L3', 'L4', 'L9', 'L10'].includes(s))) { lastExitIdx = i; break; } 
     }
     
     let inCooldown = false, daysSinceExit = Infinity;
@@ -289,7 +407,7 @@ function checkUnconditionalExit(idx, full, ind) {
 
 function getSignalMeta(idx, full, ind) {
     const sigs = calculateAllSignals(idx, full, ind), S = STRATEGY, windowSignals = sigs.windowSignals || [], hasUncond = checkUnconditionalExit(idx, full, ind);
-    const warns = Object.keys(sigs.allSignals).filter(s => S.warningSignals?.includes(s)), strongExits = sigs.exitSignals.filter(s => ['L3', 'L4', 'L5', 'L9', 'L10'].includes(s));
+    const warns = Object.keys(sigs.allSignals).filter(s => S.warningSignals?.includes(s)), strongExits = sigs.exitSignals.filter(s => ['L3', 'L4', 'L9', 'L10'].includes(s));
     
     let type, cls, detail, logic;
     if (hasUncond) { type = '🛑 清仓规避'; cls = 'core'; detail = '顶背离后MACD死叉'; logic = '触发高危清仓信号'; } 
@@ -378,9 +496,9 @@ function getRiskContext(idx, full, ind) {
 function getExitSeverity(meta, idx, full, ind) {
     const exits = meta.exitSignals || [], raw = Object.keys(meta.allSignals || {});
     if ((meta.type && meta.type.includes('清仓规避')) || (raw.includes('L10') && raw.includes('L3'))) return { level: '清仓防守', detail: '触发高危清仓信号' };
-    const strongExitSignals = exits.filter(s => ['L3', 'L4', 'L5', 'L9', 'L10'].includes(s));
+    const strongExitSignals = exits.filter(s => ['L3', 'L4', 'L9', 'L10'].includes(s));
     if (strongExitSignals.length) return { level: '强离场', detail: `触发核心破位防守：${strongExitSignals.map(s => getUserSignalText(s)).join('+')}` };
-    if (exits.some(s => ['L1', 'L2', 'L6', 'L7', 'L8'].includes(s)) || (meta.warningSignals || []).length) return { level: '减仓观察', detail: '短线转弱或过热，适合降低仓位等待确认' };
+    if (exits.some(s => ['L1', 'L2', 'L5', 'L6', 'L7', 'L8'].includes(s)) || (meta.warningSignals || []).length) return { level: '减仓观察', detail: '短线转弱或过热，适合降低仓位等待确认' };
     if (meta.windowSignals) {
         const recentExits = meta.windowSignals.filter(w => w.signal.startsWith('L') && (idx - w.day) >= 1 && (idx - w.day) <= 2);
         if (recentExits.length > 0 && ind.ma?.[5] && full[idx] && full[idx].close < ind.ma[5][idx]) return { level: '延续防守', detail: '近期高位释放过防守信号，尚未重获短期均线支撑' };
@@ -409,7 +527,7 @@ function getExitSignalEvidence(meta, decision) {
     return { direct, window: windowExits, directDesc, windowDesc, exitText };
 }
 
-function getPositionDriverText(meta, market, risk, exit, base, position, prevPos) {
+function getPositionDriverText(meta, market, risk, exit, base, position, prevPos, positionCap = null) {
     if (exit.level === '清仓防守' || exit.level === '强离场') {
         return `触发${exit.level}，${meta.exitSignals?.length ? `技术离场 ${meta.exitSignals.join(' / ')}` : '按防守规则直接处理'}。`;
     }
@@ -423,12 +541,104 @@ function getPositionDriverText(meta, market, risk, exit, base, position, prevPos
     const pieces = [`基础 ${base}%`];
     if ((market?.coef ?? 1) !== 1) pieces.push(`市场系数 ${market.coef.toFixed(2)}`);
     if ((risk?.coef ?? 1) !== 1) pieces.push(`风险系数 ${risk.coef.toFixed(2)}`);
+    if (positionCap?.reason) pieces.push(positionCap.reason);
     pieces.push(position === prevPos ? `维持 ${position}%` : `调整至 ${position}%`);
     if (position === 0 && prevPos > 0) pieces.push(`较前次收至 0%`);
     return pieces.join('，') + '。';
 }
 
+function formatPriceLevel(value) {
+    return Number.isFinite(value) ? Number(value).toFixed(2) : '--';
+}
+
+function getNoviceInvalidCondition(meta, decision, position, hasWarning) {
+    const threshold = STRATEGY?.buyThreshold ?? '-';
+    const currentScore = meta?.windowScore ?? 0;
+    const stopText = formatPriceLevel(decision?.risk?.stop);
+    const canShowStop = stopText !== '--';
+
+    if (position === 0) {
+        const scoreText = threshold === '-' ? '有效买入积分重新达标' : `买入积分重新达到 ${threshold}/${threshold}`;
+        const cooldownText = meta?.inCooldown ? '并脱离冷静期' : '并确认已脱离冷静期';
+        const stopGuard = canShowStop ? `若继续跌破防守位 ${stopText}，继续空仓观望。` : '若继续出现防守信号，继续空仓观望。';
+        return `${scoreText}，${cooldownText}后，才重新考虑；当前积分 ${currentScore}/${threshold}。${stopGuard}`;
+    }
+
+    if (position <= 30) {
+        const stopGuard = canShowStop ? `防守位 ${stopText}` : '短期趋势防守位';
+        return `轻仓观察只在重新站回短期趋势且买入积分继续改善时成立；若跌破${stopGuard}或再出离场信号，降到 0%。`;
+    }
+
+    const stopGuard = canShowStop ? `防守位 ${stopText}` : '防守位';
+    if (hasWarning) {
+        return `只要风险降温且不跌破${stopGuard}，可继续观察；若风险继续升高、跌破${stopGuard}或出现强离场信号，先降仓或离场。`;
+    }
+    return `只要不跌破${stopGuard}且不出现强离场信号，当前判断继续有效；若触发其一，先降仓或离场。`;
+}
+
+function getNoviceDecisionSummary(meta, decision) {
+    const position = decision?.position ?? 0;
+    const action = decision?.simpleAction || '持币观望';
+    const exitLevel = decision?.exit?.level || '无明确离场';
+    const marketLabel = decision?.market?.label || '环境未知';
+    const riskLevel = decision?.risk?.level || '风险未知';
+    const riskFlags = decision?.risk?.flags || [];
+    const scoreReady = !!decision?.signalReady || (meta?.windowScore ?? 0) >= (STRATEGY?.buyThreshold ?? Infinity);
+    const hasWarning = (meta?.warningSignals || []).length > 0 || riskFlags.length > 0;
+    const hasCriticalExit = ['清仓防守', '强离场'].includes(exitLevel) || ['清仓离场', '执行离场', '规避风险'].includes(action);
+    const isFavorableMarket = ['全面多头', '温和偏多'].includes(marketLabel);
+
+    let stateLabel = '弱势观察';
+    let userAction = '先不碰';
+    if (hasCriticalExit || position === 0 && action === '规避风险') {
+        stateLabel = '破位防守';
+        userAction = position === 0 ? '空仓观望' : '优先防守';
+    } else if (position === 0) {
+        stateLabel = meta?.inCooldown ? '离场冷静期' : '弱势观察';
+        userAction = '先不碰';
+    } else if (position <= 30) {
+        stateLabel = action.includes('减仓') || hasWarning ? '风险观察' : '试探观察';
+        userAction = action.includes('减仓') ? '降低仓位' : '只适合轻仓';
+    } else if (scoreReady && position >= 50) {
+        stateLabel = hasWarning ? '转强但偏热' : '趋势转强';
+        userAction = position >= 80 ? '可积极关注' : '可继续观察';
+    } else {
+        stateLabel = '持仓观察';
+        userAction = action.includes('加仓') ? '顺势持有' : '继续持有';
+    }
+
+    const reasonParts = [];
+    if (isFavorableMarket && (position === 0 || hasCriticalExit || !scoreReady)) {
+        const defensiveCauses = [];
+        if (!scoreReady) defensiveCauses.push('信号未达标');
+        if (hasCriticalExit) defensiveCauses.push('触发防守');
+        if (meta?.inCooldown) defensiveCauses.push('处于离场冷静期');
+        reasonParts.push(`大盘环境偏好，但当前标的/指数自身${defensiveCauses.length ? defensiveCauses.join('、') : '暂不满足开仓条件'}，所以先按防守处理`);
+    }
+    if (scoreReady) reasonParts.push(`信号积分达标 ${meta?.windowScore ?? 0}/${STRATEGY?.buyThreshold ?? '-'}`);
+    else reasonParts.push(`信号积分未达标 ${meta?.windowScore ?? 0}/${STRATEGY?.buyThreshold ?? '-'}`);
+    reasonParts.push(`市场环境：${marketLabel}`);
+    reasonParts.push(`风险状态：${riskLevel}`);
+    if (decision?.positionCap?.reason) reasonParts.push(decision.positionCap.reason);
+    if (hasCriticalExit) reasonParts.push(`防守信号：${exitLevel}`);
+
+    const invalidCondition = getNoviceInvalidCondition(meta, decision, position, hasWarning);
+
+    return {
+        state: stateLabel,
+        action: userAction,
+        positionText: `${position}%`,
+        reason: reasonParts.join('；'),
+        invalidCondition
+    };
+}
+
 function quantizePosition(val) { const steps = [0, 10, 20, 30, 50, 80, 100]; return steps.reduce((prev, curr) => Math.abs(curr - val) < Math.abs(prev - val) ? curr : prev); }
+
+function getPositionCap(meta, prevPos, position) {
+    if (!meta.allSignals?.W4 || prevPos <= 0 || position < 80) return null;
+    return { limit: 50, reason: 'W4缩量上涨背离，高仓位上限50%' };
+}
 
 function computeDecisionForIndex(idx, full, prevPos) {
     const meta = getSignalMeta(idx, full, state.indicators), market = getMarketContext(full[idx].date);
@@ -444,9 +654,12 @@ function computeDecisionForIndex(idx, full, prevPos) {
     if (meta.warningSignals?.length) position = quantizePosition(Math.min(position, 40));
     if (risk.score < 40) position = quantizePosition(Math.min(position, 20));
 
+    const positionCap = getPositionCap(meta, prevPos, position);
+    if (positionCap) position = quantizePosition(Math.min(position, positionCap.limit));
+
     if (Math.abs(position - prevPos) <= 10 && position !== 0) position = prevPos;
     if (prevPos === 0 && position > 0 && meta.type === '📈 趋势抱单') position = 0;
-    const positionDriver = getPositionDriverText(meta, market, risk, exit, base, position, prevPos);
+    const positionDriver = getPositionDriverText(meta, market, risk, exit, base, position, prevPos, positionCap);
 
     let simpleAction = '持币观望', simpleColorClass = 'text-dim', bsMark = null;
     if (position === 0) {
@@ -461,7 +674,7 @@ function computeDecisionForIndex(idx, full, prevPos) {
         if (position <= 30) { simpleAction = (exit.level === '减仓观察' || exit.level === '延续防守' || meta.warningSignals?.length) ? '谨慎持有' : '轻仓持有'; simpleColorClass = simpleAction === '谨慎持有' ? 'text-warn' : 'text-info'; } 
         else { simpleAction = (meta.type === '📈 趋势抱单' && meta.buySignals.length === 0) ? '顺势抱单' : '积极持有'; simpleColorClass = 'text-bull'; }
     }
-    return { basePosition: base, position, prevAdv: prevPos, market, risk, exit, positionDriver, signalReady: meta.windowScore >= STRATEGY.buyThreshold, simpleAction, simpleColorClass, bsMark };
+    return { basePosition: base, position, prevAdv: prevPos, market, risk, exit, positionCap, positionDriver, signalReady: meta.windowScore >= STRATEGY.buyThreshold, simpleAction, simpleColorClass, bsMark };
 }
 
 function getWeeklyDirectionContext(idx, full, ind) {
@@ -487,7 +700,11 @@ function getWeeklyDirectionContext(idx, full, ind) {
 
 function getIndicatorKey(data = getActiveData()) {
     if(!data || !data.length) return ''; const last = data[data.length - 1];
-    return `${state.id}_${state.period}_${state.strategy}_${data.length}_${last.date}_${last.close}`;
+    const dataSig = data.map((item, idx) => {
+        item = item || {};
+        return [idx, item.date || '', item.open, item.high, item.low, item.close, item.vol, item.amt].join(':');
+    }).join('|');
+    return `${state.id}_${state.period}_${state.strategy}_${data.length}_${last.date}_${last.close}_${hashString32(dataSig)}`;
 }
 
 function markIndicatorsDirty() { state.indicatorKey = ''; }

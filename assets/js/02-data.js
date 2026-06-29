@@ -15,6 +15,19 @@ const STOCK_DATABASE = [
     {Code:'601398',Name:'工商银行'},{Code:'601939',Name:'建设银行'},{Code:'601988',Name:'中国银行'},{Code:'601318',Name:'中国平安'},{Code:'600519',Name:'贵州茅台'},{Code:'000858',Name:'五粮液'},{Code:'000333',Name:'美的集团'},{Code:'002594',Name:'比亚迪'},{Code:'300750',Name:'宁德时代'},{Code:'601012',Name:'隆基绿能'},{Code:'002371',Name:'北方华创'},{Code:'603501',Name:'韦尔股份'},{Code:'002475',Name:'立讯精密'},{Code:'600276',Name:'恒瑞医药'},{Code:'300760',Name:'迈瑞医疗'},{Code:'601899',Name:'紫金矿业'}
 ];
 let stockCache = [];
+function stripCorporateActionNamePrefix(name) {
+    return String(name || '').trim().replace(/^(XD|XR|DR)\s*/i, '').trim();
+}
+function getBuiltInStockName(code) {
+    return STOCK_DATABASE.find(stock => stock.Code === code)?.Name || '';
+}
+function normalizeStockDisplayName(code, name) {
+    const safeCode = String(code || '').trim();
+    const builtInName = getBuiltInStockName(safeCode);
+    if (builtInName) return builtInName;
+    const strippedName = stripCorporateActionNamePrefix(name);
+    return strippedName || safeCode;
+}
 const cachedFetchRefreshJobs = new Map();
 let cachedFetchRefreshApplyTimer = 0;
 let pendingCachedFetchRefreshApplyId = '';
@@ -32,7 +45,9 @@ function getPeriodLock(period=state.period) { return state.periodLocks?.[period]
 
 function findDateIndex(data, date, id = '') {
     if(!data || !data.length) return -1;
-    const cacheKey = `${id}_${date}`;
+    const firstDate = data[0]?.date || '';
+    const lastDate = data[data.length - 1]?.date || '';
+    const cacheKey = `${id}_${data.length}_${firstDate}_${lastDate}_${date}`;
     if (dateIndexCache.has(cacheKey)) return dateIndexCache.get(cacheKey);
     let l = 0, r = data.length - 1, res = -1;
     while (l <= r) {
@@ -386,7 +401,7 @@ async function handleUpdateData(forceFull = false) {
     
     btn.disabled = true; btn.innerHTML = SVG_ICONS.SPIN; 
     try { 
-        const fresh = (!forceFull && !info.needUpdate) ? await syncDataIncremental(state.id) : await syncDataWithHistory(state.id); 
+        const fresh = (!forceFull && info.needUpdate) ? await syncDataIncremental(state.id) : await syncDataWithHistory(state.id); 
         if(fresh && fresh.length) { 
             await dbSet(state.id, fresh); setRawData(state.id, fresh); setLockIdx(getActiveData()?.length-1 || -1); 
             updateAllIndicators(); draw(); safeUpdateSidebar(); 

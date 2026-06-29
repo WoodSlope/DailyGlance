@@ -422,6 +422,32 @@ function draw() {
     updateCrosshairOverlay();
 }
 
+function getNoviceEvidenceCopy(meta, decision, displayExitLevel, guardHint) {
+    const position = decision?.position ?? 0;
+    const scoreText = `${meta?.windowScore ?? 0}/${STRATEGY?.buyThreshold ?? '-'}`;
+    const action = decision?.simpleAction || '';
+    const isDefensive = ['清仓离场', '执行离场', '规避风险'].includes(action) || position === 0;
+    const isReduce = action.includes('减仓') || displayExitLevel !== '无明确离场';
+
+    let marketHint = '大盘给背景，不直接等于买点；个股/指数自身信号仍要达标。';
+    if (decision?.market?.cls === 'bear') marketHint = '大盘环境偏弱，先降低预期；个股买点需要更强确认。';
+    else if (decision?.market?.cls === 'bull' && position > 0) marketHint = '大盘给顺风背景，但继续持有仍要看自身趋势和防守位。';
+
+    let signalHint = `为什么现在不能买：买入积分只有 ${scoreText}，没有达到当前策略要求。`;
+    if (position > 0 && (meta?.windowScore ?? 0) >= (STRATEGY?.buyThreshold ?? Infinity)) {
+        signalHint = `为什么还能拿：买入积分 ${scoreText} 已达标，趋势信号仍在支持当前仓位。`;
+    } else if (position > 0) {
+        signalHint = `为什么只观察：买入积分 ${scoreText} 不强，当前仓位主要依赖已有趋势和风控约束。`;
+    }
+
+    let guardAction = '接下来怎么防守：没有额外风险时，重点盯防守位和强离场信号。';
+    if (isDefensive) guardAction = '接下来怎么防守：先不要新开仓，等买入积分重新达标并脱离冷静期。';
+    else if (isReduce) guardAction = '接下来怎么防守：降低仓位，若继续跌破防守位或再出离场信号，优先退出。';
+    else if (guardHint) guardAction = `接下来怎么防守：${guardHint}。`;
+
+    return { marketHint, signalHint, guardHint: guardAction };
+}
+
 function generateAnalysisHTML(idx, full, meta) {
     const fmt = v => v ? v.toFixed(2) : '--';
     if (!full || !full[idx]) return '';
@@ -520,7 +546,7 @@ function generateAnalysisHTML(idx, full, meta) {
         ct = `降至 ${adv}%${adv === 0 ? ' (严格执行防守)' : ''}`; 
     }
     
-    const verdict = getFinalVerdict(decision);
+    const noviceSummary = getNoviceDecisionSummary(meta, decision);
     const riskFlags = decision.risk.flags.length ? decision.risk.flags.join(' / ') : '处于安全空间，无明显偏离';
     const diagnosis = state.mode === 'stock' ? getHoldingDiagnosis(idx, full, state.indicators, meta, decision) : null;
     const exitEvidence = getExitSignalEvidence(meta, decision);
@@ -538,6 +564,7 @@ function generateAnalysisHTML(idx, full, meta) {
     const guardSignalSummary = guardSignals.length ? `信号 ${guardSignals.join(' / ')}` : '';
     const guardHoldingText = diagnosis ? (diagnosis.displayStatus || diagnosis.status) : '';
     const guardHint = [riskFlags, guardSignalSummary, guardHoldingText].filter(Boolean).join(' · ');
+    const noviceEvidence = getNoviceEvidenceCopy(meta, decision, displayExitLevel, guardHint);
 
     let panelClass = 'panel-neutral';
     const a = decision.simpleAction;
@@ -548,7 +575,7 @@ function generateAnalysisHTML(idx, full, meta) {
     else if (['积极建仓', '顺势加仓', '顺势抱单', '积极持有'].includes(a)) { panelClass = 'panel-bull'; }
 
     const cooldownHtml = meta.inCooldown ? `<div style="position:absolute; top:0; right:0; background:var(--yellow); color:#000; font-size:9px; font-weight:800; padding:2px 8px; border-bottom-left-radius:6px; border-top-right-radius:7px;">防守冷静期</div>` : '';
-    const titleText = state.mode === 'index' ? '大盘走势推演 (日线)' : '个股交易结论 (日线微观)';
+    const titleText = state.mode === 'index' ? '大盘每日结论' : '新手每日结论';
     const evidenceTitle2 = state.mode === 'index' ? '指数动能' : '个股信号';
 
     const actionPanelHtml = `
@@ -556,17 +583,18 @@ function generateAnalysisHTML(idx, full, meta) {
             ${cooldownHtml}
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                 <div class="block-title" style="border:none; padding-bottom:0; margin:0;">${titleText}</div>
-                <div class="kicker text-main">${escapeHTML(verdict.label)}</div>
+                <div class="kicker text-main">${escapeHTML(noviceSummary.state)}</div>
             </div>
             <div class="action-line">
-                <div class="action-name ${decision.simpleColorClass}">${escapeHTML(decision.simpleAction)}</div>
+                <div class="action-name ${decision.simpleColorClass}">${escapeHTML(noviceSummary.action)}</div>
                 <div class="action-cap">
                     <span class="text-dim">当前建议仓位</span>
-                    <strong class="mono text-main">${adv}%</strong>
+                    <strong class="mono text-main">${escapeHTML(noviceSummary.positionText)}</strong>
                 </div>
             </div>
-            <div class="action-sub">${escapeHTML(verdict.text)} ${escapeHTML(ct)}</div>
+            <div class="action-sub">${escapeHTML(noviceSummary.reason)}。${escapeHTML(ct)}</div>
             ${decision.positionDriver ? `<div class="action-driver">${escapeHTML(decision.positionDriver)}</div>` : ''}
+            <div class="action-driver">失效条件：${escapeHTML(noviceSummary.invalidCondition)}</div>
             <div class="level-line">
                 <div class="level-pill">
                     <span>防守位</span><strong class="mono">${fmt(decision.risk.stop)}</strong>
@@ -590,6 +618,7 @@ function generateAnalysisHTML(idx, full, meta) {
                     <div class="right-side">
                         <div class="v ${decision.market.cls === 'bull' ? 'text-bull' : (decision.market.cls === 'bear' ? 'text-bear' : 'text-main')}">${escapeHTML(decision.market.label)}</div>
                         <div class="h">${escapeHTML(decision.market.reason)}</div>
+                        <div class="h">${escapeHTML(noviceEvidence.marketHint)}</div>
                     </div>
                 </div>
                 <div class="evidence-item">
@@ -600,6 +629,7 @@ function generateAnalysisHTML(idx, full, meta) {
                     <div class="right-side">
                         <div class="v">${escapeHTML(decisionSummary.label)}</div>
                         <div class="h">信号积分 ${meta.windowScore}/${STRATEGY.buyThreshold}</div>
+                        <div class="h">${escapeHTML(noviceEvidence.signalHint)}</div>
                     </div>
                 </div>
                 <div class="evidence-item">
@@ -610,6 +640,7 @@ function generateAnalysisHTML(idx, full, meta) {
                     <div class="right-side">
                         <div class="v ${guardTextClass}">${escapeHTML(guardValue)}</div>
                         <div class="h">${escapeHTML(guardHint || '暂无额外风控提示')}</div>
+                        <div class="h">${escapeHTML(noviceEvidence.guardHint)}</div>
                     </div>
                 </div>
             </div>
@@ -746,12 +777,6 @@ function updateNavCapsuleVisuals(safeIdx, totalLen) {
             btn.classList.add('is-history'); 
         }
     }
-}
-
-function hashString32(s) {
-    var h = 0, i = 0;
-    while (i < s.length) { h = ((h << 5) - h + s.charCodeAt(i++)) | 0; }
-    return h;
 }
 
 function applySidebarHTML(bundle, cacheKey = '') {

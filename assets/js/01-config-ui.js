@@ -6,23 +6,30 @@
 const rootStyle = getComputedStyle(document.documentElement);
 const getCssVar = (name) => rootStyle.getPropertyValue(name).trim();
 
-const APP_BUILD = '2026-06-26-09';
+const APP_BUILD = '2026-06-29-01';
 const SYS_CONFIG = { THROTTLE_MS: 30000, REQ_TIMEOUT: 5000, UPDATE_COOLDOWN: 60000, VOL_SURGE_RATIO: 1.5, VOL_SHRINK_RATIO: 0.9, EX_RIGHT_TOLERANCE: 0.02, RENDER_CACHE_SIZE: 50, HISTORY_FRESH_MS: 15000, HISTORY_REFRESH_COOLDOWN_MS: 8000, SIDEBAR_SYNC_CONCURRENCY: 3 };
 
 const MA_OPTIONS = [5, 10, 20, 30, 60, 120, 250];
 const MA_COLORS = { 5: '#ffffff', 10: '#f5a623', 20: '#c084fc', 30: '#60a5fa', 60: '#f472b6', 120: '#4ade80', 250: '#94a3b8' };
 
 const STRATEGIES = {
-    '稳健趋势型': { buySignals: ['B1','B2','B3','B4','B10','B12','B14','B15'], exitSignals: ['L1','L2','L3','L4','L9','L10'], warningSignals: ['W1','W2'], scoreGroups: [['B1','B10','B15'],['B2','B12'],['B4','B14']], windowDays: 12, buyThreshold: 5, desc: '关注趋势结构、MACD动能和突破确认，适合中期趋势跟随' },
-    '波段抄底型': { buySignals: ['B5','B6','B7','B8','B9','B11','B16'], exitSignals: ['L3','L5','L7','L8','L10'], warningSignals: ['W1','W2','L9'], scoreGroups: [['B5','B6','B11','B16'],['B7','B8']], windowDays: 10, buyThreshold: 4, desc: '关注超卖、背离、大级别支撑和回踩企稳，适合回调末端的修复观察' },
-    '突破追涨型': { buySignals: ['B3','B4','B14'], exitSignals: ['L4','L5','L6','L9'], warningSignals: ['W1','W2','L10'], signalWeights: {'B3':1,'B4':3,'B14':4}, scoreGroups: [['B4','B14']], windowDays: 8, buyThreshold: 4, desc: '专注放量突破和平台突破，适合强势行情里的右侧确认' },
-    '综合全能型': { buySignals: ['B1','B2','B3','B4','B5','B6','B7','B8','B9','B10','B11','B12','B14','B15','B16'], exitSignals: ['L1','L2','L3','L4','L5','L6','L7','L8','L9','L10'], warningSignals: ['W1','W2'], scoreGroups: [['B1','B10','B15'],['B2','B12'],['B4','B14'],['B5','B6','B11','B16'],['B7','B8']], windowDays: 12, buyThreshold: 6, desc: '全量雷达观察模式，适合看全局信号，不建议直接等同交易指令' }
+    '稳健趋势型': { buySignals: ['B1','B2','B3','B4','B10','B12','B13','B14','B15'], exitSignals: ['L1','L2','L3','L4','L9','L10'], warningSignals: ['W1'], scoreGroups: [['B1','B10','B13','B15'],['B2','B12'],['B4','B14']], windowDays: 12, buyThreshold: 5, desc: '关注趋势结构、MACD动能和突破确认，适合中期趋势跟随' },
+    '波段抄底型': { buySignals: ['B5','B6','B7','B8','B9','B11','B16','B17'], exitSignals: ['L3','L5','L10'], warningSignals: ['W1','L9'], scoreGroups: [['B5','B6','B11','B16'],['B7','B8'],['B17']], windowDays: 10, buyThreshold: 4, desc: '关注超卖、背离、大级别支撑和回踩企稳，适合回调末端的修复观察' },
+    '突破追涨型': { buySignals: ['B3','B4','B14'], exitSignals: ['L4','L5','L6','L9'], warningSignals: ['W1','L10'], signalWeights: {'B3':1,'B4':3,'B14':4}, scoreGroups: [['B4','B14']], windowDays: 8, buyThreshold: 4, desc: '专注放量突破和平台突破，适合强势行情里的右侧确认' },
+    '综合全能型': { buySignals: ['B1','B2','B3','B4','B5','B6','B7','B9','B10','B11','B12','B14','B15','B16','B17'], exitSignals: ['L1','L2','L3','L4','L5','L6','L9','L10'], warningSignals: ['W1'], scoreGroups: [['B1','B10','B15'],['B2','B12'],['B4','B14'],['B5','B6','B11','B16'],['B7'],['B17']], windowDays: 12, buyThreshold: 6, desc: '全量雷达观察模式，适合看全局信号，不建议直接等同交易指令' }
 };
 
 let STRATEGY = {}; 
 let state = { tab: 'index', id: 'sh', mode: 'index', range: 90, lockIdx: -1, periodLocks: { daily: -1, weekly: -1 }, charts: {}, rawData: {}, weeklyData: {}, period: 'daily', activeMAs: [5, 20, 60], indicators: { ma: {}, macd: null, rsi: null, kdj: null }, indicatorKey: '', pendingIndicatorMutation: null, watchlist: [], stockId: null, strategy: '稳健趋势型', isFrozen: false };
 let globalSelectionSeq = 0;
-Object.assign(STRATEGY, STRATEGIES['稳健趋势型']);
+function setActiveStrategy(name) {
+    if (!STRATEGIES[name]) return false;
+    for (const key of Object.keys(STRATEGY)) delete STRATEGY[key];
+    Object.assign(STRATEGY, STRATEGIES[name]);
+    state.strategy = name;
+    return true;
+}
+setActiveStrategy('稳健趋势型');
 
 const renderCache = new Map();
 const dateIndexCache = new Map();
@@ -80,7 +87,7 @@ window.__DG_PERF__ = PERF;
 function clearDerivedCaches() { renderCache.clear(); dateIndexCache.clear(); }
 function clearLookupCacheOnly() { dateIndexCache.clear(); }
 
-const SIGNAL_VERSION = 'v4.1.2';
+const SIGNAL_VERSION = 'v4.2.2';
 window.__DG_BUILD__ = APP_BUILD;
 
 function getDecisionSignature(decision) {
@@ -93,10 +100,10 @@ function getDecisionSignature(decision) {
         decision.exit?.level || ''
     ].join('|');
 }
-const SIGNAL_SCORES = { 'B1':3,'B2':3,'B3':2,'B4':2,'B5':2,'B6':2,'B7':1,'B8':1,'B9':4,'B10':2,'B11':2,'B12':3,'B13':3,'B14':2,'B15':2,'B16':3 };
+const SIGNAL_SCORES = { 'B1':3,'B2':3,'B3':2,'B4':2,'B5':2,'B6':2,'B7':1,'B8':1,'B9':4,'B10':2,'B11':2,'B12':3,'B13':3,'B14':2,'B15':2,'B16':3,'B17':3,'B18':2 };
 const SIGNAL_DESC = {
-    'B1':{desc:'均线多头'}, 'B2':{desc:'MACD金叉'}, 'B3':{desc:'上穿20日线'}, 'B4':{desc:'放量突破新高'}, 'B5':{desc:'阳包阴'}, 'B6':{desc:'缩量回踩不破'}, 'B7':{desc:'RSI超卖回升'}, 'B8':{desc:'KDJ金叉'}, 'B9':{desc:'MACD底背离'}, 'B10':{desc:'MA20上穿MA60'}, 'B11':{desc:'均线回踩不破'}, 'B12':{desc:'零轴上金叉'}, 'B13':{desc:'长级别走强'}, 'B14':{desc:'平台放量突破'}, 'B15':{desc:'均线二次金叉'}, 'B16':{desc:'回踩周线支撑企稳'},
-    'L1':{desc:'跌破短期趋势'}, 'L2':{desc:'均线死叉'}, 'L3':{desc:'MACD死叉'}, 'L4':{desc:'跌破20日线'}, 'L5':{desc:'阴包阳'}, 'L6':{desc:'连阳后首阴'}, 'L7':{desc:'RSI超买回落'}, 'L8':{desc:'布林上轨受阻'}, 'L9':{desc:'高点回撤破位'}, 'L10':{desc:'MACD顶背离'}, 'W1':{desc:'偏离均线过大'}, 'W2':{desc:'连阳缩量迹象'}
+    'B1':{desc:'均线多头'}, 'B2':{desc:'MACD金叉'}, 'B3':{desc:'上穿20日线'}, 'B4':{desc:'放量突破新高'}, 'B5':{desc:'阳包阴'}, 'B6':{desc:'缩量回踩不破'}, 'B7':{desc:'RSI超卖回升'}, 'B8':{desc:'KDJ金叉'}, 'B9':{desc:'MACD底背离'}, 'B10':{desc:'MA20上穿MA60'}, 'B11':{desc:'均线回踩不破'}, 'B12':{desc:'零轴上金叉'}, 'B13':{desc:'长级别走强'}, 'B14':{desc:'平台放量突破'}, 'B15':{desc:'均线二次金叉'}, 'B16':{desc:'回踩周线支撑企稳'}, 'B17':{desc:'超跌止跌反弹'}, 'B18':{desc:'BOLL下轨止跌收回'},
+    'L1':{desc:'跌破短期趋势'}, 'L2':{desc:'均线死叉'}, 'L3':{desc:'MACD死叉'}, 'L4':{desc:'跌破20日线'}, 'L5':{desc:'阴包阳'}, 'L6':{desc:'连阳后首阴'}, 'L7':{desc:'RSI超买回落'}, 'L8':{desc:'布林上轨受阻'}, 'L9':{desc:'高点回撤破位'}, 'L10':{desc:'MACD顶背离'}, 'W1':{desc:'偏离均线过大'}, 'W2':{desc:'连阳缩量迹象'}, 'W3':{desc:'放量滞涨'}, 'W4':{desc:'缩量上涨背离'}
 };
 
 function getSignalScore(sig, strategy=STRATEGY) { return strategy.signalWeights?.[sig] ?? SIGNAL_SCORES[sig] ?? 0; }
@@ -105,6 +112,12 @@ function getScoreGroupKey(strategy, sig) { const group = (strategy.scoreGroups |
 
 const escapeHTML = v => String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const escapeJSArg = v => String(v ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+function hashString32(s) {
+    var h = 0, i = 0;
+    s = String(s || '');
+    while (i < s.length) { h = ((h << 5) - h + s.charCodeAt(i++)) | 0; }
+    return h;
+}
 
 // === UI 工具与模态框逻辑 ===
 const UI = {
