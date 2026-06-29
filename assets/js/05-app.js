@@ -729,6 +729,7 @@ async function _selectIndexImpl(id) {
     state.id = id;
     state.stockId = null;
     state.isFrozen = false;
+    resetViewportToLatest(null);
 
     document.querySelectorAll('#mainTabs .nav-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === 'index'));
     document.getElementById('indexNavList').style.display = 'block';
@@ -775,6 +776,7 @@ async function _selectStockImpl(code, name) {
     state.id = secid;
     state.stockId = safeCode;
     state.isFrozen = false;
+    resetViewportToLatest(null);
 
     document.querySelectorAll('#mainTabs .nav-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === 'stock'));
     document.getElementById('indexNavList').style.display = 'none';
@@ -1029,7 +1031,7 @@ function toggleMA(n) {
     }
     state.activeMAs.sort((a, b) => a - b); 
     renderMASelector(); 
-    draw(); 
+    redrawCurrentViewport(); 
 }
 
 function renderMASelector() { 
@@ -1049,12 +1051,18 @@ function renderMASelector() {
     }
 }
 
+function redrawCurrentViewport() {
+    if (typeof drawViewport === 'function') drawViewport();
+    else draw();
+}
+
 function prevDay() {
     if(state.lockIdx > 0) {
         state.isFrozen = true;
         setLockIdx(state.lockIdx - 1);
+        anchorViewportAt(state.lockIdx);
         clearStaleTooltips();
-        draw();
+        redrawCurrentViewport();
         safeUpdateSidebar();
         updateFreezeBadge();
     }
@@ -1066,8 +1074,10 @@ function nextDay() {
         const nextIdx = state.lockIdx + 1;
         setLockIdx(nextIdx);
         state.isFrozen = nextIdx < rd.length - 1;
+        if (state.isFrozen) anchorViewportAt(nextIdx);
+        else resetViewportToLatest(rd);
         clearStaleTooltips();
-        draw();
+        redrawCurrentViewport();
         safeUpdateSidebar();
         updateFreezeBadge();
     }
@@ -1076,11 +1086,19 @@ function nextDay() {
 function resetLatest() {
     const rd = getActiveData();
     if(rd) {
+        pendingHoverIdx = -1;
+        if (hoverRAF) {
+            cancelAnimationFrame(hoverRAF);
+            hoverRAF = null;
+        }
+        chartHoverSuppressUntil = Date.now() + 350;
         state.isFrozen = false;
         setLockIdx(rd.length - 1);
+        resetViewportToLatest(rd);
         clearStaleTooltips();
-        draw();
+        redrawCurrentViewport();
         safeUpdateSidebar();
+        updateNavCapsuleVisuals(rd.length - 1, rd.length);
         updateFreezeBadge();
     }
 }
@@ -1096,7 +1114,9 @@ function renderPerfPanel() {
 
     const traces = (window.__DG_PERF__?.traces || []).slice().reverse();
     const listHtml = traces.length ? traces.map(item => {
-        const meta = Object.entries(item.meta || {}).map(([k, v]) => `${k}: ${v}`).join(' · ');
+        const metaEntries = Object.entries(item.meta || {});
+        const refreshPath = metaEntries.find(([k]) => k === 'path')?.[1] || '';
+        const meta = metaEntries.filter(([k]) => k !== 'path').map(([k, v]) => `${k}: ${v}`).join(' · ');
         const steps = (item.steps || []).map(step => `
             <div class="perf-step">
                 <span class="step-name">${escapeHTML(step.step)}</span>
@@ -1109,6 +1129,12 @@ function renderPerfPanel() {
                     <div class="perf-item-title">${escapeHTML(item.label)}</div>
                     <div class="perf-item-total mono">${item.total}ms</div>
                 </div>
+                ${refreshPath ? `
+                <div class="perf-path-row">
+                    <span class="perf-path-label">刷新路径</span>
+                    <span class="perf-path-value mono">${escapeHTML(refreshPath)}</span>
+                </div>
+                ` : ''}
                 <div class="perf-item-meta">${escapeHTML(meta || '无额外信息')}</div>
                 <div class="perf-steps">${steps || '<div class="perf-item-meta">无分步记录</div>'}</div>
             </div>
@@ -1314,6 +1340,7 @@ async function init() {
             state.isFrozen = false; 
             
             setLockIdx(alignLockToPeriod(p, anchorDate)); 
+            resetViewportToLatest(getActiveData());
             markIndicatorsDirty(); 
             clearStaleTooltips(); 
             draw(); 
@@ -1329,7 +1356,7 @@ async function init() {
             document.querySelectorAll('#rangeTabs .seg-btn').forEach(b => b.classList.remove('active')); 
             e.target.classList.add('active');
             state.range = r; 
-            draw();
+            redrawCurrentViewport();
         });
     });
     

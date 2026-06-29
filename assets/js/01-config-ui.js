@@ -6,7 +6,7 @@
 const rootStyle = getComputedStyle(document.documentElement);
 const getCssVar = (name) => rootStyle.getPropertyValue(name).trim();
 
-const APP_BUILD = '2026-06-29-01';
+const APP_BUILD = '2026-06-29-20';
 const SYS_CONFIG = { THROTTLE_MS: 30000, REQ_TIMEOUT: 5000, UPDATE_COOLDOWN: 60000, VOL_SURGE_RATIO: 1.5, VOL_SHRINK_RATIO: 0.9, EX_RIGHT_TOLERANCE: 0.02, RENDER_CACHE_SIZE: 50, HISTORY_FRESH_MS: 15000, HISTORY_REFRESH_COOLDOWN_MS: 8000, SIDEBAR_SYNC_CONCURRENCY: 3 };
 
 const MA_OPTIONS = [5, 10, 20, 30, 60, 120, 250];
@@ -20,7 +20,27 @@ const STRATEGIES = {
 };
 
 let STRATEGY = {}; 
-let state = { tab: 'index', id: 'sh', mode: 'index', range: 90, lockIdx: -1, periodLocks: { daily: -1, weekly: -1 }, charts: {}, rawData: {}, weeklyData: {}, period: 'daily', activeMAs: [5, 20, 60], indicators: { ma: {}, macd: null, rsi: null, kdj: null }, indicatorKey: '', pendingIndicatorMutation: null, watchlist: [], stockId: null, strategy: '稳健趋势型', isFrozen: false };
+let state = {
+    tab: 'index',
+    id: 'sh',
+    mode: 'index',
+    range: 90,
+    viewport: { mode: 'latest', endIdx: -1, anchorIdx: -1 },
+    lockIdx: -1,
+    periodLocks: { daily: -1, weekly: -1 },
+    charts: {},
+    rawData: {},
+    weeklyData: {},
+    period: 'daily',
+    activeMAs: [5, 20, 60],
+    indicators: { ma: {}, macd: null, rsi: null, kdj: null },
+    indicatorKey: '',
+    pendingIndicatorMutation: null,
+    watchlist: [],
+    stockId: null,
+    strategy: '稳健趋势型',
+    isFrozen: false
+};
 let globalSelectionSeq = 0;
 function setActiveStrategy(name) {
     if (!STRATEGIES[name]) return false;

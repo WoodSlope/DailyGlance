@@ -266,6 +266,8 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 .main-chart-box.frozen .crosshair-h-line::before { border-top-style: solid; border-top-color: var(--blue); border-top-width: 1.5px; }
 .volume-chart-box, .macd-chart-box, .kdj-chart-box { flex: 1.5; position: relative; border-top: 1px solid var(--border-color); min-height: 0; }
 .main-chart-box canvas, .volume-chart-box canvas, .macd-chart-box canvas, .kdj-chart-box canvas { width: 100% !important; height: 100% !important; touch-action: pan-y; }
+.main-chart-box canvas { cursor: grab; }
+.main-chart-box.drag-panning canvas { cursor: grabbing; }
 
 .header-meta-row { display: flex; justify-content: space-between; align-items: center; }
 .price-hero-compact { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-3); }
@@ -340,6 +342,9 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 .perf-item-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); }
 .perf-item-title { font-size: var(--text-md); font-weight: 700; color: var(--text-main); }
 .perf-item-total { font-size: var(--text-md); font-weight: 700; color: var(--blue); }
+.perf-path-row { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: rgba(61, 109, 249, 0.08); border: 1px solid rgba(61, 109, 249, 0.18); }
+.perf-path-label { font-size: var(--text-sm); font-weight: 700; color: var(--blue); }
+.perf-path-value { font-size: var(--text-sm); color: var(--text-main); }
 .perf-item-meta { font-size: var(--text-sm); color: var(--text-dim); line-height: 1.5; }
 .perf-steps { display: flex; flex-direction: column; gap: var(--space-2); }
 .perf-step { display: flex; justify-content: space-between; gap: var(--space-3); font-size: var(--text-sm); color: var(--text-main); }

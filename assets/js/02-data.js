@@ -43,6 +43,69 @@ function rememberPeriodLock(idx=state.lockIdx, period=state.period) { if(!state.
 function setLockIdx(idx) { state.lockIdx = idx; rememberPeriodLock(idx); }
 function getPeriodLock(period=state.period) { return state.periodLocks?.[period] ?? -1; }
 
+function getViewportLength() {
+    return state.period === 'weekly' ? Math.ceil(state.range / 5) : state.range;
+}
+
+function resetViewportToLatest(data = getActiveData()) {
+    const len = data?.length || 0;
+    state.viewport = { mode: 'latest', endIdx: len ? len - 1 : -1, anchorIdx: len ? len - 1 : -1 };
+}
+
+function anchorViewportAt(idx) {
+    state.viewport = { mode: 'anchor', endIdx: -1, anchorIdx: idx };
+}
+
+function panViewportByBars(deltaBars, data = getActiveData()) {
+    if (!data || !data.length || !Number.isFinite(deltaBars) || deltaBars === 0) return false;
+    const len = data.length;
+    const visibleLen = Math.max(1, Math.min(len, getViewportLength()));
+    const latestIdx = len - 1;
+    const currentRange = getVisibleRange(data);
+    const currentEnd = currentRange.end >= 0 ? currentRange.end : latestIdx;
+    const nextEnd = Math.max(visibleLen - 1, Math.min(latestIdx, currentEnd + Math.trunc(deltaBars)));
+
+    if (nextEnd === latestIdx) {
+        state.isFrozen = false;
+        setLockIdx(latestIdx);
+        resetViewportToLatest(data);
+    } else {
+        state.isFrozen = true;
+        setLockIdx(nextEnd);
+        state.viewport = { mode: 'pan', endIdx: nextEnd, anchorIdx: nextEnd };
+    }
+    return nextEnd !== currentEnd;
+}
+
+function getVisibleRange(data = getActiveData()) {
+    if (!data || !data.length) return { start: 0, end: -1, length: 0 };
+    const len = data.length;
+    const visibleLen = Math.max(1, Math.min(len, getViewportLength()));
+    const latestIdx = len - 1;
+    let end = latestIdx;
+
+    if (state.viewport?.mode === 'pan' && Number.isInteger(state.viewport.endIdx) && state.viewport.endIdx >= 0) {
+        end = Math.max(visibleLen - 1, Math.min(latestIdx, state.viewport.endIdx));
+        const start = Math.max(0, end - visibleLen + 1);
+        return { start, end, length: end - start + 1 };
+    }
+
+    if (state.viewport?.mode === 'anchor' || state.isFrozen) {
+        const anchor = Math.max(0, Math.min(latestIdx, state.viewport.anchorIdx ?? state.lockIdx ?? latestIdx));
+        const half = Math.floor(visibleLen / 2);
+        let start = Math.max(0, Math.min(anchor - half, len - visibleLen));
+        end = Math.min(latestIdx, start + visibleLen - 1);
+        return { start, end, length: end - start + 1 };
+    }
+
+    if (Number.isInteger(state.viewport?.endIdx) && state.viewport.endIdx >= 0) {
+        end = Math.max(visibleLen - 1, Math.min(latestIdx, state.viewport.endIdx));
+    }
+
+    const start = Math.max(0, end - visibleLen + 1);
+    return { start, end, length: end - start + 1 };
+}
+
 function findDateIndex(data, date, id = '') {
     if(!data || !data.length) return -1;
     const firstDate = data[0]?.date || '';
@@ -97,6 +160,19 @@ function convertDailyToWeekly(dailyData) {
 
 function setRawData(id, data) {
     const prevData = state.rawData[id];
+    const mutation = prevData ? getDataMutationMeta(prevData, data) : { mode: 'full', startIdx: 0 };
+    if (mutation.mode !== 'full' && prevData && data) {
+        const preserveUntil = mutation.mode === 'unchanged'
+            ? Math.min(prevData.length, data.length)
+            : Math.max(0, Math.min(mutation.startIdx || 0, prevData.length, data.length));
+        for (let i = 0; i < preserveUntil; i++) {
+            if (!barsEqual(prevData[i], data[i])) break;
+            data[i]._signals = prevData[i]._signals;
+            data[i]._signalVersion = prevData[i]._signalVersion;
+            data[i]._strategy = prevData[i]._strategy;
+            data[i]._decision = prevData[i]._decision;
+        }
+    }
     state.rawData[id] = data;
     if (data) state.weeklyData[id] = convertDailyToWeekly(data); else state.weeklyData[id] = null;
     if (id === state.id) {
@@ -109,7 +185,6 @@ function setRawData(id, data) {
         markIndicatorsDirty();
     }
     // 增量更新（同日价格变动）只清 lookup 缓存，保留 renderCache 防止面板闪烁
-    const mutation = prevData ? getDataMutationMeta(prevData, data) : { mode: 'full', startIdx: 0 };
     if (mutation.mode === 'incremental') {
         clearLookupCacheOnly();
     } else {
@@ -403,8 +478,7 @@ async function handleUpdateData(forceFull = false) {
     try { 
         const fresh = (!forceFull && info.needUpdate) ? await syncDataIncremental(state.id) : await syncDataWithHistory(state.id); 
         if(fresh && fresh.length) { 
-            await dbSet(state.id, fresh); setRawData(state.id, fresh); setLockIdx(getActiveData()?.length-1 || -1); 
-            updateAllIndicators(); draw(); safeUpdateSidebar(); 
+            await dbSet(state.id, fresh); setRawData(state.id, fresh); applyActiveDataRefresh(state.id);
             await customAlert(`同步成功！K线数量：${fresh.length}`); 
         } else { await customAlert('数据同步失败！'); } 
     } catch(e) { await customAlert('同步异常: ' + e.message); } 
@@ -437,6 +511,42 @@ function dbSet(id, data) {
 }
 async function getCachedData(id) { const c = await dbGet(id); return (c && c.data) ? c.data : null; }
 
+function getRenderedSidebarDate() {
+    var cPriceEl = document.getElementById('cardPrice');
+    if (!cPriceEl) return '';
+    var headerEl = cPriceEl.querySelector('.header-meta-row .mono');
+    return headerEl ? headerEl.textContent.trim().split('|')[0].trim() : '';
+}
+
+function applyActiveDataRefresh(id) {
+    if (id !== state.id) return 'skipped';
+    const rd = getActiveData();
+    if (!rd || !rd.length) return 'no-data';
+
+    const newLatestDate = rd[rd.length - 1].date;
+    const oldDate = getRenderedSidebarDate();
+    renderMASelector();
+
+    if (state.isFrozen) {
+        draw();
+        return 'frozen-redraw';
+    }
+
+    setLockIdx(rd.length - 1);
+    resetViewportToLatest(rd);
+    if (oldDate && oldDate === newLatestDate) {
+        updateAllIndicators();
+        if (typeof updateSidebarPriceOnly === 'function') updateSidebarPriceOnly();
+        if (typeof ensureAnalysisPanelVisibleForRealtimeRefresh === 'function') ensureAnalysisPanelVisibleForRealtimeRefresh();
+        updateNavCapsuleVisuals(rd.length - 1, rd.length);
+        return 'same-day-light';
+    }
+
+    draw();
+    safeUpdateSidebar();
+    return 'full-redraw';
+}
+
 function scheduleCachedFetchRefreshApply(id) {
     pendingCachedFetchRefreshApplyId = id;
     if (cachedFetchRefreshApplyTimer) return;
@@ -452,36 +562,15 @@ function scheduleCachedFetchRefreshApply(id) {
                 PERF.end(perfTrace, { status: 'skipped' });
                 return;
             }
-            const rd = getActiveData();
-            if (!rd || !rd.length) { PERF.end(perfTrace, { status: 'no-data' }); return; }
-
-            const newLatestDate = rd[rd.length - 1].date;
-            var oldDate = '';
-            var cPriceEl = document.getElementById('cardPrice');
-            if (cPriceEl) {
-                var headerEl = cPriceEl.querySelector('.header-meta-row .mono');
-                if (headerEl) oldDate = headerEl.textContent.trim().split('|')[0].trim();
-            }
-
-            renderMASelector();
-
-            if (state.isFrozen) {
-                // 用户在浏览历史，只重绘图表（数据可能新增了 bar），不改变 lockIdx，不刷新侧边栏
-                draw();
-            } else if (oldDate && oldDate === newLatestDate) {
-                // 同日价格更新：只更新价格显示，不重建分析面板，不重绘图表（避免卡顿）
-                setLockIdx(rd.length - 1);
-                if (typeof updateSidebarPriceOnly === 'function') updateSidebarPriceOnly();
-            } else {
-                // 新日 K 线或首次加载：全量更新
-                setLockIdx(rd.length - 1);
-                draw();
-                safeUpdateSidebar();
+            const status = applyActiveDataRefresh(applyId);
+            if (status === 'no-data') {
+                PERF.end(perfTrace, { status: 'no-data' });
+                return;
             }
 
             markRefreshTime();
             PERF.mark(perfTrace, 'render');
-            PERF.end(perfTrace, { status: 'applied' });
+            PERF.end(perfTrace, { status: 'applied', path: status });
         });
     }, 32);
 }
@@ -589,6 +678,32 @@ async function cachedFetch(id) {
     const fetchStateKey = `${state.mode}_${state.id}_${state.period}_${state.strategy}`;
     const cachedResult = await dbGet(id);
     PERF.mark(perfTrace, 'dbGet');
+    if (cachedResult && cachedResult.data && cachedResult.data.length > 0 && id === state.id && state.rawData[id]?.length) {
+        scheduleCachedFetchRefresh(id);
+        const hasActiveChartView = !!(state.charts && (state.charts.main || state.charts.vol || state.charts.macd || state.charts.kdj));
+        if (!hasActiveChartView) {
+            const rd = getActiveData();
+            setLockIdx(rd?.length ? rd.length - 1 : -1);
+            resetViewportToLatest(rd);
+            updateAllIndicators();
+            hideLoading();
+            renderMASelector();
+            if (state.mode === 'index') renderIndexList();
+            if (state.mode === 'stock' && typeof scheduleWatchlistRender === 'function') scheduleWatchlistRender();
+            requestAnimationFrame(() => {
+                const currentStateKey = `${state.mode}_${state.id}_${state.period}_${state.strategy}`;
+                if (currentStateKey !== fetchStateKey || id !== state.id) return;
+                draw();
+                safeUpdateSidebar();
+            });
+            PERF.mark(perfTrace, 'restore-memory-chart', { points: state.rawData[id].length });
+            PERF.end(perfTrace, { status: 'active-memory-render', firstLoad: false });
+            return;
+        }
+        PERF.mark(perfTrace, 'skip-cache-first-active', { points: state.rawData[id].length });
+        PERF.end(perfTrace, { status: 'active-memory-refresh', firstLoad: false });
+        return;
+    }
     if (cachedResult && cachedResult.data && cachedResult.data.length > 0 && id === state.id) {
         setRawData(id, cachedResult.data);
         setLockIdx(getActiveData()?.length - 1 || -1);

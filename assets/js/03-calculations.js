@@ -151,7 +151,14 @@ function calculateBollinger(data, idx) {
     return { middle: avg, upper: avg + 2 * std, lower: avg - 2 * std }; 
 }
 
-function getCalendarWeeksUntil(full, idx) { return (!full || idx < 0) ? [] : (state.period === 'weekly' ? full.slice(0, idx + 1) : convertDailyToWeekly(full.slice(0, idx + 1))); }
+function getCalendarWeeksUntil(full, idx) {
+    if (!full || idx < 0) return [];
+    if (state.period === 'weekly') return full.slice(0, idx + 1);
+    const targetDate = full[idx]?.date || '';
+    const cachedWeeks = state.weeklyData?.[state.id];
+    if (targetDate && cachedWeeks?.length && cachedWeeks[cachedWeeks.length - 1]?.date === targetDate) return cachedWeeks;
+    return convertDailyToWeekly(full.slice(0, idx + 1));
+}
 
 function getWeeklyData(full, idx, weeksOverride = null) { 
     const weeks = weeksOverride || getCalendarWeeksUntil(full, idx); if(weeks.length < 6) return null; 
@@ -766,9 +773,16 @@ function updateAllIndicators(incrementalIdx = -1) {
         ? Calcs.kdj(full)
         : Calcs.kdjIncremental(full, state.indicators.kdj, 9, calcStart);
 
+    const isLatestOnlyMutation = !shouldFullRebuild &&
+        mutation.mode === 'incremental' &&
+        (mutation.startIdx || 0) >= full.length - 1 &&
+        full.length > 1 &&
+        full[full.length - 2]?._decision &&
+        full[full.length - 2]?._strategy === state.strategy &&
+        full[full.length - 2]?._signalVersion === SIGNAL_VERSION;
     const rebuildStart = shouldFullRebuild
         ? 0
-        : Math.max(0, Math.min(full.length - 1, mutation.startIdx || 0) - DECISION_REBUILD_LOOKBACK);
+        : (isLatestOnlyMutation ? full.length - 1 : Math.max(0, Math.min(full.length - 1, mutation.startIdx || 0) - DECISION_REBUILD_LOOKBACK));
 
     let prevPos = 0;
     if (!shouldFullRebuild && rebuildStart > 0) {

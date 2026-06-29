@@ -10,7 +10,7 @@ function clearCharts(){
         const p = el.parentElement; p.style.position = 'relative';
         let ph = p.querySelector('.empty-hint'); 
         if(!ph) { ph = document.createElement('div'); ph.className = 'empty-hint text-dim mono'; p.appendChild(ph); }
-        ph.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;letter-spacing:1px;z-index:5;';
+        ph.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;letter-spacing:1px;z-index:5;pointer-events:none;';
         ph.innerText = {'mainChart': 'K 线图', 'volumeChart': '成交量', 'macdChart': 'MACD', 'kdjChart': 'KDJ'}[id] + ' — 暂无数据';
     });
 }
@@ -182,7 +182,8 @@ const bsMarkerPlugin = {
         if (!dss || state.period === 'weekly') return; 
 
         const activeData = getActiveData(); if(!activeData) return;
-        const slice = activeData.slice(-c.data.labels.length);
+        const visibleRange = getVisibleRange(activeData);
+        const slice = activeData.slice(visibleRange.start, visibleRange.end + 1);
         const colorUpHex = getCssVar('--up-color') || '#f6465d', colorDownHex = getCssVar('--down-color') || '#0ecb81';
 
         ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = 'bold 11px "JetBrains Mono", monospace';
@@ -207,13 +208,18 @@ const bsMarkerPlugin = {
 let hoverRAF = null;
 let pendingHoverIdx = -1;
 let chartPointerResetBound = false;
+let chartDragPanBound = false;
+let chartDragPanRAF = 0;
+let chartDragPan = null;
+let chartDragPanSuppressClickUntil = 0;
+let chartHoverSuppressUntil = 0;
 
 function resolveVisibleDataIndex(activeData, renderedIndex) {
     if (!activeData || renderedIndex < 0) return -1;
-    const actualRange = state.period === 'weekly' ? Math.ceil(state.range / 5) : state.range;
-    const startIdx = Math.max(0, activeData.length - actualRange);
+    const visibleRange = getVisibleRange(activeData);
+    const startIdx = visibleRange.start;
     const targetIdx = startIdx + renderedIndex;
-    return (targetIdx >= 0 && targetIdx < activeData.length) ? targetIdx : -1;
+    return (targetIdx >= visibleRange.start && targetIdx <= visibleRange.end && targetIdx < activeData.length) ? targetIdx : -1;
 }
 
 function refreshHoverSelection() {
@@ -237,8 +243,101 @@ function resetHoverSelectionToLatest() {
     }
     if (state.lockIdx === latestIdx) { updateCrosshairOverlay(); return; }
     setLockIdx(latestIdx);
+    resetViewportToLatest(activeData);
     safeUpdateSidebar();
     updateCrosshairOverlay();
+}
+
+function getChartPanBarWidth() {
+    const chart = state.charts.main;
+    const labels = chart?.data?.labels || [];
+    const xScale = chart?.scales?.x;
+    if (!labels.length || !xScale) return 0;
+    const width = xScale.width || Math.max(0, (xScale.right || 0) - (xScale.left || 0));
+    return width > 0 ? width / labels.length : 0;
+}
+
+function applyChartDragPan(force = false) {
+    chartDragPanRAF = 0;
+    if (!chartDragPan) return;
+    const barWidth = chartDragPan.barWidth;
+    if (!barWidth) return;
+    const rawDelta = chartDragPan.currentX - chartDragPan.lastAppliedX;
+    const deltaBars = Math.trunc(rawDelta / barWidth);
+    if (!force && deltaBars === 0) return;
+    if (deltaBars === 0) return;
+
+    const activeData = getActiveData();
+    if (!activeData || !activeData.length) return;
+    if (panViewportByBars(-deltaBars, activeData)) {
+        chartDragPan.lastAppliedX += deltaBars * barWidth;
+        chartDragPan.didPan = true;
+        clearStaleTooltips();
+        drawViewport();
+    }
+}
+
+function startChartDragPan(event) {
+    if (event?.button != null && event.button !== 0) return;
+    const activeData = getActiveData();
+    if (!activeData || activeData.length <= getViewportLength()) return;
+    const barWidth = getChartPanBarWidth();
+    if (!barWidth) return;
+
+    chartDragPan = {
+        startX: event.clientX,
+        currentX: event.clientX,
+        lastAppliedX: event.clientX,
+        barWidth,
+        didPan: false,
+        target: event.currentTarget || null
+    };
+    if (chartDragPan.target?.setPointerCapture && event.pointerId != null) {
+        chartDragPan.target.setPointerCapture(event.pointerId);
+    }
+    chartDragPan.target?.closest?.('.main-chart-box')?.classList?.add('drag-panning');
+    event?.preventDefault?.();
+}
+
+function moveChartDragPan(event) {
+    if (!chartDragPan) return;
+    chartDragPan.currentX = event.clientX;
+    if (!chartDragPanRAF) {
+        chartDragPanRAF = requestAnimationFrame(() => applyChartDragPan());
+    }
+    event?.preventDefault?.();
+}
+
+function finishChartDragPan(event) {
+    if (!chartDragPan) return;
+    const target = chartDragPan.target || event?.currentTarget;
+    applyChartDragPan(true);
+    if (target?.releasePointerCapture && event?.pointerId != null) {
+        try { target.releasePointerCapture(event.pointerId); } catch(e) {}
+    }
+    target?.closest?.('.main-chart-box')?.classList?.remove('drag-panning');
+    if (chartDragPan.didPan) {
+        chartDragPanSuppressClickUntil = Date.now() + 350;
+        safeUpdateSidebar();
+        updateFreezeBadge();
+        updateCrosshairOverlay();
+    }
+    chartDragPan = null;
+}
+
+function bindChartDragPan() {
+    if (chartDragPanBound) return;
+    const canvas = document.getElementById('mainChart');
+    if (!canvas) return;
+    canvas.addEventListener('pointerdown', startChartDragPan);
+    canvas.addEventListener('pointermove', moveChartDragPan);
+    canvas.addEventListener('pointerup', finishChartDragPan);
+    canvas.addEventListener('pointercancel', finishChartDragPan);
+    canvas.addEventListener('lostpointercapture', finishChartDragPan);
+    canvas.addEventListener('mousedown', startChartDragPan);
+    document.addEventListener('mousemove', moveChartDragPan);
+    document.addEventListener('mouseup', finishChartDragPan);
+    chartDragPanBound = true;
 }
 
 function bindChartPointerReset() {
@@ -252,6 +351,8 @@ function bindChartPointerReset() {
 }
 
 function handleChartHover(e, els) {
+    if (chartDragPan) return;
+    if (Date.now() < chartHoverSuppressUntil) return;
     const type = e?.native?.type || e?.type; 
     if (type === 'mousemove' && state.isFrozen) return;
     
@@ -272,10 +373,15 @@ function handleChartHover(e, els) {
 }
 
 function handleChartClick(e, els) {
+    if (Date.now() < chartDragPanSuppressClickUntil) {
+        chartDragPanSuppressClickUntil = 0;
+        return;
+    }
     if (!els || !els.length) {
         state.isFrozen = false;
         var rd = getActiveData();
         setLockIdx(rd ? rd.length - 1 : -1);
+        resetViewportToLatest(rd);
         redrawChartsFast();
         safeUpdateSidebar();
         updateFreezeBadge();
@@ -286,7 +392,17 @@ function handleChartClick(e, els) {
     const ti = resolveVisibleDataIndex(activeData, els[0].index);
     if (ti >= 0) {
         pendingHoverIdx = -1;
-        if (state.isFrozen && state.lockIdx === ti) state.isFrozen = false; else { state.isFrozen = true; setLockIdx(ti); }
+        if (ti === activeData.length - 1) {
+            state.isFrozen = false;
+            setLockIdx(ti);
+            resetViewportToLatest(activeData);
+        } else if (state.isFrozen && state.lockIdx === ti) {
+            state.isFrozen = false;
+        } else {
+            state.isFrozen = true;
+            setLockIdx(ti);
+            anchorViewportAt(ti);
+        }
         if (hoverRAF) cancelAnimationFrame(hoverRAF);
         hoverRAF = requestAnimationFrame(() => { safeUpdateSidebar(); redrawChartsFast(); updateFreezeBadge(); updateCrosshairOverlay(); });
     }
@@ -295,14 +411,35 @@ function handleChartClick(e, els) {
 function draw() {
     const perfTrace = PERF.start('draw', { id: state.id, mode: state.mode, period: state.period, range: state.range });
     bindChartPointerReset();
+    bindChartDragPan();
     document.querySelectorAll('.empty-hint').forEach(e => e.remove());
     const currentFd = getActiveData(); 
     if(!currentFd || !currentFd.length) { clearCharts(); updateFreezeBadge(); PERF.end(perfTrace, { status: 'empty' }); return; }
     
     updateAllIndicators();
     PERF.mark(perfTrace, 'indicators');
-    const actualRange = state.period === 'weekly' ? Math.ceil(state.range / 5) : state.range;
-    const slice = currentFd.slice(-actualRange);
+    renderChartViewport(perfTrace);
+}
+
+function drawViewport() {
+    const perfTrace = PERF.start('drawViewport', { id: state.id, mode: state.mode, period: state.period, range: state.range });
+    bindChartPointerReset();
+    bindChartDragPan();
+    document.querySelectorAll('.empty-hint').forEach(e => e.remove());
+    const currentFd = getActiveData();
+    if(!currentFd || !currentFd.length) { clearCharts(); updateFreezeBadge(); PERF.end(perfTrace, { status: 'empty' }); return; }
+    if ((!state.indicators.macd || !state.indicators.kdj || !state.indicators.ma) && typeof updateAllIndicators === 'function') {
+        updateAllIndicators();
+        PERF.mark(perfTrace, 'indicators');
+    }
+    renderChartViewport(perfTrace);
+}
+
+function renderChartViewport(perfTrace) {
+    const currentFd = getActiveData(); 
+    if(!currentFd || !currentFd.length) { clearCharts(); updateFreezeBadge(); PERF.end(perfTrace, { status: 'empty' }); return; }
+    const visibleRange = getVisibleRange(currentFd);
+    const slice = currentFd.slice(visibleRange.start, visibleRange.end + 1);
     const labels = slice.map(d => d.date);
     
     const colorDim = getCssVar('--text-dim') || '#8b9eb7';
@@ -358,7 +495,7 @@ function draw() {
     };
 
     const ds = state.activeMAs.map(n => ({ 
-        label: `MA${n}`, data: state.indicators.ma?.[n]?.slice(-actualRange) || [], 
+        label: `MA${n}`, data: state.indicators.ma?.[n]?.slice(visibleRange.start, visibleRange.end + 1) || [], 
         borderColor: MA_COLORS[n], borderWidth: 1.2, pointRadius: 0, order: 1, 
         isCandle: false, candleData: null, tension: 0.1 
     }));
@@ -390,9 +527,9 @@ function draw() {
         macdOpts.plugins = { legend: { display: false }, tooltip: { enabled: false } };
         macdOpts.scales = { x: { display: false, type: 'category', offset: false, bounds: 'ticks', grid: { offset: false } }, y: getYScale() };
         // 让 y 轴范围同时覆盖 diff/dea 线和 bar 柱子，否则柱子被压缩成1-2像素
-        const macdBarArr = md.bar.slice(-actualRange).filter(v => v != null);
+        const macdBarArr = md.bar.slice(visibleRange.start, visibleRange.end + 1).filter(v => v != null);
         if (macdBarArr.length) {
-            const allY = [...md.diff.slice(-actualRange), ...md.dea.slice(-actualRange), ...macdBarArr];
+            const allY = [...md.diff.slice(visibleRange.start, visibleRange.end + 1), ...md.dea.slice(visibleRange.start, visibleRange.end + 1), ...macdBarArr];
             const yMin = Math.min(...allY.filter(v => v != null));
             const yMax = Math.max(...allY.filter(v => v != null));
             const pad = Math.max(Math.abs(yMax - yMin) * 0.1, 1);
@@ -401,7 +538,7 @@ function draw() {
         }
         uc('macd', 'macdChart', { 
             type: 'line', 
-            data: { labels, datasets: [ { data: md.diff.slice(-actualRange), borderColor: colorBlueHex, borderWidth: 1, pointRadius: 0, tension: 0.1 }, { data: md.dea.slice(-actualRange), borderColor: '#f5a623', borderWidth: 1, pointRadius: 0, tension: 0.1 }, { isMacdBar: true, macdBarData: md.bar.slice(-actualRange), data: md.bar.slice(-actualRange).map(() => null), borderColor: 'transparent', pointRadius: 0 } ] }, 
+            data: { labels, datasets: [ { data: md.diff.slice(visibleRange.start, visibleRange.end + 1), borderColor: colorBlueHex, borderWidth: 1, pointRadius: 0, tension: 0.1 }, { data: md.dea.slice(visibleRange.start, visibleRange.end + 1), borderColor: '#f5a623', borderWidth: 1, pointRadius: 0, tension: 0.1 }, { isMacdBar: true, macdBarData: md.bar.slice(visibleRange.start, visibleRange.end + 1), data: md.bar.slice(visibleRange.start, visibleRange.end + 1).map(() => null), borderColor: 'transparent', pointRadius: 0 } ] }, 
             options: macdOpts, plugins: [macdBarPlugin, freezePlugin] 
         });
     }
@@ -413,7 +550,7 @@ function draw() {
         kdjOpts.scales = { x: { display: false, type: 'category', offset: false, bounds: 'ticks', grid: { offset: false } }, y: getYScale() };
         uc('kdj', 'kdjChart', { 
             type: 'line', 
-            data: { labels, datasets: [ { label: 'K', data: kd.k.slice(-actualRange), borderColor: '#f8fafc', borderWidth: 1, pointRadius: 0, tension: 0.1 }, { label: 'D', data: kd.d.slice(-actualRange), borderColor: '#f5a623', borderWidth: 1, pointRadius: 0, tension: 0.1 }, { label: 'J', data: kd.j.slice(-actualRange), borderColor: '#8b5cf6', borderWidth: 1, pointRadius: 0, tension: 0.1 } ] }, 
+            data: { labels, datasets: [ { label: 'K', data: kd.k.slice(visibleRange.start, visibleRange.end + 1), borderColor: '#f8fafc', borderWidth: 1, pointRadius: 0, tension: 0.1 }, { label: 'D', data: kd.d.slice(visibleRange.start, visibleRange.end + 1), borderColor: '#f5a623', borderWidth: 1, pointRadius: 0, tension: 0.1 }, { label: 'J', data: kd.j.slice(visibleRange.start, visibleRange.end + 1), borderColor: '#8b5cf6', borderWidth: 1, pointRadius: 0, tension: 0.1 } ] }, 
             options: kdjOpts, plugins: [localAlignPlugin, freezePlugin] 
         });
     }
@@ -766,10 +903,22 @@ function updateSidebarPriceOnly() {
     diffUpdate(cPrice.querySelector('.amt-row .val'), fmt(item.amt));
 }
 
+function ensureAnalysisPanelVisibleForRealtimeRefresh() {
+    const cAnalysis = document.getElementById('cardAnalysis');
+    if (!cAnalysis) return false;
+    if (!cAnalysis.innerHTML || !cAnalysis.innerHTML.trim()) {
+        safeUpdateSidebar();
+        return true;
+    }
+    cAnalysis.style.display = 'flex';
+    cAnalysis.style.flexDirection = 'column';
+    return false;
+}
+
 function updateNavCapsuleVisuals(safeIdx, totalLen) {
     const btn = document.getElementById('btnResetLatest');
     if (btn) {
-        if (safeIdx === totalLen - 1) { 
+        if (isLatestNavActive(safeIdx, totalLen)) { 
             btn.classList.add('active'); 
             btn.classList.remove('is-history'); 
         } else { 
@@ -777,6 +926,10 @@ function updateNavCapsuleVisuals(safeIdx, totalLen) {
             btn.classList.add('is-history'); 
         }
     }
+}
+
+function isLatestNavActive(safeIdx, totalLen) {
+    return !state.isFrozen && safeIdx === totalLen - 1;
 }
 
 function applySidebarHTML(bundle, cacheKey = '') {
@@ -858,7 +1011,7 @@ function generateSidebarBundle(item, prev, safeIdx, rd) {
                 <div class="nav-capsule">
                     <button class="btn-sm" onclick="prevDay()" title="上一天 (左方向键)">◀</button>
                     <button class="btn-sm" onclick="nextDay()" title="下一天 (右方向键)">▶</button>
-                    <button class="btn-sm ${safeIdx === rd.length - 1 ? 'active' : 'is-history'}" id="btnResetLatest" onclick="resetLatest()">最新</button>
+                    <button class="btn-sm ${isLatestNavActive(safeIdx, rd.length) ? 'active' : 'is-history'}" id="btnResetLatest" onclick="resetLatest()">最新</button>
                 </div>
             </div>
             <div class="price-hero-compact">
