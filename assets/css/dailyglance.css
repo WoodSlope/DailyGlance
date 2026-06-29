@@ -259,11 +259,11 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 .crosshair-overlay.active { display: block; }
 .crosshair-line { position: absolute; top: 0; bottom: 0; width: 0; will-change: transform; transition: none; }
 .crosshair-line::before { content: ''; position: absolute; top: 0; bottom: 0; left: 0; border-left: 1px dashed rgba(255,255,255,0.2); }
-.crosshair-overlay.frozen .crosshair-line::before { border-left-style: solid; border-left-color: var(--blue); border-left-width: 1.5px; }
+.crosshair-overlay.historical .crosshair-line::before { border-left-style: dashed; border-left-color: var(--blue); border-left-width: 1px; }
 .crosshair-h-line { position: absolute; left: 0; right: 0; height: 0; will-change: transform; transition: none; z-index: 5; display: none; pointer-events: none; }
 .crosshair-h-line.active { display: block; }
 .crosshair-h-line::before { content: ''; position: absolute; left: 0; right: 0; top: 0; border-top: 1px dashed rgba(255,255,255,0.2); }
-.main-chart-box.frozen .crosshair-h-line::before { border-top-style: solid; border-top-color: var(--blue); border-top-width: 1.5px; }
+.main-chart-box.historical .crosshair-h-line::before { border-top-style: dashed; border-top-color: var(--blue); border-top-width: 1px; }
 .volume-chart-box, .macd-chart-box, .kdj-chart-box { flex: 1.5; position: relative; border-top: 1px solid var(--border-color); min-height: 0; }
 .main-chart-box canvas, .volume-chart-box canvas, .macd-chart-box canvas, .kdj-chart-box canvas { width: 100% !important; height: 100% !important; touch-action: pan-y; }
 .main-chart-box canvas { cursor: grab; }

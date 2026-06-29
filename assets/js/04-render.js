@@ -19,12 +19,16 @@ function clearStaleTooltips() {
     Object.values(state.charts).forEach(c => { if (c) { if (c.tooltip) c.tooltip.setActiveElements([], {x: 0, y: 0}); c.update('none'); } });
 }
 
+function isHistoricalVisualState(data = getActiveData(), idx = data ? getSafeIndex(data) : -1) {
+    return !!(data && data.length && idx >= 0 && idx < data.length - 1);
+}
+
 function updateFreezeBadge() {
     var badge = document.getElementById('freezeBadge');
     if (!badge) return;
-    if (state.isFrozen) {
-        var rd = getActiveData();
-        var safeIdx = rd ? getSafeIndex(rd) : -1;
+    var rd = getActiveData();
+    var safeIdx = rd ? getSafeIndex(rd) : -1;
+    if (isHistoricalVisualState(rd, safeIdx)) {
         var date = rd && safeIdx >= 0 && safeIdx < rd.length ? rd[safeIdx].date : '';
         var dateEl = badge.querySelector('.freeze-badge-date');
         if (dateEl) dateEl.textContent = date ? ' \u00b7 ' + date : '';
@@ -44,7 +48,7 @@ function redrawChartsFast() {
 
 const freezePlugin = {
     id: 'freezePlugin',
-    beforeEvent: (c, args) => { if (state.isFrozen && args.event.type !== 'click' && args.event.type !== 'touchstart' && args.event.type !== 'touchend') return false; }
+    beforeEvent: () => true
 };
 
 // 成交量柱 plugin：用 canvas 手绘，像素级对齐 K 线蜡烛
@@ -145,12 +149,15 @@ function updateCrosshairOverlay() {
     const yScale = mainChart.scales.y;
     const px = xScale.getPixelForValue(li);
     if (px < xScale.left || px > xScale.right) { overlay.classList.remove('active'); if (hLine) hLine.classList.remove('active'); return; }
+    const isHistorical = isHistoricalVisualState(actData, safeIdx);
 
     // 竖线
     line.style.transform = 'translateX(' + px + 'px)';
     overlay.classList.add('active');
     if (state.isFrozen) overlay.classList.add('frozen');
     else overlay.classList.remove('frozen');
+    if (isHistorical) overlay.classList.add('historical');
+    else overlay.classList.remove('historical');
 
     // 横线（只在主图）
     if (hLine && yScale) {
@@ -166,6 +173,8 @@ function updateCrosshairOverlay() {
         if (mainBox) {
             if (state.isFrozen) mainBox.classList.add('frozen');
             else mainBox.classList.remove('frozen');
+            if (isHistorical) mainBox.classList.add('historical');
+            else mainBox.classList.remove('historical');
         }
     }
 }
@@ -211,7 +220,6 @@ let chartPointerResetBound = false;
 let chartDragPanBound = false;
 let chartDragPanRAF = 0;
 let chartDragPan = null;
-let chartDragPanSuppressClickUntil = 0;
 let chartHoverSuppressUntil = 0;
 
 function resolveVisibleDataIndex(activeData, renderedIndex) {
@@ -241,10 +249,11 @@ function resetHoverSelectionToLatest() {
         cancelAnimationFrame(hoverRAF);
         hoverRAF = null;
     }
-    if (state.lockIdx === latestIdx) { updateCrosshairOverlay(); return; }
+    if (state.lockIdx === latestIdx) { updateFreezeBadge(); updateCrosshairOverlay(); return; }
     setLockIdx(latestIdx);
     resetViewportToLatest(activeData);
     safeUpdateSidebar();
+    updateFreezeBadge();
     updateCrosshairOverlay();
 }
 
@@ -317,7 +326,6 @@ function finishChartDragPan(event) {
     }
     target?.closest?.('.main-chart-box')?.classList?.remove('drag-panning');
     if (chartDragPan.didPan) {
-        chartDragPanSuppressClickUntil = Date.now() + 350;
         safeUpdateSidebar();
         updateFreezeBadge();
         updateCrosshairOverlay();
@@ -353,8 +361,6 @@ function bindChartPointerReset() {
 function handleChartHover(e, els) {
     if (chartDragPan) return;
     if (Date.now() < chartHoverSuppressUntil) return;
-    const type = e?.native?.type || e?.type; 
-    if (type === 'mousemove' && state.isFrozen) return;
     
     if (els && els.length) {
         const activeData = getActiveData(); if (!activeData) return;
@@ -363,48 +369,13 @@ function handleChartHover(e, els) {
             setLockIdx(ti);
             // 十字线同步更新，零延迟跟随鼠标
             updateCrosshairOverlay();
+            updateFreezeBadge();
             // 侧边栏用 RAF 节流，避免频繁 DOM 操作
             if (!hoverRAF) hoverRAF = requestAnimationFrame(() => {
                 hoverRAF = null;
                 safeUpdateSidebar();
             });
         }
-    }
-}
-
-function handleChartClick(e, els) {
-    if (Date.now() < chartDragPanSuppressClickUntil) {
-        chartDragPanSuppressClickUntil = 0;
-        return;
-    }
-    if (!els || !els.length) {
-        state.isFrozen = false;
-        var rd = getActiveData();
-        setLockIdx(rd ? rd.length - 1 : -1);
-        resetViewportToLatest(rd);
-        redrawChartsFast();
-        safeUpdateSidebar();
-        updateFreezeBadge();
-        updateCrosshairOverlay();
-        return;
-    }
-    const activeData = getActiveData(); if (!activeData) return;
-    const ti = resolveVisibleDataIndex(activeData, els[0].index);
-    if (ti >= 0) {
-        pendingHoverIdx = -1;
-        if (ti === activeData.length - 1) {
-            state.isFrozen = false;
-            setLockIdx(ti);
-            resetViewportToLatest(activeData);
-        } else if (state.isFrozen && state.lockIdx === ti) {
-            state.isFrozen = false;
-        } else {
-            state.isFrozen = true;
-            setLockIdx(ti);
-            anchorViewportAt(ti);
-        }
-        if (hoverRAF) cancelAnimationFrame(hoverRAF);
-        hoverRAF = requestAnimationFrame(() => { safeUpdateSidebar(); redrawChartsFast(); updateFreezeBadge(); updateCrosshairOverlay(); });
     }
 }
 
@@ -467,8 +438,7 @@ function renderChartViewport(perfTrace) {
         animation: false, 
         layout: getLayout(), 
         interaction: { mode: 'index', intersect: false },
-        onHover: handleChartHover,
-        onClick: handleChartClick
+        onHover: handleChartHover
     });
     
     const currentScope = `${state.id}_${state.period}`;

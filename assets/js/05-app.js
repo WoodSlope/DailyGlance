@@ -1056,6 +1056,15 @@ function redrawCurrentViewport() {
     else draw();
 }
 
+function suppressStaleHoverSelection() {
+    if (typeof pendingHoverIdx !== 'undefined') pendingHoverIdx = -1;
+    if (typeof hoverRAF !== 'undefined' && hoverRAF) {
+        cancelAnimationFrame(hoverRAF);
+        hoverRAF = null;
+    }
+    if (typeof chartHoverSuppressUntil !== 'undefined') chartHoverSuppressUntil = Date.now() + 350;
+}
+
 function prevDay() {
     if(state.lockIdx > 0) {
         state.isFrozen = true;
@@ -1075,10 +1084,14 @@ function nextDay() {
         setLockIdx(nextIdx);
         state.isFrozen = nextIdx < rd.length - 1;
         if (state.isFrozen) anchorViewportAt(nextIdx);
-        else resetViewportToLatest(rd);
+        else {
+            suppressStaleHoverSelection();
+            resetViewportToLatest(rd);
+        }
         clearStaleTooltips();
         redrawCurrentViewport();
         safeUpdateSidebar();
+        if (typeof updateNavCapsuleVisuals === 'function') updateNavCapsuleVisuals(nextIdx, rd.length);
         updateFreezeBadge();
     }
 }
@@ -1086,12 +1099,7 @@ function nextDay() {
 function resetLatest() {
     const rd = getActiveData();
     if(rd) {
-        pendingHoverIdx = -1;
-        if (hoverRAF) {
-            cancelAnimationFrame(hoverRAF);
-            hoverRAF = null;
-        }
-        chartHoverSuppressUntil = Date.now() + 350;
+        suppressStaleHoverSelection();
         state.isFrozen = false;
         setLockIdx(rd.length - 1);
         resetViewportToLatest(rd);
