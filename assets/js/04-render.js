@@ -16,7 +16,11 @@ function clearCharts(){
 }
 
 function clearStaleTooltips() {
-    Object.values(state.charts).forEach(c => { if (c) { if (c.tooltip) c.tooltip.setActiveElements([], {x: 0, y: 0}); c.update('none'); } });
+    Object.values(state.charts).forEach(c => { if (c && c.tooltip) c.tooltip.setActiveElements([], {x: 0, y: 0}); });
+}
+
+function refreshChartsIfNeeded() {
+    Object.values(state.charts).forEach(c => { if (c) { if (typeof c.draw === 'function') c.draw(); else c.update('none'); } });
 }
 
 function isHistoricalVisualState(data = getActiveData(), idx = data ? getSafeIndex(data) : -1) {
@@ -36,14 +40,6 @@ function updateFreezeBadge() {
     } else {
         badge.style.display = 'none';
     }
-}
-
-function redrawChartsFast() {
-    Object.values(state.charts).forEach(c => {
-        if (!c) return;
-        if (typeof c.draw === 'function') c.draw();
-        else c.update('none');
-    });
 }
 
 const freezePlugin = {
