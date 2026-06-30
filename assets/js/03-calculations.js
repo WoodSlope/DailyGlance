@@ -33,7 +33,7 @@ const Calcs = {
             else { e12[i] = c * 2 / 13 + e12[i - 1] * 11 / 13; e26[i] = c * 2 / 27 + e26[i - 1] * 25 / 27; }
             diff[i] = e12[i] - e26[i];
             dea[i] = (i === 0) ? diff[i] : (diff[i] * 2 / 11 + dea[i - 1] * 9 / 11);
-            bar[i] = diff[i] - dea[i];
+            bar[i] = (diff[i] - dea[i]) * 2;
         }
         return { _e12: e12, _e26: e26, diff, dea, bar };
     },
@@ -51,7 +51,7 @@ const Calcs = {
             e26[i] = c * 2 / 27 + (e26[i - 1] || 0) * 25 / 27;
             diff[i] = e12[i] - e26[i];
             dea[i] = diff[i] * 2 / 11 + (dea[i - 1] || 0) * 9 / 11;
-            bar[i] = diff[i] - dea[i];
+            bar[i] = (diff[i] - dea[i]) * 2;
         }
         return { _e12: e12, _e26: e26, diff, dea, bar };
     },

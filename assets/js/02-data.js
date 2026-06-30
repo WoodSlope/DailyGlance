@@ -32,13 +32,250 @@ const cachedFetchRefreshJobs = new Map();
 let cachedFetchRefreshApplyTimer = 0;
 let pendingCachedFetchRefreshApplyId = '';
 const historyRefreshMeta = new Map();
+const CN_MARKET_HOLIDAYS = new Set([
+    // 2026 mainland exchange holidays, from SSE/SZSE yearly market-close notices.
+    '2026-01-01', '2026-01-02',
+    '2026-02-16', '2026-02-17', '2026-02-18', '2026-02-19', '2026-02-20', '2026-02-23',
+    '2026-04-06',
+    '2026-05-01', '2026-05-04', '2026-05-05',
+    '2026-06-19',
+    '2026-09-25',
+    '2026-10-01', '2026-10-02', '2026-10-05', '2026-10-06', '2026-10-07'
+]);
 
 function getBJDate() { return new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Shanghai"})); }
-function isMarketOpen() { const now = getBJDate(), day = now.getDay(), m = now.getHours() * 60 + now.getMinutes(); return day !== 0 && day !== 6 && m >= 9 * 60 + 15 && m <= 15 * 60 + 15; }
-function isAfterMarketClose() { const now = getBJDate(), day = now.getDay(), m = now.getHours() * 60 + now.getMinutes(); return day === 0 || day === 6 || m > 15 * 60 + 15; }
-function getLastTradingDate() { let d = getBJDate(), day = d.getDay(), m = d.getHours() * 60 + d.getMinutes(); if(day === 0) d.setDate(d.getDate() - 2); else if(day === 6) d.setDate(d.getDate() - 1); else if(day === 1 && m <= 15 * 60 + 15) d.setDate(d.getDate() - 3); else if(m <= 15 * 60 + 15) d.setDate(d.getDate() - 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function isValidPrice(price, id) { return !isNaN(price) && price > 0; }
-function getActiveData() { return state.period === 'weekly' ? state.weeklyData[state.id] : state.rawData[state.id]; }
+function formatBJDate(date = getBJDate()) { return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; }
+function getTodayDate() { return formatBJDate(getBJDate()); }
+function parseTencentQuoteTime(raw) {
+    const text = String(raw || '').trim();
+    if (!/^\d{14}$/.test(text)) return null;
+    const y = Number(text.slice(0, 4));
+    const mo = Number(text.slice(4, 6));
+    const d = Number(text.slice(6, 8));
+    const h = Number(text.slice(8, 10));
+    const mi = Number(text.slice(10, 12));
+    const s = Number(text.slice(12, 14));
+    if (y < 2000 || y > 2100 || mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59 || s > 59) return null;
+    const parsed = new Date(Date.UTC(y, mo - 1, d, h, mi, s));
+    if (Number.isNaN(parsed.getTime())) return null;
+    if (parsed.getUTCFullYear() !== y || parsed.getUTCMonth() + 1 !== mo || parsed.getUTCDate() !== d || parsed.getUTCHours() !== h || parsed.getUTCMinutes() !== mi || parsed.getUTCSeconds() !== s) return null;
+    const date = `${text.slice(0,4)}-${text.slice(4,6)}-${text.slice(6,8)}`;
+    const time = `${text.slice(8,10)}:${text.slice(10,12)}:${text.slice(12,14)}`;
+    return { date, quoteTime: `${date} ${time}`, quoteDateSource: 'api' };
+}
+function getTencentQuoteTimeInfo(fields, fallbackDate = getTodayDate()) {
+    const candidates = [fields?.[30], ...(fields || [])];
+    for (const raw of candidates) {
+        const parsed = parseTencentQuoteTime(raw);
+        if (parsed) return parsed;
+    }
+    return { date: fallbackDate, quoteTime: '', quoteDateSource: 'local-fallback' };
+}
+function isTradingDay(dateStr) {
+    if (!dateStr) return false;
+    const d = new Date(dateStr + 'T00:00:00+08:00');
+    const day = d.getDay();
+    return day !== 0 && day !== 6 && !CN_MARKET_HOLIDAYS.has(dateStr);
+}
+function isMarketOpen() {
+    const now = getBJDate(), m = now.getHours() * 60 + now.getMinutes();
+    return isTradingDay(formatBJDate(now)) && m >= 9 * 60 + 15 && m <= 15 * 60 + 15;
+}
+function isAfterMarketClose() {
+    const now = getBJDate(), m = now.getHours() * 60 + now.getMinutes();
+    return !isTradingDay(formatBJDate(now)) || m > 15 * 60 + 15;
+}
+function getLastTradingDate(refDate = getBJDate()) {
+    const d = new Date(refDate.getTime());
+    const today = formatBJDate(d);
+    const m = d.getHours() * 60 + d.getMinutes();
+    if (isTradingDay(today) && m > 15 * 60 + 15) return today;
+    do {
+        d.setDate(d.getDate() - 1);
+    } while (!isTradingDay(formatBJDate(d)));
+    return formatBJDate(d);
+}
+function getExpectedConfirmedDate() {
+    const now = getBJDate(), today = formatBJDate(now), m = now.getHours() * 60 + now.getMinutes();
+    return isTradingDay(today) && m > 15 * 60 + 15 ? today : getLastTradingDate(now);
+}
+function isConfirmedSeriesFreshEnough(series) {
+    if (!series || !series.length) return false;
+    return (series[series.length - 1]?.date || '') >= getExpectedConfirmedDate();
+}
+function getConfirmedHistoryCutoffDate() {
+    return getExpectedConfirmedDate();
+}
+function normalizeConfirmedHistoryData(rows, id) {
+    if (!rows || !rows.length) return [];
+    const cutoffDate = getConfirmedHistoryCutoffDate();
+    const byDate = new Map();
+    rows.forEach(row => {
+        if (!row || !row.date || row.date > cutoffDate) return;
+        const open = parseFloat(row.open);
+        const close = parseFloat(row.close);
+        const high = parseFloat(row.high);
+        const low = parseFloat(row.low);
+        const vol = parseFloat(row.vol);
+        const amt = parseFloat(row.amt);
+        if (!isValidPrice(open, id) || !isValidPrice(close, id) || !isValidPrice(high, id) || !isValidPrice(low, id)) return;
+        const fixedHigh = Math.max(high, open, close, low);
+        const fixedLow = Math.min(low, open, close, high);
+        byDate.set(row.date, {
+            date: row.date,
+            open,
+            close,
+            high: fixedHigh,
+            low: fixedLow,
+            vol: Number.isFinite(vol) && vol >= 0 ? vol : 0,
+            amt: Number.isFinite(amt) && amt >= 0 ? amt : 0
+        });
+    });
+    return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+function getQuoteBar(id) {
+    return state.liveQuotes?.[id] || state.liveBars?.[id] || null;
+}
+function getMergedLiveDailyData(id) {
+    const confirmed = state.rawData[id] || [];
+    const liveBar = state.liveBars?.[id];
+    if (!liveBar) return confirmed;
+    if (!confirmed.length) return [liveBar];
+    const last = confirmed[confirmed.length - 1];
+    if (!last || liveBar.date < last.date) return confirmed;
+    if (liveBar.date === last.date) {
+        return confirmed.slice(0, -1).concat(liveBar);
+    }
+    return confirmed.concat(liveBar);
+}
+
+function getMergedLiveWeeklyData(id) {
+    if (!state.liveBars?.[id]) return state.weeklyData[id];
+    if (!state.liveWeeklyData?.[id]) state.liveWeeklyData[id] = convertDailyToWeekly(getMergedLiveDailyData(id));
+    return state.liveWeeklyData[id];
+}
+
+function getActiveData() {
+    return state.period === 'weekly'
+        ? getMergedLiveWeeklyData(state.id)
+        : getMergedLiveDailyData(state.id);
+}
+
+function getVisibleQuoteData(id) {
+    const confirmed = state.rawData[id] || [];
+    const quote = getQuoteBar(id);
+    if (!quote || !isValidPrice(quote.close, id)) return getMergedLiveDailyData(id);
+    if (!confirmed.length) return [quote];
+    const last = confirmed[confirmed.length - 1];
+    if (!last || quote.date < last.date) return getMergedLiveDailyData(id);
+    if (quote.date === last.date) return confirmed.slice(0, -1).concat(quote);
+    return confirmed.concat(quote);
+}
+
+function getVisibleQuoteChangeBase(id, visibleData = getVisibleQuoteData(id)) {
+    const quote = getQuoteBar(id);
+    if (quote && quote.prevClose && isValidPrice(quote.prevClose, id)) return quote.prevClose;
+    if (visibleData?.length > 1) return visibleData[visibleData.length - 2].close;
+    if (visibleData?.length) return visibleData[0].open;
+    return 1;
+}
+
+function setDisplayStatus(id, patch = {}) {
+    if (!state.displayStatus) state.displayStatus = {};
+    state.displayStatus[id] = { ...(state.displayStatus[id] || {}), ...patch };
+}
+
+function setConfirmedStatus(id, patch = {}) {
+    if (!state.confirmedStatus) state.confirmedStatus = {};
+    state.confirmedStatus[id] = { ...(state.confirmedStatus[id] || {}), ...patch };
+}
+
+function setLiveQuote(id, bar, quality = 'quote-only', reason = '') {
+    if (!id || !bar || !isValidPrice(bar.close, id)) return false;
+    if (!state.liveQuotes) state.liveQuotes = {};
+    state.liveQuotes[id] = { ...bar, _isLiveQuote: true, _quoteQuality: quality, _rejectReason: reason };
+    if (quality !== 'valid-overlay') {
+        setDisplayStatus(id, {
+            mode: 'quote-only',
+            reason: reason || '实时行情仅用于报价，图表等待历史数据确认',
+            quoteDate: bar.date || '',
+            quoteAt: Date.now()
+        });
+    }
+    return true;
+}
+
+function setLiveBar(id, bar) {
+    if (!id || !bar || !isValidPrice(bar.close, id)) return false;
+    if (!state.liveBars) state.liveBars = {};
+    if (!state.liveWeeklyData) state.liveWeeklyData = {};
+    setLiveQuote(id, bar, 'valid-overlay');
+    state.liveBars[id] = { ...bar, _isLive: true };
+    state.liveWeeklyData[id] = convertDailyToWeekly(getMergedLiveDailyData(id));
+    setDisplayStatus(id, { mode: 'live-overlay', reason: '', quoteDate: bar.date || '', quoteAt: Date.now() });
+    if (id === state.id) {
+        state.pendingIndicatorMutation = { mode: 'incremental', startIdx: Math.max(0, (getActiveData()?.length || 1) - 1) };
+        if (typeof markIndicatorsDirty === 'function') markIndicatorsDirty();
+    }
+    return true;
+}
+
+function clearLiveBar(id) {
+    if (!state.liveBars) state.liveBars = {};
+    if (!state.liveWeeklyData) state.liveWeeklyData = {};
+    delete state.liveBars[id];
+    delete state.liveWeeklyData[id];
+}
+
+function clearLiveQuote(id) {
+    if (!state.liveQuotes) state.liveQuotes = {};
+    delete state.liveQuotes[id];
+}
+
+function canUseRealtimeOverlay(id, series, rtBar) {
+    if (!rtBar || !series || !series.length) return { ok: false, reason: 'missing-data' };
+    const lastBar = series[series.length - 1];
+    if (!lastBar || !isValidPrice(rtBar.close, id)) return { ok: false, reason: 'invalid-price' };
+    if (!rtBar.date || rtBar.date !== getTodayDate()) return { ok: false, reason: 'quote-date-not-today' };
+    if (rtBar.date < lastBar.date) return { ok: false, reason: 'quote-older-than-history' };
+    if (!isConfirmedSeriesFreshEnough(series)) return { ok: false, reason: 'confirmed-history-stale' };
+
+    const isIndex = !!getIndexConfig(id);
+    if (isIndex) return { ok: true, reason: '' };
+    if (rtBar.date === lastBar.date) return { ok: true, reason: '' };
+    if (!rtBar.prevClose || !isValidPrice(rtBar.prevClose, id) || !lastBar.close || !isValidPrice(lastBar.close, id)) {
+        return { ok: false, reason: 'missing-prev-close' };
+    }
+    const prevCloseDiff = Math.abs(rtBar.prevClose - lastBar.close) / lastBar.close;
+    if (prevCloseDiff > SYS_CONFIG.EX_RIGHT_TOLERANCE) return { ok: false, reason: 'price-basis-mismatch' };
+    return { ok: true, reason: '' };
+}
+
+function applyRealtimeQuoteForSeries(id, series, rtBar) {
+    const overlayGate = canUseRealtimeOverlay(id, series, rtBar);
+    if (overlayGate.ok) {
+        setLiveBar(id, rtBar);
+        return 'overlay';
+    }
+    if (rtBar && isValidPrice(rtBar.close, id)) {
+        setLiveQuote(id, rtBar, 'quote-only', overlayGate.reason);
+        clearLiveBar(id);
+        return 'quote-only';
+    }
+    if (rtBar && state.liveBars?.[id] && series?.length && rtBar.date < series[series.length - 1]?.date) {
+        clearLiveBar(id);
+        return 'cleared';
+    }
+    return 'skipped';
+}
+
+function clearConfirmedLiveBar(id, data) {
+    const live = state.liveBars?.[id];
+    const last = data?.length ? data[data.length - 1] : null;
+    if (!live || !last) return;
+    if (live.date < last.date || (live.date === last.date && !isMarketOpen())) clearLiveBar(id);
+}
 function rememberPeriodLock(idx=state.lockIdx, period=state.period) { if(!state.periodLocks) state.periodLocks = {daily:-1, weekly:-1}; state.periodLocks[period] = idx; }
 function setLockIdx(idx) { state.lockIdx = idx; rememberPeriodLock(idx); }
 function getPeriodLock(period=state.period) { return state.periodLocks?.[period] ?? -1; }
@@ -159,6 +396,7 @@ function convertDailyToWeekly(dailyData) {
 }
 
 function setRawData(id, data) {
+    data = normalizeConfirmedHistoryData(data, id);
     const prevData = state.rawData[id];
     const mutation = prevData ? getDataMutationMeta(prevData, data) : { mode: 'full', startIdx: 0 };
     if (mutation.mode !== 'full' && prevData && data) {
@@ -175,6 +413,22 @@ function setRawData(id, data) {
     }
     state.rawData[id] = data;
     if (data) state.weeklyData[id] = convertDailyToWeekly(data); else state.weeklyData[id] = null;
+    clearConfirmedLiveBar(id, data);
+    if (data?.length) {
+        const lastDate = data[data.length - 1]?.date || '';
+        const currentConfirmed = state.confirmedStatus?.[id] || {};
+        if (!currentConfirmed.status || currentConfirmed.status === 'unknown') {
+            setConfirmedStatus(id, {
+                source: 'cache',
+                status: lastDate && lastDate >= getExpectedConfirmedDate() ? 'fresh' : 'stale',
+                lastDate,
+                syncedAt: Date.now()
+            });
+        }
+    }
+    if (data?.length && !state.liveBars?.[id] && state.displayStatus?.[id]?.mode !== 'quote-only') {
+        setDisplayStatus(id, { mode: 'confirmed', reason: '', quoteDate: '', quoteAt: 0 });
+    }
     if (id === state.id) {
         const indicatorScopePrefix = `${state.id}_${state.period}_${state.strategy}_`;
         const isSameIndicatorScope = typeof state.indicatorKey === 'string' && state.indicatorKey.startsWith(indicatorScopePrefix);
@@ -182,7 +436,7 @@ function setRawData(id, data) {
             state.indicators = { ma: {}, macd: null, rsi: null, kdj: null };
         }
         state.pendingIndicatorMutation = isSameIndicatorScope ? getDataMutationMeta(prevData, data) : { mode: 'full', startIdx: 0 };
-        markIndicatorsDirty();
+        if (typeof markIndicatorsDirty === 'function') markIndicatorsDirty();
     }
     // 增量更新（同日价格变动）只清 lookup 缓存，保留 renderCache 防止面板闪烁
     if (mutation.mode === 'incremental') {
@@ -249,7 +503,7 @@ function jsonpFetchEastmoneyKline(id) {
         const timer = setTimeout(() => { cleanup(); resolve([]); }, 8000);
         window[cb] = data => { 
             cleanup(); 
-            if(data && data.data && data.data.klines) resolve(data.data.klines.map(l => { const p = l.split(','); return { date: p[0], open: parseFloat(p[1]), close: parseFloat(p[2]), high: parseFloat(p[3]), low: parseFloat(p[4]), vol: parseFloat(p[5]), amt: parseFloat(p[6]) }; }).filter(item => isValidPrice(item.close, id))); 
+            if(data && data.data && data.data.klines) resolve(normalizeConfirmedHistoryData(data.data.klines.map(l => { const p = l.split(','); return { date: p[0], open: p[1], close: p[2], high: p[3], low: p[4], vol: p[5], amt: p[6] }; }), id)); 
             else resolve([]);
         };
         const script = document.createElement('script'); script.id = cb; script.src = url; script.onerror = () => { cleanup(); resolve([]); }; document.head.appendChild(script);
@@ -268,7 +522,7 @@ function jsonpFetchTencentKline(id) {
             if(payload && payload.code === 0 && payload.data && payload.data[symbol]) { 
                 const klines = payload.data[symbol].qfqday || payload.data[symbol].day; 
                 if(!klines) { resolve([]); return; } 
-                resolve(klines.map(p => ({ date: p[0], open: parseFloat(p[1]), close: parseFloat(p[2]), high: parseFloat(p[3]), low: parseFloat(p[4]), vol: parseFloat(p[5]), amt: p.length > 6 ? parseFloat(p[6]) : (parseFloat(p[5]) * parseFloat(p[2]) * 100) })).filter(item => isValidPrice(item.close, id))); 
+                resolve(normalizeConfirmedHistoryData(klines.map(p => ({ date: p[0], open: p[1], close: p[2], high: p[3], low: p[4], vol: p[5], amt: p.length > 6 ? p[6] : (parseFloat(p[5]) * parseFloat(p[2]) * 100) })), id)); 
             } else resolve([]); 
         };
         script.onerror = () => { cleanup(); resolve([]); }; document.head.appendChild(script);
@@ -288,8 +542,9 @@ function getRealtimePriceJSONP(id) {
                 if(fields.length >= 6) { 
                     const price = parseFloat(fields[3]) || 0; 
                     if(price > 0) { 
-                        const now = getBJDate(), localDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`; 
-                        resolve({ date: localDate, open: parseFloat(fields[5])||price, high: parseFloat(fields[33])||price, low: parseFloat(fields[34])||price, close: price, vol: parseInt(fields[36])||0, amt: parseFloat(fields[37])||0 }); 
+                        const prevClose = parseFloat(fields[4]) || 0;
+                        const quoteTime = getTencentQuoteTimeInfo(fields);
+                        resolve({ date: quoteTime.date, quoteTime: quoteTime.quoteTime, quoteDateSource: quoteTime.quoteDateSource, open: parseFloat(fields[5])||price, high: parseFloat(fields[33])||price, low: parseFloat(fields[34])||price, close: price, prevClose, vol: parseInt(fields[36])||0, amt: parseFloat(fields[37])||0 }); 
                         return; 
                     } 
                 } 
@@ -331,7 +586,6 @@ function batchGetRealtimePrices(ids) {
         const results = {};
         script.onload = () => {
             cleanup();
-            const now = getBJDate(), localDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
             for (const sym of symbols) {
                 const varName = 'v_' + sym, id = symToId[sym];
                 if (typeof window[varName] !== 'undefined') {
@@ -339,7 +593,9 @@ function batchGetRealtimePrices(ids) {
                     if (fields.length >= 6) {
                         const price = parseFloat(fields[3]) || 0;
                         if (price > 0) {
-                            results[id] = { date: localDate, open: parseFloat(fields[5])||price, high: parseFloat(fields[33])||price, low: parseFloat(fields[34])||price, close: price, vol: parseInt(fields[36])||0, amt: parseFloat(fields[37])||0 };
+                            const prevClose = parseFloat(fields[4]) || 0;
+                            const quoteTime = getTencentQuoteTimeInfo(fields);
+                            results[id] = { date: quoteTime.date, quoteTime: quoteTime.quoteTime, quoteDateSource: quoteTime.quoteDateSource, open: parseFloat(fields[5])||price, high: parseFloat(fields[33])||price, low: parseFloat(fields[34])||price, close: price, prevClose, vol: parseInt(fields[36])||0, amt: parseFloat(fields[37])||0 };
                         }
                     }
                     delete window[varName];
@@ -353,8 +609,9 @@ function batchGetRealtimePrices(ids) {
 }
 
 async function syncDataWithHistory(id) {
-    let data = await jsonpFetchEastmoneyKline(id); if(data && data.length >= 30) return data; 
-    data = await jsonpFetchTencentKline(id); if(data && data.length >= 30) return data; 
+    let data = normalizeConfirmedHistoryData(await jsonpFetchEastmoneyKline(id), id); if(data && data.length >= 30) { setConfirmedStatus(id, { source: 'eastmoney', status: 'fresh', lastDate: data[data.length - 1]?.date || '', syncedAt: Date.now() }); return data; } 
+    data = normalizeConfirmedHistoryData(await jsonpFetchTencentKline(id), id); if(data && data.length >= 30) { setConfirmedStatus(id, { source: 'tencent', status: 'fresh', lastDate: data[data.length - 1]?.date || '', syncedAt: Date.now() }); return data; } 
+    setConfirmedStatus(id, { status: 'failed', syncedAt: Date.now() });
     return null; 
 }
 
@@ -381,59 +638,50 @@ function shouldSkipHistoryRefresh(id, cached) {
 async function syncDataIncremental(id) { 
     try { 
         const cached = await dbGet(id); 
-        if(!cached || !cached.data || !cached.data.length) return await syncDataWithHistory(id); 
-        if (shouldSkipHistoryRefresh(id, cached.data)) return cached.data;
+        const cachedData = normalizeConfirmedHistoryData(cached?.data, id);
+        if(!cachedData || !cachedData.length) return await syncDataWithHistory(id); 
+        if (shouldSkipHistoryRefresh(id, cachedData)) return cachedData;
         
-        setHistoryRefreshMeta(id, { lastAttemptAt: Date.now(), lastDate: cached.data[cached.data.length - 1]?.date || '' });
+        setHistoryRefreshMeta(id, { lastAttemptAt: Date.now(), lastDate: cachedData[cachedData.length - 1]?.date || '' });
         const fresh = await syncDataWithHistory(id); 
-        if(!fresh || !fresh.length) return cached.data; 
+        if(!fresh || !fresh.length) return cachedData; 
         setHistoryRefreshMeta(id, { lastSuccessAt: Date.now(), lastDate: fresh[fresh.length - 1]?.date || '' });
 
-        const lastCached = cached.data[cached.data.length - 1];
+        const lastCached = cachedData[cachedData.length - 1];
         const matchingFresh = fresh.find(d => d.date === lastCached.date);
         
         if (matchingFresh && Math.abs(matchingFresh.close - lastCached.close) / lastCached.close > SYS_CONFIG.EX_RIGHT_TOLERANCE) return fresh; 
 
         const mergedMap = new Map(); 
-        cached.data.forEach(item => mergedMap.set(item.date, item)); 
+        cachedData.forEach(item => mergedMap.set(item.date, item)); 
         fresh.forEach(item => mergedMap.set(item.date, item)); 
-        return Array.from(mergedMap.values()).sort((a, b) => a.date.localeCompare(b.date)); 
+        return normalizeConfirmedHistoryData(Array.from(mergedMap.values()).sort((a, b) => a.date.localeCompare(b.date)), id); 
     } catch(e) { return await getCachedData(id) || null; } 
 }
 
 async function syncData(id) { 
-    const cached = await getCachedData(id), now = getBJDate(), today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`; 
+    const cached = await getCachedData(id); 
     const hasEnough = cached && cached.length >= 30; 
-    const isIndex = !!getIndexConfig(id);
     const cachedLastDate = cached && cached.length ? (cached[cached.length - 1]?.date || '') : '';
-
-    const canMergeRealtimeBar = (series, rtBar) => {
-        if (!rtBar || !series || !series.length) return false;
-        const lastBar = series[series.length - 1];
-        if (!lastBar || !isValidPrice(rtBar.close, id)) return false;
-        // 实时 bar 日期必须 >= 最后一根历史 bar 日期，避免跨日跳空/重复
-        if (rtBar.date < lastBar.date) return false;
-        if (isIndex) return true;
-        if (lastBar.date !== today) return false;
-        if (!lastBar.close || !isValidPrice(lastBar.close, id)) return false;
-        return Math.abs(rtBar.close - lastBar.close) / lastBar.close <= SYS_CONFIG.EX_RIGHT_TOLERANCE;
-    };
     
     if(isMarketOpen()) { 
         if(hasEnough) { 
             const incremental = await syncDataIncremental(id); 
             if(incremental && incremental.length > 0) { await dbSet(id, incremental); cached.length = 0; Array.prototype.push.apply(cached, incremental); } 
             const rt = await requestManager.fetchRealtimeWithThrottle(id); 
-            if (canMergeRealtimeBar(cached, rt)) {
-                if (cached[cached.length - 1].date === today) cached[cached.length - 1] = rt;
-                else cached.push(rt);
-                await dbSet(id, cached);
-            }
+            applyRealtimeQuoteForSeries(id, cached, rt);
             return cached; 
         } 
         setHistoryRefreshMeta(id, { lastAttemptAt: Date.now(), lastDate: cachedLastDate });
         const data = await syncDataWithHistory(id); 
-        if(data && data.length >= 30) { setHistoryRefreshMeta(id, { lastSuccessAt: Date.now(), lastDate: data[data.length - 1]?.date || '' }); await dbSet(id, data); return data; } 
+        if(data && data.length >= 30) {
+            setHistoryRefreshMeta(id, { lastSuccessAt: Date.now(), lastDate: data[data.length - 1]?.date || '' });
+            await dbSet(id, data);
+            const rt = await requestManager.fetchRealtimeWithThrottle(id);
+            applyRealtimeQuoteForSeries(id, data, rt);
+            return data;
+        } 
+        setConfirmedStatus(id, { source: 'cache', status: 'stale', lastDate: cachedLastDate, syncedAt: Date.now() });
         return hasEnough ? cached : null; 
     } else { 
         if(hasEnough) { 
@@ -444,6 +692,7 @@ async function syncData(id) {
         setHistoryRefreshMeta(id, { lastAttemptAt: Date.now(), lastDate: cachedLastDate });
         const data = await syncDataWithHistory(id); 
         if(data && data.length >= 30) { setHistoryRefreshMeta(id, { lastSuccessAt: Date.now(), lastDate: data[data.length - 1]?.date || '' }); await dbSet(id, data); return data; } 
+        setConfirmedStatus(id, { source: 'cache', status: hasEnough ? 'stale' : 'failed', lastDate: cachedLastDate, syncedAt: Date.now() });
         return null; 
     } 
 }
@@ -476,7 +725,7 @@ async function handleUpdateData(forceFull = false) {
     
     btn.disabled = true; btn.innerHTML = SVG_ICONS.SPIN; 
     try { 
-        const fresh = (!forceFull && info.needUpdate) ? await syncDataIncremental(state.id) : await syncDataWithHistory(state.id); 
+        const fresh = (!forceFull && info.needUpdate) ? await syncData(state.id) : await syncDataWithHistory(state.id); 
         if(fresh && fresh.length) { 
             await dbSet(state.id, fresh); setRawData(state.id, fresh); applyActiveDataRefresh(state.id);
             await customAlert(`同步成功！K线数量：${fresh.length}`); 
@@ -504,12 +753,13 @@ function dbGet(id) {
 function dbSet(id, data) { 
     return new Promise(resolve => { 
         if(!DB) return resolve(); 
+        data = id === 'stock_cache' || id === 'watchlist_list' ? data : normalizeConfirmedHistoryData(data, id);
         const tx = DB.transaction(STORE, 'readwrite'); 
         tx.objectStore(STORE).put({ id, data, updated: Date.now() }); 
         tx.oncomplete = () => resolve(); tx.onerror = () => resolve(); 
     }); 
 }
-async function getCachedData(id) { const c = await dbGet(id); return (c && c.data) ? c.data : null; }
+async function getCachedData(id) { const c = await dbGet(id); return (c && c.data) ? normalizeConfirmedHistoryData(c.data, id) : null; }
 
 function getRenderedSidebarDate() {
     var cPriceEl = document.getElementById('cardPrice');
@@ -536,6 +786,9 @@ function applyActiveDataRefresh(id) {
     resetViewportToLatest(rd);
     if (oldDate && oldDate === newLatestDate) {
         updateAllIndicators();
+        if (typeof drawViewport === 'function' && state.charts && (state.charts.main || state.charts.vol || state.charts.macd || state.charts.kdj)) {
+            drawViewport();
+        }
         if (typeof updateSidebarPriceOnly === 'function') updateSidebarPriceOnly();
         if (typeof ensureAnalysisPanelVisibleForRealtimeRefresh === 'function') ensureAnalysisPanelVisibleForRealtimeRefresh();
         updateNavCapsuleVisuals(rd.length - 1, rd.length);
@@ -677,6 +930,7 @@ async function cachedFetch(id) {
     const perfTrace = PERF.start('cachedFetch', { id, activeId: state.id, mode: state.mode });
     const fetchStateKey = `${state.mode}_${state.id}_${state.period}_${state.strategy}`;
     const cachedResult = await dbGet(id);
+    if (cachedResult && cachedResult.data) cachedResult.data = normalizeConfirmedHistoryData(cachedResult.data, id);
     PERF.mark(perfTrace, 'dbGet');
     if (cachedResult && cachedResult.data && cachedResult.data.length > 0 && id === state.id && state.rawData[id]?.length) {
         scheduleCachedFetchRefresh(id);
@@ -724,6 +978,7 @@ async function cachedFetch(id) {
         return;
     }
 
+    const oldVisible = id === state.id ? getActiveData() : null;
     const fresh = await syncData(id);
     PERF.mark(perfTrace, 'syncData', { points: fresh?.length || 0 });
     if (!fresh || fresh.length === 0) {
@@ -734,6 +989,7 @@ async function cachedFetch(id) {
 
     const old = state.rawData[id];
     const hasUpdate = getDataMutationMeta(old, fresh).mode !== 'unchanged';
+    const visibleHasUpdate = id === state.id && getDataMutationMeta(oldVisible, getActiveData()).mode !== 'unchanged';
     const shouldApplyFresh = !old || !old.length || hasUpdate;
     
     if (shouldApplyFresh) {
@@ -758,6 +1014,15 @@ async function cachedFetch(id) {
             });
         }
         PERF.mark(perfTrace, 'apply-fresh', { hasUpdate, firstLoad: !old || !old.length });
+    } else if (id === state.id && visibleHasUpdate) {
+        renderMASelector();
+        updateAllIndicators();
+        requestAnimationFrame(() => {
+            const currentStateKey = `${state.mode}_${state.id}_${state.period}_${state.strategy}`;
+            if (currentStateKey !== fetchStateKey || id !== state.id) return;
+            applyActiveDataRefresh(id);
+        });
+        PERF.mark(perfTrace, 'apply-live-overlay', { points: getActiveData()?.length || 0 });
     } else if (id === state.id) {
         hideLoading();
         renderMASelector();
@@ -779,6 +1044,7 @@ function scheduleCachedFetchRefresh(id) {
     if (cachedFetchRefreshJobs.has(id)) return cachedFetchRefreshJobs.get(id);
     const job = (async () => {
         const perfTrace = PERF.start('cachedFetchRefresh', { id, activeId: state.id, mode: state.mode });
+        const oldVisible = id === state.id ? getActiveData() : null;
         const fresh = await syncData(id);
         PERF.mark(perfTrace, 'syncData', { points: fresh?.length || 0 });
         if (!fresh || fresh.length === 0) {
@@ -788,16 +1054,21 @@ function scheduleCachedFetchRefresh(id) {
 
         const old = state.rawData[id];
         const hasUpdate = getDataMutationMeta(old, fresh).mode !== 'unchanged';
-        if (!hasUpdate) {
+        const visibleHasUpdate = id === state.id && getDataMutationMeta(oldVisible, getActiveData()).mode !== 'unchanged';
+        if (!hasUpdate && !visibleHasUpdate) {
             PERF.end(perfTrace, { status: 'unchanged' });
             return;
         }
 
-        setRawData(id, fresh);
-        PERF.mark(perfTrace, 'apply-raw');
-        await dbSet(id, fresh);
-        PERF.mark(perfTrace, 'dbSet');
-        if (typeof syncWatchlistSignalSnapshotFast === 'function') {
+        if (hasUpdate) {
+            setRawData(id, fresh);
+            PERF.mark(perfTrace, 'apply-raw');
+            await dbSet(id, fresh);
+            PERF.mark(perfTrace, 'dbSet');
+        } else {
+            PERF.mark(perfTrace, 'apply-live-overlay');
+        }
+        if (hasUpdate && typeof syncWatchlistSignalSnapshotFast === 'function') {
             const matched = (state.watchlist || []).find(stock => codeToSecid(stock.code) === id);
             if (matched) syncWatchlistSignalSnapshotFast(matched.code, fresh);
             PERF.mark(perfTrace, 'watchlist');
@@ -827,8 +1098,9 @@ async function preloadCacheOnly() {
     for (const id of symbols) {
         try {
             const c = await dbGet(id);
-            if (c && c.data && c.data.length >= 30 && isValidPrice(c.data[c.data.length - 1].close, id)) {
-                setRawData(id, c.data);
+            const cachedData = normalizeConfirmedHistoryData(c?.data, id);
+            if (cachedData && cachedData.length >= 30 && isValidPrice(cachedData[cachedData.length - 1].close, id)) {
+                setRawData(id, cachedData);
             }
         } catch(e) {}
     }

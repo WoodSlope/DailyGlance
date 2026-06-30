@@ -635,9 +635,10 @@ async function updateAllWatchlistData() {
             }
         } catch (e) {
             const cached = await dbGet(secid);
-            if (cached && cached.data && cached.data.length >= 30) {
-                setRawData(secid, cached.data);
-                syncWatchlistSignalSnapshotFast(stock.code, cached.data);
+            const cachedData = normalizeConfirmedHistoryData(cached?.data, secid);
+            if (cachedData && cachedData.length >= 30) {
+                setRawData(secid, cachedData);
+                syncWatchlistSignalSnapshotFast(stock.code, cachedData);
                 return { code: stock.code, success: true, source: 'cache' };
             } else {
                 setWatchlistStatusSnapshot(stock.code, { ...WATCHLIST_STATUS_META.pending, action: '同步失败', strategy: state.strategy, date: '' });
@@ -674,10 +675,8 @@ async function refreshSidebarRealtime() {
         const lastBar = series[series.length - 1];
         if (!lastBar || !isValidPrice(rtBar.close, id)) continue;
         if (rtBar.date < lastBar.date) continue;
-        if (lastBar.date === rtBar.date) {
-            series[series.length - 1] = rtBar;
-            changed = true;
-        }
+        applyRealtimeQuoteForSeries(id, series, rtBar);
+        changed = true;
     }
     if (changed) {
         if (state.tab === 'index' || state.mode === 'index') refreshIndexListQuotes();
@@ -872,10 +871,10 @@ function renderIndexList() {
     const html = INDEX_IDS.map(id => {
         const config = INDEX_CONFIG[id];
         const active = state.id === id && state.mode === 'index' ? 'active' : '';
-        const d = state.rawData[id];
+        const d = getVisibleQuoteData(id);
         const indexCode = (config.tencent || id).toUpperCase();
         const price = d?.length ? d[d.length-1].close : 0;
-        const prev = d?.length > 1 ? d[d.length-2].close : (d?.length ? d[0].open : 1);
+        const prev = getVisibleQuoteChangeBase(id, d);
         const change = price - prev;
         const pct = (change / prev * 100) || 0;
         const cl = change >= 0 ? 'up' : 'down';
@@ -938,18 +937,20 @@ function renderWatchlist() {
     
     const lHtml = state.watchlist.map(s => {
         const displayName = normalizeStockDisplayName(s.code, s.name);
-        const d = state.rawData[codeToSecid(s.code)];
-        const lastDate = d?.length ? d[d.length - 1].date : '';
+        const id = codeToSecid(s.code);
+        const d = getVisibleQuoteData(id);
+        const statusData = getMergedLiveDailyData(id);
+        const lastDate = statusData?.length ? statusData[statusData.length - 1].date : '';
         const rowStatus = s._navStatus && s._navStatus.strategy === state.strategy && s._navStatus.date === lastDate
             ? s._navStatus
             : (() => {
-                const fallback = resolveWatchlistStatus(getLatestDecisionFromData(d));
+                const fallback = resolveWatchlistStatus(getLatestDecisionFromData(statusData));
                 const status = { ...fallback, strategy: state.strategy, date: lastDate };
                 setWatchlistStatusSnapshot(s.code, status);
                 return status;
             })();
         const price = d?.length ? d[d.length-1].close : 0;
-        const prev = d?.length > 1 ? d[d.length-2].close : (d?.length ? d[0].open : 1);
+        const prev = getVisibleQuoteChangeBase(id, d);
         const change = price - prev;
         const pct = (change / prev * 100) || 0;
         const cl = change >= 0 ? 'up' : 'down';
@@ -983,9 +984,10 @@ function renderWatchlist() {
 
 function refreshWatchlistQuotes() {
     (state.watchlist || []).forEach(s => {
-        const d = state.rawData[codeToSecid(s.code)];
+        const id = codeToSecid(s.code);
+        const d = getVisibleQuoteData(id);
         const price = d?.length ? d[d.length - 1].close : 0;
-        const prev = d?.length > 1 ? d[d.length - 2].close : (d?.length ? d[0].open : 1);
+        const prev = getVisibleQuoteChangeBase(id, d);
         const change = price - prev;
         const pct = (change / prev * 100) || 0;
         const cl = change >= 0 ? 'up' : 'down';
@@ -1004,9 +1006,9 @@ function refreshWatchlistQuotes() {
 
 function refreshIndexListQuotes() {
     INDEX_IDS.forEach(id => {
-        const d = state.rawData[id];
+        const d = getVisibleQuoteData(id);
         const price = d?.length ? d[d.length - 1].close : 0;
-        const prev = d?.length > 1 ? d[d.length - 2].close : (d?.length ? d[0].open : 1);
+        const prev = getVisibleQuoteChangeBase(id, d);
         const change = price - prev;
         const pct = (change / prev * 100) || 0;
         const cl = change >= 0 ? 'up' : 'down';

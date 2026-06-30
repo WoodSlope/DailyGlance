@@ -555,6 +555,58 @@ function getNoviceEvidenceCopy(meta, decision, displayExitLevel, guardHint) {
     return { marketHint, signalHint, guardHint: guardAction };
 }
 
+function getConclusionStatusBadge(item, id = state.id) {
+    const display = state.displayStatus?.[id] || {};
+    const isLiveOverlay = !!item?._isLive || display.mode === 'live-overlay';
+    if (isLiveOverlay) {
+        return {
+            tone: 'info',
+            label: '盘中临时结论',
+            detail: '最后一根K线会随实时行情变化，收盘后等历史K线确认。'
+        };
+    }
+    if (display.mode === 'quote-only') {
+        return {
+            tone: 'ok',
+            label: '收盘确认结论',
+            detail: '实时价没有参与指标和结论，右侧仍按最后确认K线计算。'
+        };
+    }
+    return {
+        tone: 'ok',
+        label: '收盘确认结论',
+        detail: '历史K线已确认，右侧结论按确认数据计算。'
+    };
+}
+
+function renderStatusSmokeAttrs(item, id = state.id, source = '') {
+    const display = state.displayStatus?.[id] || {};
+    const confirmed = state.confirmedStatus?.[id] || {};
+    const lastConfirmedDate = state.rawData?.[id]?.[state.rawData[id].length - 1]?.date || confirmed.lastDate || '';
+    const attrs = {
+        'data-dg-source': source,
+        'data-dg-display-mode': display.mode || 'unknown',
+        'data-dg-display-reason': display.reason || '',
+        'data-dg-confirmed-status': confirmed.status || 'unknown',
+        'data-dg-confirmed-date': lastConfirmedDate,
+        'data-dg-item-date': item?.date || '',
+        'data-dg-item-live': item?._isLive ? 'true' : 'false'
+    };
+    return Object.entries(attrs)
+        .map(([key, value]) => `${key}="${escapeHTML(value)}"`)
+        .join(' ');
+}
+
+function renderConclusionStatusBadge(item, id = state.id) {
+    const status = getConclusionStatusBadge(item, id);
+    return `
+        <span class="conclusion-status-pill conclusion-status-${status.tone}" title="${escapeHTML(status.detail)}" ${renderStatusSmokeAttrs(item, id, 'right-conclusion')}>
+            <span class="conclusion-status-dot"></span>
+            <span class="conclusion-status-label">${escapeHTML(status.label)}</span>
+        </span>
+    `;
+}
+
 function generateAnalysisHTML(idx, full, meta) {
     const fmt = v => v ? v.toFixed(2) : '--';
     if (!full || !full[idx]) return '';
@@ -684,13 +736,17 @@ function generateAnalysisHTML(idx, full, meta) {
     const cooldownHtml = meta.inCooldown ? `<div style="position:absolute; top:0; right:0; background:var(--yellow); color:#000; font-size:9px; font-weight:800; padding:2px 8px; border-bottom-left-radius:6px; border-top-right-radius:7px;">防守冷静期</div>` : '';
     const titleText = state.mode === 'index' ? '大盘每日结论' : '新手每日结论';
     const evidenceTitle2 = state.mode === 'index' ? '指数动能' : '个股信号';
+    const conclusionStatusHtml = renderConclusionStatusBadge(full[idx], state.id);
 
     const actionPanelHtml = `
         <div class="action-panel ${panelClass}">
             ${cooldownHtml}
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                <div class="block-title" style="border:none; padding-bottom:0; margin:0;">${titleText}</div>
-                <div class="kicker text-main">${escapeHTML(noviceSummary.state)}</div>
+                <div class="conclusion-title-row">
+                    <div class="block-title" style="border:none; padding-bottom:0; margin:0;">${titleText}</div>
+                    ${conclusionStatusHtml}
+                </div>
+                <div class="kicker text-main conclusion-state-kicker">${escapeHTML(noviceSummary.state)}</div>
             </div>
             <div class="action-line">
                 <div class="action-name ${decision.simpleColorClass}">${escapeHTML(noviceSummary.action)}</div>
@@ -716,39 +772,39 @@ function generateAnalysisHTML(idx, full, meta) {
     const evidencePanelHtml = `
         <div class="terminal-block">
             <div class="block-title">关键推导依据</div>
-            <div class="evidence-grid">
-                <div class="evidence-item">
-                    <div class="evidence-label">
-                        <div class="k">大盘定基调</div>
-                        <div class="evidence-source">推导自：四指数趋势温度</div>
+            <div class="evidence-detail-stack">
+                <div class="evidence-detail evidence-detail-market">
+                    <div class="evidence-detail-head">
+                        <div class="evidence-detail-title-wrap">
+                            <div class="evidence-detail-title">大盘定基调</div>
+                            <div class="evidence-detail-meta">推导自：四指数趋势温度</div>
+                        </div>
+                        <div class="evidence-detail-badge ${decision.market.cls === 'bull' ? 'text-bull' : (decision.market.cls === 'bear' ? 'text-bear' : 'text-main')}">${escapeHTML(decision.market.label)}</div>
                     </div>
-                    <div class="right-side">
-                        <div class="v ${decision.market.cls === 'bull' ? 'text-bull' : (decision.market.cls === 'bear' ? 'text-bear' : 'text-main')}">${escapeHTML(decision.market.label)}</div>
-                        <div class="h">${escapeHTML(decision.market.reason)}</div>
-                        <div class="h">${escapeHTML(noviceEvidence.marketHint)}</div>
-                    </div>
+                    <div class="evidence-detail-body">${escapeHTML(decision.market.reason)}</div>
+                    <div class="evidence-detail-meta">${escapeHTML(noviceEvidence.marketHint)}</div>
                 </div>
-                <div class="evidence-item">
-                    <div class="evidence-label">
-                        <div class="k">${evidenceTitle2}</div>
-                        <div class="evidence-source">${signalSourceText}</div>
+                <div class="evidence-detail evidence-detail-signal">
+                    <div class="evidence-detail-head">
+                        <div class="evidence-detail-title-wrap">
+                            <div class="evidence-detail-title">${evidenceTitle2}</div>
+                            <div class="evidence-detail-meta">${signalSourceText}</div>
+                        </div>
+                        <div class="evidence-detail-badge">${escapeHTML(decisionSummary.label)}</div>
                     </div>
-                    <div class="right-side">
-                        <div class="v">${escapeHTML(decisionSummary.label)}</div>
-                        <div class="h">信号积分 ${meta.windowScore}/${STRATEGY.buyThreshold}</div>
-                        <div class="h">${escapeHTML(noviceEvidence.signalHint)}</div>
-                    </div>
+                    <div class="evidence-detail-body">信号积分 ${meta.windowScore}/${STRATEGY.buyThreshold}</div>
+                    <div class="evidence-detail-meta">${escapeHTML(noviceEvidence.signalHint)}</div>
                 </div>
-                <div class="evidence-item">
-                    <div class="evidence-label">
-                        <div class="k">风控/防守</div>
-                        <div class="evidence-source">推导自：风险评分 / L 类离场 / 持仓状态</div>
+                <div class="evidence-detail evidence-detail-guard">
+                    <div class="evidence-detail-head">
+                        <div class="evidence-detail-title-wrap">
+                            <div class="evidence-detail-title">风控/防守</div>
+                            <div class="evidence-detail-meta">推导自：风险评分 / L 类离场 / 持仓状态</div>
+                        </div>
+                        <div class="evidence-detail-badge ${guardTextClass}">${escapeHTML(guardValue)}</div>
                     </div>
-                    <div class="right-side">
-                        <div class="v ${guardTextClass}">${escapeHTML(guardValue)}</div>
-                        <div class="h">${escapeHTML(guardHint || '暂无额外风控提示')}</div>
-                        <div class="h">${escapeHTML(noviceEvidence.guardHint)}</div>
-                    </div>
+                    <div class="evidence-detail-body">${escapeHTML(guardHint || '暂无额外风控提示')}</div>
+                    <div class="evidence-detail-meta">${escapeHTML(noviceEvidence.guardHint)}</div>
                 </div>
             </div>
         </div>
@@ -772,6 +828,7 @@ function safeUpdateSidebar() {
         
         const item = rd[safeIdx];
         const decision = item._decision || null;
+        const displayMode = state.displayStatus?.[state.id]?.mode || '';
         const cacheKey = [
             state.id,
             item.date,
@@ -779,6 +836,8 @@ function safeUpdateSidebar() {
             state.period,
             item.close,
             item.vol,
+            displayMode,
+            !!item._isLive,
             getDecisionSignature(decision),
             SIGNAL_VERSION,
             APP_BUILD
@@ -871,6 +930,8 @@ function updateSidebarPriceOnly() {
 
     // 成交额
     diffUpdate(cPrice.querySelector('.amt-row .val'), fmt(item.amt));
+
+    if (typeof updateDataStatusRefreshBadge === 'function') updateDataStatusRefreshBadge(item, state.id, rd);
 }
 
 function ensureAnalysisPanelVisibleForRealtimeRefresh() {
@@ -918,7 +979,10 @@ function applySidebarHTML(bundle, cacheKey = '') {
     cAnalysis.style.display = 'flex';
     cAnalysis.style.flexDirection = 'column';
 
-    if (cacheKey && cPrice.dataset.key === cacheKey) return;
+    if (cacheKey && cPrice.dataset.key === cacheKey) {
+        updateDataStatusRefreshBadge();
+        return;
+    }
 
     var oldPriceEl = cPrice.querySelector('.price-main');
     var oldPrice = oldPriceEl ? parseFloat(oldPriceEl.textContent) : null;
@@ -959,6 +1023,89 @@ function applySidebarHTML(bundle, cacheKey = '') {
             newPriceEl.classList.add('price-pulse');
             setTimeout(function() { newPriceEl.classList.remove('price-pulse'); }, 400);
         }
+    }
+    updateDataStatusRefreshBadge();
+}
+
+function getDataStatusBadge(item, id = state.id, full = getActiveData()) {
+    const display = state.displayStatus?.[id] || {};
+    const confirmed = state.confirmedStatus?.[id] || {};
+    const lastConfirmedDate = state.rawData?.[id]?.[state.rawData[id].length - 1]?.date || confirmed.lastDate || '';
+    const itemDate = item?.date || '';
+    const isLiveOverlay = !!item?._isLive || display.mode === 'live-overlay';
+    const quoteOnly = display.mode === 'quote-only';
+    const confirmedFresh = confirmed.status === 'fresh' || (!!lastConfirmedDate && lastConfirmedDate >= getExpectedConfirmedDate());
+
+    if (isLiveOverlay) {
+        return {
+            tone: 'info',
+            label: '盘中临时',
+            detail: '图表最后一根会随实时行情变化，收盘后等历史K线确认。'
+        };
+    }
+    if (quoteOnly) {
+        return {
+            tone: 'warn',
+            label: '仅左侧报价',
+            detail: '图表仍停在最后确认K线，实时价没有参与指标和结论。'
+        };
+    }
+    if (confirmed.status === 'failed') {
+        return {
+            tone: 'warn',
+            label: '历史同步失败',
+            detail: '正在使用本地缓存，等历史K线同步成功后再确认结论。'
+        };
+    }
+    if (confirmed.status === 'stale' || !confirmedFresh) {
+        return {
+            tone: 'warn',
+            label: '历史待补齐',
+            detail: lastConfirmedDate ? `历史K线只确认到 ${lastConfirmedDate}，最新结论需等同步后确认。` : '历史K线还没同步完成，先不要把当前结论当最终状态。'
+        };
+    }
+    if (itemDate && lastConfirmedDate && itemDate <= lastConfirmedDate) {
+        return {
+            tone: 'ok',
+            label: '收盘确认',
+            detail: '历史K线已确认，指标和结论按这批数据计算。'
+        };
+    }
+    return {
+        tone: 'warn',
+        label: '等待确认',
+        detail: '历史K线状态还在确认中，先按提示谨慎查看。'
+    };
+}
+
+function renderDataStatusRefreshBadge(item, id = state.id, full = getActiveData()) {
+    const status = getDataStatusBadge(item, id, full);
+    return `
+        <span class="data-status-pill data-status-${status.tone}" title="${escapeHTML(status.detail)}" ${renderStatusSmokeAttrs(item, id, 'refresh-bar')}>
+            <span class="data-status-dot"></span>
+            <span class="data-status-label">${escapeHTML(status.label)}</span>
+        </span>
+    `;
+}
+
+function updateDataStatusRefreshBadge(item = null, id = state.id, full = null) {
+    const bar = document.getElementById('lastRefreshBar');
+    if (!bar) return;
+    const data = full || getActiveData();
+    const idx = item ? -1 : getSafeIndex(data);
+    const currentItem = item || (idx >= 0 && data ? data[idx] : null);
+    const existing = bar.querySelector('.data-status-pill');
+    if (!currentItem) {
+        if (existing) existing.remove();
+        return;
+    }
+    const html = renderDataStatusRefreshBadge(currentItem, id, data).trim();
+    if (existing) {
+        if (existing.outerHTML !== html) existing.outerHTML = html;
+    } else if (typeof bar.insertAdjacentHTML === 'function') {
+        bar.insertAdjacentHTML('beforeend', html);
+    } else {
+        bar.innerHTML = (bar.innerHTML || '') + html;
     }
 }
 
