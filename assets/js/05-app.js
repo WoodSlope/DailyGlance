@@ -1281,6 +1281,7 @@ async function init() {
     showLoading(); 
     await openDB(); 
     await loadWatchlist();
+    if (typeof hydrateLiveOverlayCacheState === 'function') hydrateLiveOverlayCacheState();
     try {
         const sc = await dbGet('stock_cache');
         stockCache = (sc && Array.isArray(sc.data)) ? sc.data : [];

@@ -568,12 +568,15 @@ function getNoviceEvidenceCopy(meta, decision, displayExitLevel, guardHint) {
 
 function getConclusionStatusBadge(item, id = state.id) {
     const display = state.displayStatus?.[id] || {};
-    const isLiveOverlay = !!item?._isLive || display.mode === 'live-overlay';
+    const isLiveOverlay = !!item?._isLive || display.mode === 'live-overlay' || display.mode === 'cached-live-overlay';
+    const cacheAgeText = display.mode === 'cached-live-overlay' && Number.isFinite(Number(display.cacheAgeMs)) ? `，缓存 ${Math.ceil(Number(display.cacheAgeMs) / 1000)} 秒前` : '';
     if (isLiveOverlay) {
         return {
             tone: 'info',
-            label: '盘中临时结论',
-            detail: '最后一根K线会随实时行情变化，收盘后等历史K线确认。'
+            label: display.mode === 'cached-live-overlay' ? '缓存盘中临时结论' : '盘中临时结论',
+            detail: display.mode === 'cached-live-overlay'
+                ? `短TTL缓存的实时K线参与了右侧结论，${Math.ceil((Number(display.cacheAgeMs) || 0) / 1000)} 秒内可继续沿用，收盘后仍以历史K线确认为准。`
+                : '最后一根K线会随实时行情变化，收盘后等历史K线确认。'
         };
     }
     if (display.mode === 'quote-only') {
@@ -601,7 +604,9 @@ function renderStatusSmokeAttrs(item, id = state.id, source = '') {
         'data-dg-confirmed-status': confirmed.status || 'unknown',
         'data-dg-confirmed-date': lastConfirmedDate,
         'data-dg-item-date': item?.date || '',
-        'data-dg-item-live': item?._isLive ? 'true' : 'false'
+        'data-dg-item-live': item?._isLive ? 'true' : 'false',
+        'data-dg-live-cached': item?._isCachedLive ? 'true' : 'false',
+        'data-dg-live-cache-age-ms': Number.isFinite(Number(display.cacheAgeMs)) ? String(Math.max(0, Math.round(Number(display.cacheAgeMs)))) : ''
     };
     return Object.entries(attrs)
         .map(([key, value]) => `${key}="${escapeHTML(value)}"`)
@@ -1043,15 +1048,17 @@ function getDataStatusBadge(item, id = state.id, full = getActiveData()) {
     const confirmed = state.confirmedStatus?.[id] || {};
     const lastConfirmedDate = state.rawData?.[id]?.[state.rawData[id].length - 1]?.date || confirmed.lastDate || '';
     const itemDate = item?.date || '';
-    const isLiveOverlay = !!item?._isLive || display.mode === 'live-overlay';
+    const isLiveOverlay = !!item?._isLive || display.mode === 'live-overlay' || display.mode === 'cached-live-overlay';
     const quoteOnly = display.mode === 'quote-only';
     const confirmedFresh = confirmed.status === 'fresh' || (!!lastConfirmedDate && lastConfirmedDate >= getExpectedConfirmedDate());
 
     if (isLiveOverlay) {
         return {
             tone: 'info',
-            label: '盘中临时',
-            detail: '图表最后一根会随实时行情变化，收盘后等历史K线确认。'
+            label: display.mode === 'cached-live-overlay' ? '缓存盘中' : '盘中临时',
+            detail: display.mode === 'cached-live-overlay'
+                ? `图表最后一根来自短TTL缓存实时行情，约 ${Math.ceil((Number(display.cacheAgeMs) || 0) / 1000)} 秒内有效，收盘后等历史K线确认。`
+                : '图表最后一根会随实时行情变化，收盘后等历史K线确认。'
         };
     }
     if (quoteOnly) {

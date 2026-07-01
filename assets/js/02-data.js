@@ -135,9 +135,11 @@ function normalizeConfirmedHistoryData(rows, id) {
     return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 function getQuoteBar(id) {
+    syncExpiredCachedLiveOverlay(id);
     return state.liveQuotes?.[id] || state.liveBars?.[id] || null;
 }
 function getMergedLiveDailyData(id) {
+    syncExpiredCachedLiveOverlay(id);
     const confirmed = state.rawData[id] || [];
     const liveBar = state.liveBars?.[id];
     if (!liveBar) return confirmed;
@@ -151,6 +153,7 @@ function getMergedLiveDailyData(id) {
 }
 
 function getMergedLiveWeeklyData(id) {
+    syncExpiredCachedLiveOverlay(id);
     if (!state.liveBars?.[id]) return state.weeklyData[id];
     if (!state.liveWeeklyData?.[id]) state.liveWeeklyData[id] = convertDailyToWeekly(getMergedLiveDailyData(id));
     return state.liveWeeklyData[id];
@@ -181,6 +184,110 @@ function getVisibleQuoteChangeBase(id, visibleData = getVisibleQuoteData(id)) {
     return 1;
 }
 
+function getLiveOverlayCacheKey(id) {
+    return `${SYS_CONFIG.LIVE_OVERLAY_CACHE_KEY}:${id}`;
+}
+
+function hydrateLiveOverlayCacheState() {
+    if (!state.liveOverlayCache) state.liveOverlayCache = {};
+    try {
+        const raw = localStorage.getItem(SYS_CONFIG.LIVE_OVERLAY_CACHE_KEY);
+        state.liveOverlayCache = raw ? JSON.parse(raw) || {} : {};
+    } catch (error) {
+        state.liveOverlayCache = {};
+    }
+    return state.liveOverlayCache;
+}
+
+function persistLiveOverlayCacheState() {
+    if (!state.liveOverlayCache) state.liveOverlayCache = {};
+    try {
+        localStorage.setItem(SYS_CONFIG.LIVE_OVERLAY_CACHE_KEY, JSON.stringify(state.liveOverlayCache));
+    } catch (error) {}
+}
+
+function normalizeLiveOverlayCacheBar(id, bar) {
+    if (!id || !bar || !isValidPrice(bar.close, id)) return null;
+    return {
+        date: bar.date || getTodayDate(),
+        open: Number(bar.open) || Number(bar.close) || 0,
+        high: Number.isFinite(Number(bar.high)) ? Number(bar.high) : Number(bar.close) || 0,
+        low: Number.isFinite(Number(bar.low)) ? Number(bar.low) : Number(bar.close) || 0,
+        close: Number(bar.close),
+        prevClose: Number.isFinite(Number(bar.prevClose)) ? Number(bar.prevClose) : 0,
+        vol: Number.isFinite(Number(bar.vol)) ? Number(bar.vol) : 0,
+        amt: Number.isFinite(Number(bar.amt)) ? Number(bar.amt) : 0,
+        quoteTime: bar.quoteTime || '',
+        quoteDateSource: bar.quoteDateSource || '',
+        _isLive: true,
+        _isCachedLive: true
+    };
+}
+
+function getLiveOverlayCacheEntry(id) {
+    const store = hydrateLiveOverlayCacheState();
+    const entry = store[id];
+    if (!entry || !entry.bar) return null;
+    const cachedAt = Number(entry.cachedAt) || 0;
+    const cacheAgeMs = Number.isFinite(Number(entry.cacheAgeMs)) ? Number(entry.cacheAgeMs) : (cachedAt ? Date.now() - cachedAt : Infinity);
+    const bar = normalizeLiveOverlayCacheBar(id, entry.bar);
+    if (!bar || !cachedAt || cacheAgeMs > SYS_CONFIG.LIVE_OVERLAY_CACHE_TTL_MS) {
+        if (entry) {
+            delete store[id];
+            persistLiveOverlayCacheState();
+        }
+        return null;
+    }
+    return {
+        id,
+        cachedAt,
+        cacheAgeMs,
+        bar,
+        source: entry.source || 'api'
+    };
+}
+
+function setLiveOverlayCache(id, bar, meta = {}) {
+    if (!id) return false;
+    const normalizedBar = normalizeLiveOverlayCacheBar(id, bar);
+    if (!normalizedBar) return false;
+    if (!state.liveOverlayCache) hydrateLiveOverlayCacheState();
+    state.liveOverlayCache[id] = {
+        cachedAt: Number(meta.cachedAt) || Date.now(),
+        cacheAgeMs: Number.isFinite(Number(meta.cacheAgeMs)) ? Number(meta.cacheAgeMs) : 0,
+        source: meta.source || 'api',
+        bar: normalizedBar
+    };
+    persistLiveOverlayCacheState();
+    return true;
+}
+
+function clearLiveOverlayCache(id) {
+    if (!state.liveOverlayCache) hydrateLiveOverlayCacheState();
+    if (state.liveOverlayCache && state.liveOverlayCache[id]) {
+        delete state.liveOverlayCache[id];
+        persistLiveOverlayCacheState();
+    }
+}
+
+function canUseCachedLiveOverlay(id, series, cacheEntry) {
+    if (!cacheEntry || !cacheEntry.bar) return { ok: false, reason: 'missing-cache' };
+    if (!isMarketOpen()) return { ok: false, reason: 'market-closed' };
+    const overlayGate = canUseRealtimeOverlay(id, series, cacheEntry.bar);
+    if (!overlayGate.ok) return overlayGate;
+    if (cacheEntry.cacheAgeMs > SYS_CONFIG.LIVE_OVERLAY_CACHE_TTL_MS) return { ok: false, reason: 'cache-expired' };
+    return { ok: true, reason: '' };
+}
+
+function tryApplyCachedLiveOverlay(id, series) {
+    if (!id || !series || !series.length) return false;
+    const cacheEntry = getLiveOverlayCacheEntry(id);
+    const cachedGate = canUseCachedLiveOverlay(id, series, cacheEntry);
+    if (!cachedGate.ok) return false;
+    setLiveBar(id, cacheEntry.bar, 'cache', { cachedAt: cacheEntry.cachedAt, cacheAgeMs: cacheEntry.cacheAgeMs, source: cacheEntry.source });
+    return true;
+}
+
 function setDisplayStatus(id, patch = {}) {
     if (!state.displayStatus) state.displayStatus = {};
     state.displayStatus[id] = { ...(state.displayStatus[id] || {}), ...patch };
@@ -191,10 +298,17 @@ function setConfirmedStatus(id, patch = {}) {
     state.confirmedStatus[id] = { ...(state.confirmedStatus[id] || {}), ...patch };
 }
 
-function setLiveQuote(id, bar, quality = 'quote-only', reason = '') {
+function setLiveQuote(id, bar, quality = 'quote-only', reason = '', meta = {}) {
     if (!id || !bar || !isValidPrice(bar.close, id)) return false;
     if (!state.liveQuotes) state.liveQuotes = {};
-    state.liveQuotes[id] = { ...bar, _isLiveQuote: true, _quoteQuality: quality, _rejectReason: reason };
+    state.liveQuotes[id] = {
+        ...bar,
+        _isLiveQuote: true,
+        _quoteQuality: quality,
+        _rejectReason: reason,
+        _isCachedLive: !!meta.isCachedLive,
+        _cachedAt: Number(meta.cachedAt) || 0
+    };
     if (quality !== 'valid-overlay') {
         setDisplayStatus(id, {
             mode: 'quote-only',
@@ -206,14 +320,31 @@ function setLiveQuote(id, bar, quality = 'quote-only', reason = '') {
     return true;
 }
 
-function setLiveBar(id, bar) {
+function setLiveBar(id, bar, source = 'api', meta = {}) {
     if (!id || !bar || !isValidPrice(bar.close, id)) return false;
     if (!state.liveBars) state.liveBars = {};
     if (!state.liveWeeklyData) state.liveWeeklyData = {};
-    setLiveQuote(id, bar, 'valid-overlay');
-    state.liveBars[id] = { ...bar, _isLive: true };
+    const isCachedLive = source === 'cache' || !!meta.isCachedLive;
+    const cachedAt = Number(meta.cachedAt) || (isCachedLive ? Date.now() : 0);
+    const cacheAgeMs = Number.isFinite(Number(meta.cacheAgeMs)) ? Number(meta.cacheAgeMs) : (isCachedLive && cachedAt ? Math.max(0, Date.now() - cachedAt) : 0);
+    setLiveQuote(id, bar, 'valid-overlay', '', { isCachedLive, cachedAt });
+    state.liveBars[id] = {
+        ...bar,
+        _isLive: true,
+        _isCachedLive: isCachedLive,
+        _cachedAt: cachedAt,
+        _cacheAgeMs: cacheAgeMs
+    };
     state.liveWeeklyData[id] = convertDailyToWeekly(getMergedLiveDailyData(id));
-    setDisplayStatus(id, { mode: 'live-overlay', reason: '', quoteDate: bar.date || '', quoteAt: Date.now() });
+    setDisplayStatus(id, {
+        mode: isCachedLive ? 'cached-live-overlay' : 'live-overlay',
+        reason: isCachedLive ? '短TTL缓存盘中' : '',
+        quoteDate: bar.date || '',
+        quoteAt: Date.now(),
+        cachedAt,
+        cacheAgeMs
+    });
+    if (!isCachedLive) setLiveOverlayCache(id, bar, { cachedAt: Date.now(), source: 'api' });
     if (id === state.id) {
         state.pendingIndicatorMutation = { mode: 'incremental', startIdx: Math.max(0, (getActiveData()?.length || 1) - 1) };
         if (typeof markIndicatorsDirty === 'function') markIndicatorsDirty();
@@ -226,6 +357,17 @@ function clearLiveBar(id) {
     if (!state.liveWeeklyData) state.liveWeeklyData = {};
     delete state.liveBars[id];
     delete state.liveWeeklyData[id];
+}
+
+function syncExpiredCachedLiveOverlay(id) {
+    const live = state.liveBars?.[id];
+    if (!live || !live._isCachedLive) return false;
+    const cachedAt = Number(live._cachedAt) || 0;
+    if (cachedAt && Date.now() - cachedAt <= SYS_CONFIG.LIVE_OVERLAY_CACHE_TTL_MS) return false;
+    clearLiveBar(id);
+    clearLiveQuote(id);
+    setDisplayStatus(id, { mode: 'confirmed', reason: '', quoteDate: '', quoteAt: 0, cachedAt: 0, cacheAgeMs: 0 });
+    return true;
 }
 
 function clearLiveQuote(id) {
@@ -669,7 +811,11 @@ async function syncData(id) {
             const incremental = await syncDataIncremental(id); 
             if(incremental && incremental.length > 0) { await dbSet(id, incremental); cached.length = 0; Array.prototype.push.apply(cached, incremental); } 
             const rt = await requestManager.fetchRealtimeWithThrottle(id); 
-            applyRealtimeQuoteForSeries(id, cached, rt);
+            if (rt) applyRealtimeQuoteForSeries(id, cached, rt);
+            else tryApplyCachedLiveOverlay(id, incremental && incremental.length > 0 ? incremental : cached);
+            if (!state.liveBars?.[id] && state.displayStatus?.[id]?.mode !== 'quote-only') {
+                setDisplayStatus(id, { mode: 'confirmed', reason: '', quoteDate: '', quoteAt: 0, cachedAt: 0, cacheAgeMs: 0 });
+            }
             return cached; 
         } 
         setHistoryRefreshMeta(id, { lastAttemptAt: Date.now(), lastDate: cachedLastDate });
@@ -678,7 +824,11 @@ async function syncData(id) {
             setHistoryRefreshMeta(id, { lastSuccessAt: Date.now(), lastDate: data[data.length - 1]?.date || '' });
             await dbSet(id, data);
             const rt = await requestManager.fetchRealtimeWithThrottle(id);
-            applyRealtimeQuoteForSeries(id, data, rt);
+            if (rt) applyRealtimeQuoteForSeries(id, data, rt);
+            else tryApplyCachedLiveOverlay(id, data);
+            if (!state.liveBars?.[id] && state.displayStatus?.[id]?.mode !== 'quote-only') {
+                setDisplayStatus(id, { mode: 'confirmed', reason: '', quoteDate: '', quoteAt: 0, cachedAt: 0, cacheAgeMs: 0 });
+            }
             return data;
         } 
         setConfirmedStatus(id, { source: 'cache', status: 'stale', lastDate: cachedLastDate, syncedAt: Date.now() });
@@ -693,6 +843,9 @@ async function syncData(id) {
         const data = await syncDataWithHistory(id); 
         if(data && data.length >= 30) { setHistoryRefreshMeta(id, { lastSuccessAt: Date.now(), lastDate: data[data.length - 1]?.date || '' }); await dbSet(id, data); return data; } 
         setConfirmedStatus(id, { source: 'cache', status: hasEnough ? 'stale' : 'failed', lastDate: cachedLastDate, syncedAt: Date.now() });
+        if (!state.liveBars?.[id] && state.displayStatus?.[id]?.mode !== 'quote-only') {
+            setDisplayStatus(id, { mode: 'confirmed', reason: '', quoteDate: '', quoteAt: 0, cachedAt: 0, cacheAgeMs: 0 });
+        }
         return null; 
     } 
 }
@@ -914,6 +1067,11 @@ async function clearAllCache() {
     } 
     state.rawData = {}; 
     state.weeklyData = {}; 
+    state.liveBars = {};
+    state.liveQuotes = {};
+    state.liveWeeklyData = {};
+    state.liveOverlayCache = {};
+    try { localStorage.removeItem(SYS_CONFIG.LIVE_OVERLAY_CACHE_KEY); } catch(e) {}
     derivedIndicatorCache.clear();
     localStorage.removeItem('quant_strategy'); 
     location.reload(); 

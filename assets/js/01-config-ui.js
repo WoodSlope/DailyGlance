@@ -6,8 +6,21 @@
 const rootStyle = getComputedStyle(document.documentElement);
 const getCssVar = (name) => rootStyle.getPropertyValue(name).trim();
 
-const APP_BUILD = '2026-07-01-01';
-const SYS_CONFIG = { THROTTLE_MS: 30000, REQ_TIMEOUT: 5000, UPDATE_COOLDOWN: 60000, VOL_SURGE_RATIO: 1.5, VOL_SHRINK_RATIO: 0.9, EX_RIGHT_TOLERANCE: 0.02, RENDER_CACHE_SIZE: 50, HISTORY_FRESH_MS: 15000, HISTORY_REFRESH_COOLDOWN_MS: 8000, SIDEBAR_SYNC_CONCURRENCY: 3 };
+const APP_BUILD = '2026-07-01-02';
+const SYS_CONFIG = {
+    THROTTLE_MS: 30000,
+    REQ_TIMEOUT: 5000,
+    UPDATE_COOLDOWN: 60000,
+    VOL_SURGE_RATIO: 1.5,
+    VOL_SHRINK_RATIO: 0.9,
+    EX_RIGHT_TOLERANCE: 0.02,
+    RENDER_CACHE_SIZE: 50,
+    HISTORY_FRESH_MS: 15000,
+    HISTORY_REFRESH_COOLDOWN_MS: 8000,
+    SIDEBAR_SYNC_CONCURRENCY: 3,
+    LIVE_OVERLAY_CACHE_TTL_MS: 45000,
+    LIVE_OVERLAY_CACHE_KEY: 'dg_live_overlay_cache_v1'
+};
 
 const MA_OPTIONS = [5, 10, 20, 30, 60, 120, 250];
 const MA_COLORS = { 5: '#ffffff', 10: '#f5a623', 20: '#c084fc', 30: '#60a5fa', 60: '#f472b6', 120: '#4ade80', 250: '#94a3b8' };
@@ -33,6 +46,7 @@ let state = {
     weeklyData: {},
     liveBars: {},
     liveQuotes: {},
+    liveOverlayCache: {},
     liveWeeklyData: {},
     confirmedStatus: {},
     displayStatus: {},
