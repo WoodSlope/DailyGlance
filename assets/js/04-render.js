@@ -23,6 +23,19 @@ function refreshChartsIfNeeded() {
     Object.values(state.charts).forEach(c => { if (c) { if (typeof c.draw === 'function') c.draw(); else c.update('none'); } });
 }
 
+function updateChartDragPreview() {
+    const boxes = document.querySelectorAll('.main-chart-box, .volume-chart-box, .macd-chart-box, .kdj-chart-box, #crosshairOverlay');
+    if (!boxes.length) return;
+    const dx = chartDragPan ? (chartDragPan.currentX - chartDragPan.startX) : 0;
+    boxes.forEach(el => { el.style.transform = dx ? `translateX(${dx}px)` : 'translateX(0px)'; });
+}
+
+function clearChartDragPreview() {
+    const boxes = document.querySelectorAll('.main-chart-box, .volume-chart-box, .macd-chart-box, .kdj-chart-box, #crosshairOverlay');
+    if (!boxes.length) return;
+    boxes.forEach(el => { el.style.transform = 'translateX(0px)'; });
+}
+
 function isHistoricalVisualState(data = getActiveData(), idx = data ? getSafeIndex(data) : -1) {
     return !!(data && data.length && idx >= 0 && idx < data.length - 1);
 }
@@ -265,6 +278,7 @@ function getChartPanBarWidth() {
 function applyChartDragPan(force = false) {
     chartDragPanRAF = 0;
     if (!chartDragPan) return;
+    updateChartDragPreview();
     const barWidth = chartDragPan.barWidth;
     if (!barWidth) return;
     const rawDelta = chartDragPan.currentX - chartDragPan.lastAppliedX;
@@ -301,15 +315,14 @@ function startChartDragPan(event) {
         chartDragPan.target.setPointerCapture(event.pointerId);
     }
     chartDragPan.target?.closest?.('.main-chart-box')?.classList?.add('drag-panning');
+    updateChartDragPreview();
     event?.preventDefault?.();
 }
 
 function moveChartDragPan(event) {
     if (!chartDragPan) return;
     chartDragPan.currentX = event.clientX;
-    if (!chartDragPanRAF) {
-        chartDragPanRAF = requestAnimationFrame(() => applyChartDragPan());
-    }
+    updateChartDragPreview();
     event?.preventDefault?.();
 }
 
@@ -321,6 +334,7 @@ function finishChartDragPan(event) {
         try { target.releasePointerCapture(event.pointerId); } catch(e) {}
     }
     target?.closest?.('.main-chart-box')?.classList?.remove('drag-panning');
+    clearChartDragPreview();
     if (chartDragPan.didPan) {
         safeUpdateSidebar();
         updateFreezeBadge();
@@ -498,9 +512,10 @@ function renderChartViewport(perfTrace) {
             const allY = [...md.diff.slice(visibleRange.start, visibleRange.end + 1), ...md.dea.slice(visibleRange.start, visibleRange.end + 1), ...macdBarArr];
             const yMin = Math.min(...allY.filter(v => v != null));
             const yMax = Math.max(...allY.filter(v => v != null));
-            const pad = Math.max(Math.abs(yMax - yMin) * 0.1, 1);
-            macdOpts.scales.y.min = Math.floor(yMin - pad);
-            macdOpts.scales.y.max = Math.ceil(yMax + pad);
+            const spread = Math.abs(yMax - yMin);
+            const pad = Math.max(spread * 0.1, Math.max(Math.abs(yMin), Math.abs(yMax)) * 0.06, 0.02);
+            macdOpts.scales.y.min = yMin - pad;
+            macdOpts.scales.y.max = yMax + pad;
         }
         uc('macd', 'macdChart', { 
             type: 'line', 

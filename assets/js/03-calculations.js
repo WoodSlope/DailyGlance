@@ -25,6 +25,8 @@ const Calcs = {
         }
         return r;
     },
+    macdDeaAlpha: 2 / (9 + 1),
+    macdDeaPrevAlpha: 1 - (2 / (9 + 1)),
     macd: (data) => {
         let e12 = [], e26 = [], diff = [], dea = [], bar = [];
         for (let i = 0; i < data.length; i++) {
@@ -32,7 +34,7 @@ const Calcs = {
             if (i === 0) e12[i] = e26[i] = c;
             else { e12[i] = c * 2 / 13 + e12[i - 1] * 11 / 13; e26[i] = c * 2 / 27 + e26[i - 1] * 25 / 27; }
             diff[i] = e12[i] - e26[i];
-            dea[i] = (i === 0) ? diff[i] : (diff[i] * 2 / 11 + dea[i - 1] * 9 / 11);
+            dea[i] = (i === 0) ? diff[i] : (diff[i] * Calcs.macdDeaAlpha + dea[i - 1] * Calcs.macdDeaPrevAlpha);
             bar[i] = (diff[i] - dea[i]) * 2;
         }
         return { _e12: e12, _e26: e26, diff, dea, bar };
@@ -50,7 +52,7 @@ const Calcs = {
             e12[i] = c * 2 / 13 + (e12[i - 1] || 0) * 11 / 13;
             e26[i] = c * 2 / 27 + (e26[i - 1] || 0) * 25 / 27;
             diff[i] = e12[i] - e26[i];
-            dea[i] = diff[i] * 2 / 11 + (dea[i - 1] || 0) * 9 / 11;
+            dea[i] = diff[i] * Calcs.macdDeaAlpha + (dea[i - 1] || 0) * Calcs.macdDeaPrevAlpha;
             bar[i] = (diff[i] - dea[i]) * 2;
         }
         return { _e12: e12, _e26: e26, diff, dea, bar };
