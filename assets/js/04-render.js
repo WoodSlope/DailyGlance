@@ -26,8 +26,7 @@ function refreshChartsIfNeeded() {
 function updateChartDragPreview() {
     const boxes = document.querySelectorAll('.main-chart-box, .volume-chart-box, .macd-chart-box, .kdj-chart-box, #crosshairOverlay');
     if (!boxes.length) return;
-    const dx = chartDragPan ? (chartDragPan.currentX - chartDragPan.startX) : 0;
-    boxes.forEach(el => { el.style.transform = dx ? `translateX(${dx}px)` : 'translateX(0px)'; });
+    boxes.forEach(el => { el.style.transform = 'translateX(0px)'; });
 }
 
 function clearChartDragPreview() {
@@ -306,6 +305,7 @@ function applyChartDragPan(force = false) {
         chartDragPan.didPan = true;
         clearStaleTooltips();
         drawViewport();
+        updateChartDragPreview();
     }
 }
 
@@ -329,7 +329,7 @@ function startChartDragPan(event) {
     if (chartDragPan.target?.setPointerCapture && event.pointerId != null) {
         chartDragPan.target.setPointerCapture(event.pointerId);
     }
-    chartDragPan.target?.closest?.('.main-chart-box')?.classList?.add('drag-panning');
+    getChartDragMainBox(chartDragPan.target)?.classList?.add('drag-panning');
     updateChartDragPreview();
     event?.preventDefault?.();
 }
@@ -341,6 +341,7 @@ function moveChartDragPan(event) {
         chartDragPan.didMove = true;
     }
     updateChartDragPreview();
+    if (!chartDragPanRAF) chartDragPanRAF = requestAnimationFrame(() => applyChartDragPan(false));
     event?.preventDefault?.();
 }
 
@@ -351,7 +352,7 @@ function finishChartDragPan(event) {
     if (target?.releasePointerCapture && event?.pointerId != null) {
         try { target.releasePointerCapture(event.pointerId); } catch(e) {}
     }
-    target?.closest?.('.main-chart-box')?.classList?.remove('drag-panning');
+    getChartDragMainBox(target)?.classList?.remove('drag-panning');
     clearChartDragPreview();
     if (chartDragPan.didPan) {
         suppressChartHoverSelection();
@@ -362,6 +363,10 @@ function finishChartDragPan(event) {
         suppressChartHoverSelection();
     }
     chartDragPan = null;
+}
+
+function getChartDragMainBox(target) {
+    return target?.closest?.('.main-chart-box') || document.querySelector('.main-chart-box');
 }
 
 function handleChartWheelPan(event) {
@@ -390,15 +395,15 @@ function handleChartWheelPan(event) {
 
 function bindChartDragPan() {
     if (chartDragPanBound) return;
-    const canvas = document.getElementById('mainChart');
-    if (!canvas) return;
-    canvas.addEventListener('pointerdown', startChartDragPan);
-    canvas.addEventListener('pointermove', moveChartDragPan);
-    canvas.addEventListener('pointerup', finishChartDragPan);
-    canvas.addEventListener('pointercancel', finishChartDragPan);
-    canvas.addEventListener('lostpointercapture', finishChartDragPan);
-    canvas.addEventListener('mousedown', startChartDragPan);
-    canvas.addEventListener('wheel', handleChartWheelPan, { passive: false });
+    const target = document.querySelector('.integrated-container');
+    if (!target) return;
+    target.addEventListener('pointerdown', startChartDragPan);
+    target.addEventListener('pointermove', moveChartDragPan);
+    target.addEventListener('pointerup', finishChartDragPan);
+    target.addEventListener('pointercancel', finishChartDragPan);
+    target.addEventListener('lostpointercapture', finishChartDragPan);
+    target.addEventListener('mousedown', startChartDragPan);
+    target.addEventListener('wheel', handleChartWheelPan, { passive: false });
     document.addEventListener('mousemove', moveChartDragPan);
     document.addEventListener('mouseup', finishChartDragPan);
     chartDragPanBound = true;
