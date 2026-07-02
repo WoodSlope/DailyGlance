@@ -364,6 +364,30 @@ function finishChartDragPan(event) {
     chartDragPan = null;
 }
 
+function handleChartWheelPan(event) {
+    const activeData = getActiveData();
+    if (!activeData || activeData.length <= getViewportLength()) return;
+    const deltaX = Number(event?.deltaX) || 0;
+    if (Math.abs(deltaX) < 1 || Math.abs(deltaX) < Math.abs(Number(event?.deltaY) || 0)) return;
+    const barWidth = getChartPanBarWidth();
+    if (!barWidth) return;
+    const deltaBars = Math.trunc(deltaX / barWidth);
+    if (deltaBars === 0) return;
+
+    event?.preventDefault?.();
+    cancelPendingChartHoverSelection();
+    if (panViewportByBars(deltaBars, activeData)) {
+        suppressChartHoverSelection();
+        clearStaleTooltips();
+        drawViewport();
+        safeUpdateSidebar();
+        updateFreezeBadge();
+        updateCrosshairOverlay();
+    } else {
+        suppressChartHoverSelection();
+    }
+}
+
 function bindChartDragPan() {
     if (chartDragPanBound) return;
     const canvas = document.getElementById('mainChart');
@@ -374,6 +398,7 @@ function bindChartDragPan() {
     canvas.addEventListener('pointercancel', finishChartDragPan);
     canvas.addEventListener('lostpointercapture', finishChartDragPan);
     canvas.addEventListener('mousedown', startChartDragPan);
+    canvas.addEventListener('wheel', handleChartWheelPan, { passive: false });
     document.addEventListener('mousemove', moveChartDragPan);
     document.addEventListener('mouseup', finishChartDragPan);
     chartDragPanBound = true;
