@@ -566,20 +566,35 @@ function getNoviceEvidenceCopy(meta, decision, displayExitLevel, guardHint) {
     return { marketHint, signalHint, guardHint: guardAction };
 }
 
+function getEffectiveDisplayModeForItem(item, id = state.id) {
+    const display = state.displayStatus?.[id] || {};
+    const mode = display.mode || 'unknown';
+    if (item?._isLive) {
+        if (mode === 'cached-live-overlay' && item._isCachedLive) return 'cached-live-overlay';
+        if (mode === 'live-overlay' || mode === 'cached-live-overlay') return mode;
+        return item._isCachedLive ? 'cached-live-overlay' : 'live-overlay';
+    }
+    if (mode === 'live-overlay' || mode === 'cached-live-overlay') {
+        const lastConfirmedDate = state.rawData?.[id]?.[state.rawData[id].length - 1]?.date || state.confirmedStatus?.[id]?.lastDate || '';
+        if (item?.date && (!lastConfirmedDate || item.date <= lastConfirmedDate)) return 'confirmed';
+    }
+    return mode;
+}
+
 function getConclusionStatusBadge(item, id = state.id) {
     const display = state.displayStatus?.[id] || {};
-    const isLiveOverlay = !!item?._isLive || display.mode === 'live-overlay' || display.mode === 'cached-live-overlay';
-    const cacheAgeText = display.mode === 'cached-live-overlay' && Number.isFinite(Number(display.cacheAgeMs)) ? `，缓存 ${Math.ceil(Number(display.cacheAgeMs) / 1000)} 秒前` : '';
+    const effectiveMode = getEffectiveDisplayModeForItem(item, id);
+    const isLiveOverlay = effectiveMode === 'live-overlay' || effectiveMode === 'cached-live-overlay';
     if (isLiveOverlay) {
         return {
             tone: 'info',
-            label: display.mode === 'cached-live-overlay' ? '缓存盘中临时结论' : '盘中临时结论',
-            detail: display.mode === 'cached-live-overlay'
+            label: effectiveMode === 'cached-live-overlay' ? '缓存盘中临时结论' : '盘中临时结论',
+            detail: effectiveMode === 'cached-live-overlay'
                 ? `短TTL缓存的实时K线参与了右侧结论，${Math.ceil((Number(display.cacheAgeMs) || 0) / 1000)} 秒内可继续沿用，收盘后仍以历史K线确认为准。`
                 : '最后一根K线会随实时行情变化，收盘后等历史K线确认。'
         };
     }
-    if (display.mode === 'quote-only') {
+    if (effectiveMode === 'quote-only') {
         return {
             tone: 'ok',
             label: '收盘确认结论',
@@ -596,11 +611,12 @@ function getConclusionStatusBadge(item, id = state.id) {
 function renderStatusSmokeAttrs(item, id = state.id, source = '') {
     const display = state.displayStatus?.[id] || {};
     const confirmed = state.confirmedStatus?.[id] || {};
+    const effectiveMode = getEffectiveDisplayModeForItem(item, id);
     const lastConfirmedDate = state.rawData?.[id]?.[state.rawData[id].length - 1]?.date || confirmed.lastDate || '';
     const attrs = {
         'data-dg-source': source,
-        'data-dg-display-mode': display.mode || 'unknown',
-        'data-dg-display-reason': display.reason || '',
+        'data-dg-display-mode': effectiveMode || 'unknown',
+        'data-dg-display-reason': effectiveMode === display.mode ? (display.reason || '') : '',
         'data-dg-confirmed-status': confirmed.status || 'unknown',
         'data-dg-confirmed-date': lastConfirmedDate,
         'data-dg-item-date': item?.date || '',
@@ -1046,17 +1062,18 @@ function applySidebarHTML(bundle, cacheKey = '') {
 function getDataStatusBadge(item, id = state.id, full = getActiveData()) {
     const display = state.displayStatus?.[id] || {};
     const confirmed = state.confirmedStatus?.[id] || {};
+    const effectiveMode = getEffectiveDisplayModeForItem(item, id);
     const lastConfirmedDate = state.rawData?.[id]?.[state.rawData[id].length - 1]?.date || confirmed.lastDate || '';
     const itemDate = item?.date || '';
-    const isLiveOverlay = !!item?._isLive || display.mode === 'live-overlay' || display.mode === 'cached-live-overlay';
-    const quoteOnly = display.mode === 'quote-only';
+    const isLiveOverlay = effectiveMode === 'live-overlay' || effectiveMode === 'cached-live-overlay';
+    const quoteOnly = effectiveMode === 'quote-only';
     const confirmedFresh = confirmed.status === 'fresh' || (!!lastConfirmedDate && lastConfirmedDate >= getExpectedConfirmedDate());
 
     if (isLiveOverlay) {
         return {
             tone: 'info',
-            label: display.mode === 'cached-live-overlay' ? '缓存盘中' : '盘中临时',
-            detail: display.mode === 'cached-live-overlay'
+            label: effectiveMode === 'cached-live-overlay' ? '缓存盘中' : '盘中临时',
+            detail: effectiveMode === 'cached-live-overlay'
                 ? `图表最后一根来自短TTL缓存实时行情，约 ${Math.ceil((Number(display.cacheAgeMs) || 0) / 1000)} 秒内有效，收盘后等历史K线确认。`
                 : '图表最后一根会随实时行情变化，收盘后等历史K线确认。'
         };

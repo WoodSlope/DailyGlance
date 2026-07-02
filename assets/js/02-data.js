@@ -944,6 +944,7 @@ function applyActiveDataRefresh(id) {
         }
         if (typeof updateSidebarPriceOnly === 'function') updateSidebarPriceOnly();
         if (typeof ensureAnalysisPanelVisibleForRealtimeRefresh === 'function') ensureAnalysisPanelVisibleForRealtimeRefresh();
+        if (typeof updateDataStatusRefreshBadge === 'function') updateDataStatusRefreshBadge(rd[rd.length - 1], id, rd);
         updateNavCapsuleVisuals(rd.length - 1, rd.length);
         return 'same-day-light';
     }
