@@ -231,6 +231,19 @@ let chartDragPanRAF = 0;
 let chartDragPan = null;
 let chartHoverSuppressUntil = 0;
 
+function cancelPendingChartHoverSelection() {
+    pendingHoverIdx = -1;
+    if (hoverRAF) {
+        cancelAnimationFrame(hoverRAF);
+        hoverRAF = null;
+    }
+}
+
+function suppressChartHoverSelection(ms = 350) {
+    cancelPendingChartHoverSelection();
+    chartHoverSuppressUntil = Date.now() + ms;
+}
+
 function resolveVisibleDataIndex(activeData, renderedIndex) {
     if (!activeData || renderedIndex < 0) return -1;
     const visibleRange = getVisibleRange(activeData);
@@ -303,6 +316,7 @@ function startChartDragPan(event) {
     const barWidth = getChartPanBarWidth();
     if (!barWidth) return;
 
+    cancelPendingChartHoverSelection();
     chartDragPan = {
         startX: event.clientX,
         currentX: event.clientX,
@@ -336,6 +350,7 @@ function finishChartDragPan(event) {
     target?.closest?.('.main-chart-box')?.classList?.remove('drag-panning');
     clearChartDragPreview();
     if (chartDragPan.didPan) {
+        suppressChartHoverSelection();
         safeUpdateSidebar();
         updateFreezeBadge();
         updateCrosshairOverlay();

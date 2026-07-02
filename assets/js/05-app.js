@@ -371,8 +371,8 @@ async function saveWatchlist() {
 }
 
 const WATCHLIST_STATUS_META = {
-    candidate: { label: '候选' },
-    hold: { label: '持有' },
+    candidate: { label: '入场' },
+    hold: { label: '持仓' },
     observe: { label: '观察' },
     defend: { label: '防守' },
     pending: { label: '同步' }
@@ -382,24 +382,53 @@ let watchlistRenderRAF = 0;
 let watchlistSnapshotFlushHandle = 0;
 const watchlistSnapshotQueue = new Map();
 
+function getWatchlistNoviceActionText(decision) {
+    if (!decision) return '';
+    const action = decision.simpleAction || '';
+    const position = decision.position ?? 0;
+    const exitLevel = decision.exit?.level || '无明确离场';
+    const riskFlags = decision.risk?.flags || [];
+    const hasCriticalExit = ['清仓防守', '强离场'].includes(exitLevel) || ['清仓离场', '执行离场', '规避风险'].includes(action);
+    const scoreReady = !!decision.signalReady || ['积极建仓', '顺势加仓', '积极持有', '顺势抱单'].includes(action);
+
+    if (hasCriticalExit || (position === 0 && action === '规避风险')) {
+        return position === 0 ? '空仓观望' : '优先防守';
+    }
+    if (position === 0) return '先不碰';
+    if (position <= 30) return action.includes('减仓') ? '降低仓位' : '只适合轻仓';
+    if (scoreReady && position >= 50) return position >= 80 ? '可积极关注' : '可继续观察';
+    if (riskFlags.length || action === '谨慎持有') return '继续持有';
+    return action.includes('加仓') ? '顺势持有' : '继续持有';
+}
+
+function buildWatchlistStatus(meta, decision, toneClass) {
+    const rawAction = decision?.simpleAction || '';
+    const noviceAction = getWatchlistNoviceActionText(decision);
+    const actionText = noviceAction ? `策略：${noviceAction}` : (rawAction || meta.label);
+    const detail = rawAction
+        ? `来源：右侧每日结论同一策略结果；原始策略动作：${rawAction}。`
+        : '来源：右侧每日结论同一策略结果。';
+    return { ...meta, action: actionText, rawAction, toneClass, detail };
+}
+
 function resolveWatchlistStatus(decision) {
     if (!decision) return { ...WATCHLIST_STATUS_META.pending, action: '信号待同步', toneClass: 'tone-dim' };
 
     const action = decision.simpleAction || '';
     const toneClass = decision.simpleColorClass ? decision.simpleColorClass.replace('text-', 'tone-') : 'tone-dim';
     if (['轻仓建仓', '积极建仓', '缓慢加仓', '顺势加仓'].includes(action)) {
-        return { ...WATCHLIST_STATUS_META.candidate, action, toneClass };
+        return buildWatchlistStatus(WATCHLIST_STATUS_META.candidate, decision, toneClass);
     }
     if (['轻仓持有', '积极持有', '顺势抱单'].includes(action)) {
-        return { ...WATCHLIST_STATUS_META.hold, action, toneClass };
+        return buildWatchlistStatus(WATCHLIST_STATUS_META.hold, decision, toneClass);
     }
     if (['防守减仓', '执行离场', '清仓离场', '规避风险'].includes(action)) {
-        return { ...WATCHLIST_STATUS_META.defend, action, toneClass };
+        return buildWatchlistStatus(WATCHLIST_STATUS_META.defend, decision, toneClass);
     }
     if (['持币观望', '谨慎持有'].includes(action)) {
-        return { ...WATCHLIST_STATUS_META.observe, action, toneClass };
+        return buildWatchlistStatus(WATCHLIST_STATUS_META.observe, decision, toneClass);
     }
-    return { ...WATCHLIST_STATUS_META.observe, action: action || '观察中', toneClass };
+    return buildWatchlistStatus(WATCHLIST_STATUS_META.observe, decision, toneClass);
 }
 
 function setWatchlistStatusSnapshot(code, status) {
@@ -954,20 +983,21 @@ function renderWatchlist() {
         const change = price - prev;
         const pct = (change / prev * 100) || 0;
         const cl = change >= 0 ? 'up' : 'down';
+        const statusTitle = rowStatus.detail || rowStatus.action || rowStatus.label;
         
         return `
             <div class="nav-list-item ${s.code === state.stockId ? 'active' : ''}${s._pendingRemove ? ' pending-remove' : ''}" data-code="${s.code}" ${s._pendingRemove ? '' : `onclick="selectStock('${escapeJSArg(s.code)}','${escapeJSArg(displayName)}')"`}>
                 <div class="nav-list-main">
                     <div class="lname-wrap">
                         <span class="lname">${escapeHTML(displayName)}</span>
-                        <span class="wl-status ${rowStatus.toneClass}" title="${escapeHTML(rowStatus.action)}">${rowStatus.label}</span>
+                        <span class="wl-status ${rowStatus.toneClass}" title="${escapeHTML(statusTitle)}">${rowStatus.label}</span>
                     </div>
                     ${s._pendingRemove ? '' : `<button type="button" class="wl-close" title="移除自选股" aria-label="移除 ${escapeHTML(displayName)}" onclick="event.stopPropagation();removeStock('${escapeJSArg(s.code)}')">×</button>`}
                 </div>
                 <div class="nav-list-sub">
                     <div class="wl-sub-left">
                         <span class="lcode mono">${escapeHTML(s.code)}</span>
-                        <span class="wl-action ${rowStatus.toneClass}" title="${escapeHTML(rowStatus.action)}">${escapeHTML(rowStatus.action || rowStatus.label)}</span>
+                        <span class="wl-action ${rowStatus.toneClass}" title="${escapeHTML(statusTitle)}">${escapeHTML(rowStatus.action || rowStatus.label)}</span>
                     </div>
                     <div class="lquote">
                         <span class="lprice mono ${cl}" data-code="${s.code}">${price > 0 ? price.toFixed(2) : '--'}</span>
@@ -1062,6 +1092,10 @@ function redrawCurrentViewport() {
 }
 
 function suppressStaleHoverSelection() {
+    if (typeof suppressChartHoverSelection === 'function') {
+        suppressChartHoverSelection();
+        return;
+    }
     if (typeof pendingHoverIdx !== 'undefined') pendingHoverIdx = -1;
     if (typeof hoverRAF !== 'undefined' && hoverRAF) {
         cancelAnimationFrame(hoverRAF);
