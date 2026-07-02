@@ -900,17 +900,10 @@ function renderIndexList() {
     const html = INDEX_IDS.map(id => {
         const config = INDEX_CONFIG[id];
         const active = state.id === id && state.mode === 'index' ? 'active' : '';
-        const d = getVisibleQuoteData(id);
         const indexCode = (config.tencent || id).toUpperCase();
-        const price = d?.length ? d[d.length-1].close : 0;
-        const prev = getVisibleQuoteChangeBase(id, d);
-        const change = price - prev;
-        const pct = (change / prev * 100) || 0;
-        const cl = change >= 0 ? 'up' : 'down';
+        const quoteDisplay = getLeftQuoteDisplay(id);
         
-        const priceHtml = price > 0 
-            ? `<span class="lprice mono ${cl}" data-code="${id}">${price.toFixed(2)}</span><span class="lchange mono ${cl}" data-code="${id}">${pct !== 0 ? (change >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '--'}</span>` 
-            : `<span class="lprice mono" data-code="${id}">--</span><span class="lchange mono" data-code="${id}">--</span>`;
+        const priceHtml = `<span class="lprice mono ${quoteDisplay.cl}" data-code="${id}">${quoteDisplay.priceText}</span><span class="lchange mono ${quoteDisplay.cl}" data-code="${id}">${quoteDisplay.changeText}</span>`;
             
         return `
             <div class="nav-list-item ${active}" onclick="selectIndex('${id}')">
@@ -942,6 +935,22 @@ function renderIndexList() {
     } else {
         updateLeftMarketContext(getBJDate().toISOString().split('T')[0]);
     }
+}
+
+function getLeftQuoteDisplay(id) {
+    const d = getVisibleQuoteData(id);
+    const price = d?.length ? Number(d[d.length - 1].close) : 0;
+    const prev = Number(getVisibleQuoteChangeBase(id, d));
+    const hasPrice = Number.isFinite(price) && price > 0;
+    const hasPrev = Number.isFinite(prev) && prev > 0;
+    const change = hasPrice && hasPrev ? price - prev : 0;
+    const pct = hasPrice && hasPrev ? change / prev * 100 : null;
+    const cl = !hasPrice || !hasPrev || change === 0 ? 'flat' : (change > 0 ? 'up' : 'down');
+    return {
+        priceText: hasPrice ? price.toFixed(2) : '--',
+        changeText: pct == null ? '--' : `${change > 0 ? '+' : ''}${pct.toFixed(2)}%`,
+        cl
+    };
 }
 
 function renderWatchlist() {
@@ -977,12 +986,8 @@ function renderWatchlist() {
                 const status = { ...fallback, strategy: state.strategy, date: lastDate };
                 setWatchlistStatusSnapshot(s.code, status);
                 return status;
-            })();
-        const price = d?.length ? d[d.length-1].close : 0;
-        const prev = getVisibleQuoteChangeBase(id, d);
-        const change = price - prev;
-        const pct = (change / prev * 100) || 0;
-        const cl = change >= 0 ? 'up' : 'down';
+        })();
+        const quoteDisplay = getLeftQuoteDisplay(id);
         const statusTitle = rowStatus.detail || rowStatus.action || rowStatus.label;
         
         return `
@@ -997,11 +1002,10 @@ function renderWatchlist() {
                 <div class="nav-list-sub">
                     <div class="wl-sub-left">
                         <span class="lcode mono">${escapeHTML(s.code)}</span>
-                        <span class="wl-action ${rowStatus.toneClass}" title="${escapeHTML(statusTitle)}">${escapeHTML(rowStatus.action || rowStatus.label)}</span>
                     </div>
                     <div class="lquote">
-                        <span class="lprice mono ${cl}" data-code="${s.code}">${price > 0 ? price.toFixed(2) : '--'}</span>
-                        <span class="lchange mono ${cl}" data-code="${s.code}">${pct !== 0 ? (change >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '--'}</span>
+                        <span class="lprice mono ${quoteDisplay.cl}" data-code="${s.code}">${quoteDisplay.priceText}</span>
+                        <span class="lchange mono ${quoteDisplay.cl}" data-code="${s.code}">${quoteDisplay.changeText}</span>
                     </div>
                 </div>
             </div>
@@ -1018,42 +1022,32 @@ function renderWatchlist() {
 function refreshWatchlistQuotes() {
     (state.watchlist || []).forEach(s => {
         const id = codeToSecid(s.code);
-        const d = getVisibleQuoteData(id);
-        const price = d?.length ? d[d.length - 1].close : 0;
-        const prev = getVisibleQuoteChangeBase(id, d);
-        const change = price - prev;
-        const pct = (change / prev * 100) || 0;
-        const cl = change >= 0 ? 'up' : 'down';
+        const quoteDisplay = getLeftQuoteDisplay(id);
         const priceEl = document.querySelector(`#stockNavList .lprice[data-code="${s.code}"]`);
         const changeEl = document.querySelector(`#stockNavList .lchange[data-code="${s.code}"]`);
         if (priceEl) {
-            priceEl.textContent = price > 0 ? price.toFixed(2) : '--';
-            priceEl.className = `lprice mono ${cl}`;
+            priceEl.textContent = quoteDisplay.priceText;
+            priceEl.className = `lprice mono ${quoteDisplay.cl}`;
         }
         if (changeEl) {
-            changeEl.textContent = pct !== 0 ? (change >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '--';
-            changeEl.className = `lchange mono ${cl}`;
+            changeEl.textContent = quoteDisplay.changeText;
+            changeEl.className = `lchange mono ${quoteDisplay.cl}`;
         }
     });
 }
 
 function refreshIndexListQuotes() {
     INDEX_IDS.forEach(id => {
-        const d = getVisibleQuoteData(id);
-        const price = d?.length ? d[d.length - 1].close : 0;
-        const prev = getVisibleQuoteChangeBase(id, d);
-        const change = price - prev;
-        const pct = (change / prev * 100) || 0;
-        const cl = change >= 0 ? 'up' : 'down';
+        const quoteDisplay = getLeftQuoteDisplay(id);
         const priceEl = document.querySelector(`#indexNavList .lprice[data-code="${id}"]`);
         const changeEl = document.querySelector(`#indexNavList .lchange[data-code="${id}"]`);
         if (priceEl) {
-            priceEl.textContent = price > 0 ? price.toFixed(2) : '--';
-            priceEl.className = `lprice mono ${cl}`;
+            priceEl.textContent = quoteDisplay.priceText;
+            priceEl.className = `lprice mono ${quoteDisplay.cl}`;
         }
         if (changeEl) {
-            changeEl.textContent = pct !== 0 ? (change >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '--';
-            changeEl.className = `lchange mono ${cl}`;
+            changeEl.textContent = quoteDisplay.changeText;
+            changeEl.className = `lchange mono ${quoteDisplay.cl}`;
         }
     });
 }

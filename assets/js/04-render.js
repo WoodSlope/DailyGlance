@@ -301,7 +301,7 @@ function applyChartDragPan(force = false) {
 
     const activeData = getActiveData();
     if (!activeData || !activeData.length) return;
-    if (panViewportByBars(-deltaBars, activeData)) {
+    if (panViewportByBars(deltaBars, activeData)) {
         chartDragPan.lastAppliedX += deltaBars * barWidth;
         chartDragPan.didPan = true;
         clearStaleTooltips();
@@ -322,6 +322,7 @@ function startChartDragPan(event) {
         currentX: event.clientX,
         lastAppliedX: event.clientX,
         barWidth,
+        didMove: false,
         didPan: false,
         target: event.currentTarget || null
     };
@@ -336,6 +337,9 @@ function startChartDragPan(event) {
 function moveChartDragPan(event) {
     if (!chartDragPan) return;
     chartDragPan.currentX = event.clientX;
+    if (Math.abs(chartDragPan.currentX - chartDragPan.startX) >= Math.max(3, chartDragPan.barWidth / 3)) {
+        chartDragPan.didMove = true;
+    }
     updateChartDragPreview();
     event?.preventDefault?.();
 }
@@ -354,6 +358,8 @@ function finishChartDragPan(event) {
         safeUpdateSidebar();
         updateFreezeBadge();
         updateCrosshairOverlay();
+    } else if (chartDragPan.didMove) {
+        suppressChartHoverSelection();
     }
     chartDragPan = null;
 }
