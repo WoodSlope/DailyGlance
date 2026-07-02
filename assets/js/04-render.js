@@ -966,10 +966,48 @@ function updateSidebarPriceOnly() {
     if (typeof updateDataStatusRefreshBadge === 'function') updateDataStatusRefreshBadge(item, state.id, rd);
 }
 
+function renderAnalysisPendingHTML(message = '信号正在同步，结论生成后会自动恢复。') {
+    const titleText = state.mode === 'index' ? '大盘每日结论' : '新手每日结论';
+    return `
+        <div class="action-panel panel-neutral analysis-pending-panel">
+            <div class="conclusion-title-row">
+                <div class="block-title" style="border:none; padding-bottom:0; margin:0;">${titleText}</div>
+            </div>
+            <div class="action-line">
+                <div class="action-name text-dim">分析同步中</div>
+                <div class="action-cap">
+                    <span class="text-dim">当前建议仓位</span>
+                    <strong class="mono text-main">--</strong>
+                </div>
+            </div>
+            <div class="action-sub">${escapeHTML(message)}</div>
+            <div class="action-driver">失效条件：等待信号同步完成后再确认。</div>
+        </div>
+    `;
+}
+
+function getSidebarCacheContextKey(cacheKey = '') {
+    return String(cacheKey || '').split('_').slice(0, 4).join('_');
+}
+
+function normalizeSidebarAnalysisHTML(analysisHtml, existingHtml = '', cacheKey = '', previousCacheKey = '') {
+    const next = String(analysisHtml || '').trim();
+    if (next) return next;
+    const existing = String(existingHtml || '').trim();
+    const nextContext = getSidebarCacheContextKey(cacheKey);
+    const prevContext = getSidebarCacheContextKey(previousCacheKey);
+    if (existing && nextContext && prevContext && nextContext === prevContext) return existing;
+    return renderAnalysisPendingHTML();
+}
+
 function ensureAnalysisPanelVisibleForRealtimeRefresh() {
     const cAnalysis = document.getElementById('cardAnalysis');
     if (!cAnalysis) return false;
     if (!cAnalysis.innerHTML || !cAnalysis.innerHTML.trim()) {
+        cAnalysis.innerHTML = renderAnalysisPendingHTML();
+        cAnalysis.dataset.ah = String(hashString32(cAnalysis.innerHTML));
+        cAnalysis.style.display = 'flex';
+        cAnalysis.style.flexDirection = 'column';
         safeUpdateSidebar();
         return true;
     }
@@ -1021,7 +1059,7 @@ function applySidebarHTML(bundle, cacheKey = '') {
 
     // 用 hash 比对，避免脆弱的 innerHTML.trim 字符串比较导致误刷
     var priceHtml = bundle.priceHtml || '';
-    var analysisHtml = bundle.analysisHtml || '';
+    var analysisHtml = normalizeSidebarAnalysisHTML(bundle.analysisHtml, cAnalysis.innerHTML, cacheKey, cPrice.dataset.key || '');
     var priceHash = hashString32(priceHtml);
     var analysisHash = hashString32(analysisHtml);
     var prevPriceHash = parseInt(cPrice.dataset.ph || '0', 10);

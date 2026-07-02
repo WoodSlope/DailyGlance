@@ -375,7 +375,7 @@ const WATCHLIST_STATUS_META = {
     hold: { label: '持有' },
     observe: { label: '观察' },
     defend: { label: '防守' },
-    pending: { label: '待定' }
+    pending: { label: '同步' }
 };
 
 let watchlistRenderRAF = 0;
@@ -965,7 +965,10 @@ function renderWatchlist() {
                     ${s._pendingRemove ? '' : `<button type="button" class="wl-close" title="移除自选股" aria-label="移除 ${escapeHTML(displayName)}" onclick="event.stopPropagation();removeStock('${escapeJSArg(s.code)}')">×</button>`}
                 </div>
                 <div class="nav-list-sub">
-                    <span class="lcode mono">${escapeHTML(s.code)}</span>
+                    <div class="wl-sub-left">
+                        <span class="lcode mono">${escapeHTML(s.code)}</span>
+                        <span class="wl-action ${rowStatus.toneClass}" title="${escapeHTML(rowStatus.action)}">${escapeHTML(rowStatus.action || rowStatus.label)}</span>
+                    </div>
                     <div class="lquote">
                         <span class="lprice mono ${cl}" data-code="${s.code}">${price > 0 ? price.toFixed(2) : '--'}</span>
                         <span class="lchange mono ${cl}" data-code="${s.code}">${pct !== 0 ? (change >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '--'}</span>
