@@ -96,6 +96,13 @@ function getLastTradingDate(refDate = getBJDate()) {
     } while (!isTradingDay(formatBJDate(d)));
     return formatBJDate(d);
 }
+function getPreviousTradingDate(refDate = getBJDate()) {
+    const d = new Date(refDate.getTime());
+    do {
+        d.setDate(d.getDate() - 1);
+    } while (!isTradingDay(formatBJDate(d)));
+    return formatBJDate(d);
+}
 function getExpectedConfirmedDate() {
     const now = getBJDate(), today = formatBJDate(now), m = now.getHours() * 60 + now.getMinutes();
     return isTradingDay(today) && m > 15 * 60 + 15 ? today : getLastTradingDate(now);
@@ -231,7 +238,7 @@ function getLiveOverlayCacheEntry(id) {
     const cachedAt = Number(entry.cachedAt) || 0;
     const cacheAgeMs = Number.isFinite(Number(entry.cacheAgeMs)) ? Number(entry.cacheAgeMs) : (cachedAt ? Date.now() - cachedAt : Infinity);
     const bar = normalizeLiveOverlayCacheBar(id, entry.bar);
-    if (!bar || !cachedAt || cacheAgeMs > SYS_CONFIG.LIVE_OVERLAY_CACHE_TTL_MS) {
+    if (!bar || !cachedAt) {
         if (entry) {
             delete store[id];
             persistLiveOverlayCacheState();
@@ -272,10 +279,22 @@ function clearLiveOverlayCache(id) {
 
 function canUseCachedLiveOverlay(id, series, cacheEntry) {
     if (!cacheEntry || !cacheEntry.bar) return { ok: false, reason: 'missing-cache' };
-    if (!isMarketOpen()) return { ok: false, reason: 'market-closed' };
+    if (isAfterMarketClose() && cacheEntry.bar.date === getTodayDate()) {
+        const lastBar = series?.length ? series[series.length - 1] : null;
+        if (!lastBar || !isValidPrice(cacheEntry.bar.close, id)) return { ok: false, reason: 'invalid-price' };
+        if (lastBar.date < getPreviousTradingDate()) return { ok: false, reason: 'confirmed-history-stale' };
+        if (cacheEntry.bar.date < lastBar.date) return { ok: false, reason: 'quote-older-than-history' };
+        const isIndex = !!getIndexConfig(id);
+        if (isIndex || cacheEntry.bar.date === lastBar.date) return { ok: true, reason: 'post-close-pending' };
+        if (!cacheEntry.bar.prevClose || !isValidPrice(cacheEntry.bar.prevClose, id) || !lastBar.close || !isValidPrice(lastBar.close, id)) {
+            return { ok: false, reason: 'missing-prev-close' };
+        }
+        const prevCloseDiff = Math.abs(cacheEntry.bar.prevClose - lastBar.close) / lastBar.close;
+        if (prevCloseDiff > SYS_CONFIG.EX_RIGHT_TOLERANCE) return { ok: false, reason: 'price-basis-mismatch' };
+        return { ok: true, reason: 'post-close-pending' };
+    }
     const overlayGate = canUseRealtimeOverlay(id, series, cacheEntry.bar);
     if (!overlayGate.ok) return overlayGate;
-    if (cacheEntry.cacheAgeMs > SYS_CONFIG.LIVE_OVERLAY_CACHE_TTL_MS) return { ok: false, reason: 'cache-expired' };
     return { ok: true, reason: '' };
 }
 
@@ -327,18 +346,23 @@ function setLiveBar(id, bar, source = 'api', meta = {}) {
     const isCachedLive = source === 'cache' || !!meta.isCachedLive;
     const cachedAt = Number(meta.cachedAt) || (isCachedLive ? Date.now() : 0);
     const cacheAgeMs = Number.isFinite(Number(meta.cacheAgeMs)) ? Number(meta.cacheAgeMs) : (isCachedLive && cachedAt ? Math.max(0, Date.now() - cachedAt) : 0);
+    const isSoftExpired = isCachedLive && cacheAgeMs > SYS_CONFIG.LIVE_OVERLAY_CACHE_TTL_MS;
+    const isPostClosePending = isCachedLive && isAfterMarketClose() && (bar.date || '') === getTodayDate();
+    const displayMode = isPostClosePending ? 'post-close-pending' : (isCachedLive ? 'cached-live-overlay' : 'live-overlay');
+    const displayReason = isPostClosePending ? '盘后待确认' : (isCachedLive ? (isSoftExpired ? '沿用盘中' : '短TTL缓存盘中') : '');
     setLiveQuote(id, bar, 'valid-overlay', '', { isCachedLive, cachedAt });
     state.liveBars[id] = {
         ...bar,
         _isLive: true,
         _isCachedLive: isCachedLive,
+        _isSoftExpiredLive: isSoftExpired,
         _cachedAt: cachedAt,
         _cacheAgeMs: cacheAgeMs
     };
     state.liveWeeklyData[id] = convertDailyToWeekly(getMergedLiveDailyData(id));
     setDisplayStatus(id, {
-        mode: isCachedLive ? 'cached-live-overlay' : 'live-overlay',
-        reason: isCachedLive ? '短TTL缓存盘中' : '',
+        mode: displayMode,
+        reason: displayReason,
         quoteDate: bar.date || '',
         quoteAt: Date.now(),
         cachedAt,
@@ -363,10 +387,22 @@ function syncExpiredCachedLiveOverlay(id) {
     const live = state.liveBars?.[id];
     if (!live || !live._isCachedLive) return false;
     const cachedAt = Number(live._cachedAt) || 0;
-    if (cachedAt && Date.now() - cachedAt <= SYS_CONFIG.LIVE_OVERLAY_CACHE_TTL_MS) return false;
-    clearLiveBar(id);
-    clearLiveQuote(id);
-    setDisplayStatus(id, { mode: 'confirmed', reason: '', quoteDate: '', quoteAt: 0, cachedAt: 0, cacheAgeMs: 0 });
+    const cacheAgeMs = cachedAt ? Math.max(0, Date.now() - cachedAt) : Number(live._cacheAgeMs) || 0;
+    if (!cachedAt || cacheAgeMs <= SYS_CONFIG.LIVE_OVERLAY_CACHE_TTL_MS) return false;
+    live._isSoftExpiredLive = true;
+    live._cacheAgeMs = cacheAgeMs;
+    if (state.liveQuotes?.[id]) {
+        state.liveQuotes[id]._isSoftExpiredLive = true;
+        state.liveQuotes[id]._cacheAgeMs = cacheAgeMs;
+    }
+    const isPostClosePending = isAfterMarketClose() && (live.date || '') === getTodayDate();
+    setDisplayStatus(id, {
+        mode: isPostClosePending ? 'post-close-pending' : 'cached-live-overlay',
+        reason: isPostClosePending ? '盘后待确认' : '沿用盘中',
+        quoteDate: live.date || '',
+        cachedAt,
+        cacheAgeMs
+    });
     return true;
 }
 
@@ -836,12 +872,22 @@ async function syncData(id) {
     } else { 
         if(hasEnough) { 
             const incremental = await syncDataIncremental(id); 
-            if(incremental && incremental.length > 0) { await dbSet(id, incremental); return incremental; } 
+            if(incremental && incremental.length > 0) {
+                await dbSet(id, incremental);
+                if (!isConfirmedSeriesFreshEnough(incremental)) tryApplyCachedLiveOverlay(id, incremental);
+                return incremental;
+            }
+            tryApplyCachedLiveOverlay(id, cached);
             return cached; 
         } 
         setHistoryRefreshMeta(id, { lastAttemptAt: Date.now(), lastDate: cachedLastDate });
         const data = await syncDataWithHistory(id); 
-        if(data && data.length >= 30) { setHistoryRefreshMeta(id, { lastSuccessAt: Date.now(), lastDate: data[data.length - 1]?.date || '' }); await dbSet(id, data); return data; } 
+        if(data && data.length >= 30) {
+            setHistoryRefreshMeta(id, { lastSuccessAt: Date.now(), lastDate: data[data.length - 1]?.date || '' });
+            await dbSet(id, data);
+            if (!isConfirmedSeriesFreshEnough(data)) tryApplyCachedLiveOverlay(id, data);
+            return data;
+        } 
         setConfirmedStatus(id, { source: 'cache', status: hasEnough ? 'stale' : 'failed', lastDate: cachedLastDate, syncedAt: Date.now() });
         if (!state.liveBars?.[id] && state.displayStatus?.[id]?.mode !== 'quote-only') {
             setDisplayStatus(id, { mode: 'confirmed', reason: '', quoteDate: '', quoteAt: 0, cachedAt: 0, cacheAgeMs: 0 });

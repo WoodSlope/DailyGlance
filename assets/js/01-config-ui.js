@@ -6,7 +6,7 @@
 const rootStyle = getComputedStyle(document.documentElement);
 const getCssVar = (name) => rootStyle.getPropertyValue(name).trim();
 
-const APP_BUILD = '2026-07-02-03';
+const APP_BUILD = '2026-07-02-05';
 const SYS_CONFIG = {
     THROTTLE_MS: 30000,
     REQ_TIMEOUT: 5000,

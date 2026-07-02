@@ -570,11 +570,12 @@ function getEffectiveDisplayModeForItem(item, id = state.id) {
     const display = state.displayStatus?.[id] || {};
     const mode = display.mode || 'unknown';
     if (item?._isLive) {
+        if (mode === 'post-close-pending' && item._isCachedLive) return 'post-close-pending';
         if (mode === 'cached-live-overlay' && item._isCachedLive) return 'cached-live-overlay';
-        if (mode === 'live-overlay' || mode === 'cached-live-overlay') return mode;
+        if (mode === 'live-overlay' || mode === 'cached-live-overlay' || mode === 'post-close-pending') return mode;
         return item._isCachedLive ? 'cached-live-overlay' : 'live-overlay';
     }
-    if (mode === 'live-overlay' || mode === 'cached-live-overlay') {
+    if (mode === 'live-overlay' || mode === 'cached-live-overlay' || mode === 'post-close-pending') {
         const lastConfirmedDate = state.rawData?.[id]?.[state.rawData[id].length - 1]?.date || state.confirmedStatus?.[id]?.lastDate || '';
         if (item?.date && (!lastConfirmedDate || item.date <= lastConfirmedDate)) return 'confirmed';
     }
@@ -584,13 +585,24 @@ function getEffectiveDisplayModeForItem(item, id = state.id) {
 function getConclusionStatusBadge(item, id = state.id) {
     const display = state.displayStatus?.[id] || {};
     const effectiveMode = getEffectiveDisplayModeForItem(item, id);
+    if (effectiveMode === 'post-close-pending') {
+        return {
+            tone: 'warn',
+            label: '盘后待确认结论',
+            detail: '收盘后已停止滚动更新实时结论，正在沿用最后一份当天临时结论，等待历史K线确认后替换。'
+        };
+    }
     const isLiveOverlay = effectiveMode === 'live-overlay' || effectiveMode === 'cached-live-overlay';
     if (isLiveOverlay) {
         return {
             tone: 'info',
-            label: effectiveMode === 'cached-live-overlay' ? '缓存盘中临时结论' : '盘中临时结论',
+            label: effectiveMode === 'cached-live-overlay'
+                ? (display.reason === '沿用盘中' ? '沿用盘中临时结论' : '缓存盘中临时结论')
+                : '盘中临时结论',
             detail: effectiveMode === 'cached-live-overlay'
-                ? `短TTL缓存的实时K线参与了右侧结论，${Math.ceil((Number(display.cacheAgeMs) || 0) / 1000)} 秒内可继续沿用，收盘后仍以历史K线确认为准。`
+                ? (display.reason === '沿用盘中'
+                    ? `正在沿用 ${Math.ceil((Number(display.cacheAgeMs) || 0) / 1000)} 秒前的当天临时结论，新结论生成后会自动替换。`
+                    : `短TTL缓存的实时K线参与了右侧结论，${Math.ceil((Number(display.cacheAgeMs) || 0) / 1000)} 秒内可继续沿用，收盘后仍以历史K线确认为准。`)
                 : '最后一根K线会随实时行情变化，收盘后等历史K线确认。'
         };
     }
@@ -1103,16 +1115,27 @@ function getDataStatusBadge(item, id = state.id, full = getActiveData()) {
     const effectiveMode = getEffectiveDisplayModeForItem(item, id);
     const lastConfirmedDate = state.rawData?.[id]?.[state.rawData[id].length - 1]?.date || confirmed.lastDate || '';
     const itemDate = item?.date || '';
-    const isLiveOverlay = effectiveMode === 'live-overlay' || effectiveMode === 'cached-live-overlay';
+    const isLiveOverlay = effectiveMode === 'live-overlay' || effectiveMode === 'cached-live-overlay' || effectiveMode === 'post-close-pending';
     const quoteOnly = effectiveMode === 'quote-only';
     const confirmedFresh = confirmed.status === 'fresh' || (!!lastConfirmedDate && lastConfirmedDate >= getExpectedConfirmedDate());
 
     if (isLiveOverlay) {
+        if (effectiveMode === 'post-close-pending') {
+            return {
+                tone: 'warn',
+                label: '盘后待确认',
+                detail: '收盘后停止滚动更新临时结论，等待历史K线确认后替换。'
+            };
+        }
         return {
             tone: 'info',
-            label: effectiveMode === 'cached-live-overlay' ? '缓存盘中' : '盘中临时',
+            label: effectiveMode === 'cached-live-overlay'
+                ? (display.reason === '沿用盘中' ? '沿用盘中' : '缓存盘中')
+                : '盘中临时',
             detail: effectiveMode === 'cached-live-overlay'
-                ? `图表最后一根来自短TTL缓存实时行情，约 ${Math.ceil((Number(display.cacheAgeMs) || 0) / 1000)} 秒内有效，收盘后等历史K线确认。`
+                ? (display.reason === '沿用盘中'
+                    ? `正在沿用 ${Math.ceil((Number(display.cacheAgeMs) || 0) / 1000)} 秒前的当天临时行情，新数据完整生成后再替换。`
+                    : `图表最后一根来自短TTL缓存实时行情，约 ${Math.ceil((Number(display.cacheAgeMs) || 0) / 1000)} 秒内有效，收盘后等历史K线确认。`)
                 : '图表最后一根会随实时行情变化，收盘后等历史K线确认。'
         };
     }
