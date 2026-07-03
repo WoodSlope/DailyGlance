@@ -301,6 +301,12 @@ function canUseCachedLiveOverlay(id, series, cacheEntry) {
 function tryApplyCachedLiveOverlay(id, series) {
     if (!id || !series || !series.length) return false;
     const cacheEntry = getLiveOverlayCacheEntry(id);
+    const lastBar = series[series.length - 1];
+    if (lastBar && cacheEntry?.bar?.date && cacheEntry.bar.date <= lastBar.date) {
+        clearLiveOverlayCache(id);
+        if (state.liveBars?.[id]?.date && state.liveBars[id].date <= lastBar.date) clearLiveBar(id);
+        return false;
+    }
     const cachedGate = canUseCachedLiveOverlay(id, series, cacheEntry);
     if (!cachedGate.ok) return false;
     setLiveBar(id, cacheEntry.bar, 'cache', { cachedAt: cacheEntry.cachedAt, cacheAgeMs: cacheEntry.cacheAgeMs, source: cacheEntry.source });
@@ -437,6 +443,7 @@ function applyRealtimeQuoteForSeries(id, series, rtBar) {
         return 'overlay';
     }
     if (rtBar && isValidPrice(rtBar.close, id)) {
+        if (overlayGate.reason === 'quote-date-not-today' && tryApplyCachedLiveOverlay(id, series)) return 'cached-overlay';
         setLiveQuote(id, rtBar, 'quote-only', overlayGate.reason);
         clearLiveBar(id);
         return 'quote-only';
@@ -1141,6 +1148,7 @@ async function cachedFetch(id) {
         scheduleCachedFetchRefresh(id);
         const hasActiveChartView = !!(state.charts && (state.charts.main || state.charts.vol || state.charts.macd || state.charts.kdj));
         if (!hasActiveChartView) {
+            tryApplyCachedLiveOverlay(id, state.rawData[id]);
             const rd = getActiveData();
             setLockIdx(rd?.length ? rd.length - 1 : -1);
             resetViewportToLatest(rd);
@@ -1165,6 +1173,7 @@ async function cachedFetch(id) {
     }
     if (cachedResult && cachedResult.data && cachedResult.data.length > 0 && id === state.id) {
         setRawData(id, cachedResult.data);
+        tryApplyCachedLiveOverlay(id, state.rawData[id]);
         setLockIdx(getActiveData()?.length - 1 || -1);
         updateAllIndicators();
         hideLoading();
