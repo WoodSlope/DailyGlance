@@ -459,9 +459,13 @@ function primeWatchlistStatusSnapshot(code, date) {
     setWatchlistStatusSnapshot(code, { ...WATCHLIST_STATUS_META.pending, action: '信号同步中', toneClass: 'tone-dim', strategy: state.strategy, date: date || '' });
 }
 
+function hasCurrentWatchlistDecision(row) {
+    return !!(row?._decision && row._strategy === state.strategy && row._signalVersion === SIGNAL_VERSION);
+}
+
 function getLatestDecisionFromData(full) {
     const last = full?.[full.length - 1];
-    if (last?._decision && last._strategy === state.strategy && last._signalVersion === SIGNAL_VERSION) {
+    if (hasCurrentWatchlistDecision(last)) {
         return last._decision;
     }
     return null;
@@ -571,6 +575,20 @@ function refreshWatchlistSignalSnapshots() {
         syncWatchlistSignalSnapshotFast(stock.code, full);
     });
     scheduleWatchlistRender();
+}
+
+function resolveWatchlistRowStatus(stock, statusData, lastDate) {
+    if (stock._navStatus && stock._navStatus.strategy === state.strategy && stock._navStatus.date === lastDate) {
+        return stock._navStatus;
+    }
+    syncWatchlistSignalSnapshotFast(stock.code, statusData);
+    if (stock._navStatus && stock._navStatus.strategy === state.strategy && stock._navStatus.date === lastDate) {
+        return stock._navStatus;
+    }
+    const fallback = resolveWatchlistStatus(getLatestDecisionFromData(statusData));
+    const status = { ...fallback, strategy: state.strategy, date: lastDate };
+    setWatchlistStatusSnapshot(stock.code, status);
+    return status;
 }
 
 async function addToWatchlist(code, name) { 
@@ -979,14 +997,7 @@ function renderWatchlist() {
         const d = getVisibleQuoteData(id);
         const statusData = getMergedLiveDailyData(id);
         const lastDate = statusData?.length ? statusData[statusData.length - 1].date : '';
-        const rowStatus = s._navStatus && s._navStatus.strategy === state.strategy && s._navStatus.date === lastDate
-            ? s._navStatus
-            : (() => {
-                const fallback = resolveWatchlistStatus(getLatestDecisionFromData(statusData));
-                const status = { ...fallback, strategy: state.strategy, date: lastDate };
-                setWatchlistStatusSnapshot(s.code, status);
-                return status;
-        })();
+        const rowStatus = resolveWatchlistRowStatus(s, statusData, lastDate);
         const quoteDisplay = getLeftQuoteDisplay(id);
         const statusTitle = rowStatus.detail || rowStatus.action || rowStatus.label;
         

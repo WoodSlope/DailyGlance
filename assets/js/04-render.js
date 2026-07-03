@@ -922,7 +922,11 @@ function safeUpdateSidebar() {
         setLockIdx(safeIdx);
         
         const item = rd[safeIdx];
-        const decision = item._decision || null;
+        let decision = item._decision || null;
+        if ((!decision || item._strategy !== state.strategy || item._signalVersion !== SIGNAL_VERSION) && typeof updateAllIndicators === 'function') {
+            updateAllIndicators(safeIdx);
+            decision = item._decision || null;
+        }
         const displayMode = state.displayStatus?.[state.id]?.mode || '';
         const cacheKey = [
             state.id,
