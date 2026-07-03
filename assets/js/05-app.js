@@ -701,10 +701,12 @@ let _sidebarRefreshFailCount = 0;
 async function refreshSidebarRealtime() {
     let ids = [];
     if (state.tab === 'index' || state.mode === 'index') {
-        ids = INDEX_IDS.filter(id => id !== state.id);
+        ids = [...INDEX_IDS];
     } else if (state.tab === 'stock' || state.mode === 'stock') {
-        ids = (state.watchlist || []).map(s => codeToSecid(s.code)).filter(id => id && id !== state.id);
+        ids = (state.watchlist || []).map(s => codeToSecid(s.code)).filter(Boolean);
+        if (state.id) ids.push(state.id);
     }
+    ids = Array.from(new Set(ids));
     if (!ids.length) return;
     const prices = await batchGetRealtimePrices(ids);
     if (!Object.keys(prices).length) {
@@ -715,19 +717,27 @@ async function refreshSidebarRealtime() {
         return;
     }
     _sidebarRefreshFailCount = 0;
+    const batchFetchedAt = Date.now();
+    Object.keys(prices).forEach(id => {
+        const limiter = requestManager.limiters.get(id) || { lastCall: 0, isFetching: false };
+        requestManager.limiters.set(id, { ...limiter, lastCall: batchFetchedAt, isFetching: false });
+    });
     let changed = false;
+    let activeOverlayChanged = false;
     for (const [id, rtBar] of Object.entries(prices)) {
         const series = state.rawData[id];
         if (!series || !series.length) continue;
         const lastBar = series[series.length - 1];
         if (!lastBar || !isValidPrice(rtBar.close, id)) continue;
         if (rtBar.date < lastBar.date) continue;
-        applyRealtimeQuoteForSeries(id, series, rtBar);
+        const applyResult = applyRealtimeQuoteForSeries(id, series, rtBar);
+        if (id === state.id && (applyResult === 'overlay' || applyResult === 'cached-overlay')) activeOverlayChanged = true;
         changed = true;
     }
     if (changed) {
         if (state.tab === 'index' || state.mode === 'index') refreshIndexListQuotes();
         if (state.tab === 'stock' || state.mode === 'stock') refreshWatchlistQuotes();
+        if (activeOverlayChanged && !state.isFrozen) applyActiveDataRefresh(state.id);
         markRefreshTime();
     }
 }
@@ -1458,6 +1468,10 @@ async function init() {
 
     await preloadCacheOnly(); 
     await ensureMarketTemperatureData(); 
+    if (state.mode === 'index') {
+        renderIndexList();
+        if (!document.hidden && isMarketOpen()) await refreshSidebarRealtime();
+    }
     await _selectIndexImpl('sh');  // init 直接调用 impl，跳过防抖
 
     requestAnimationFrame(() => refreshWatchlistSignalSnapshots());
