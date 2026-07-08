@@ -819,7 +819,7 @@ function updateAllIndicators(incrementalIdx = -1) {
     }
 
     for(let i = shouldFullRebuild ? 0 : rebuildStart; i < full.length; i++) {
-        if (!shouldFullRebuild && i !== full.length - 1 && full[i]?._signals && full[i]._signalVersion === SIGNAL_VERSION && full[i]._strategy === state.strategy && full[i]._decision && i < rebuildStart) {
+        if (full[i]?._signals && full[i]._signalVersion === SIGNAL_VERSION && full[i]._strategy === state.strategy && full[i]._decision) {
             prevPos = full[i]._decision.position;
             continue;
         }
