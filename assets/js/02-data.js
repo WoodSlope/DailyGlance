@@ -933,7 +933,13 @@ async function handleUpdateData(forceFull = false) {
     try { 
         const fresh = (!forceFull && info.needUpdate) ? await syncData(state.id) : await syncDataWithHistory(state.id); 
         if(fresh && fresh.length) { 
-            await dbSet(state.id, fresh); setRawData(state.id, fresh); applyActiveDataRefresh(state.id);
+            const leftTxn = beginRefreshTransaction('leftList', { source: 'manual-update', id: state.id });
+            const rightTxn = beginRefreshTransaction('rightPanel', { source: 'manual-update', id: state.id });
+            await dbSet(state.id, fresh);
+            setRawData(state.id, fresh);
+            if (typeof renderActiveLeftListAfterDataApply === 'function') renderActiveLeftListAfterDataApply(leftTxn, { id: state.id });
+            const status = applyActiveDataRefresh(state.id);
+            markRefreshTime(rightTxn, { path: status, id: state.id });
             await customAlert(`同步成功！K线数量：${fresh.length}`); 
         } else { await customAlert('数据同步失败！'); } 
     } catch(e) { await customAlert('同步异常: ' + e.message); } 
@@ -1022,13 +1028,14 @@ function scheduleCachedFetchRefreshApply(id) {
                 PERF.end(perfTrace, { status: 'skipped' });
                 return;
             }
+            const rightTxn = beginRefreshTransaction('rightPanel', { source: 'cached-fetch-refresh-apply', id: applyId });
             const status = applyActiveDataRefresh(applyId);
             if (status === 'no-data') {
                 PERF.end(perfTrace, { status: 'no-data' });
                 return;
             }
 
-            markRefreshTime();
+            markRefreshTime(rightTxn, { path: status, id: applyId });
             PERF.mark(perfTrace, 'render');
             PERF.end(perfTrace, { status: 'applied', path: status });
         });
@@ -1155,13 +1162,15 @@ async function cachedFetch(id) {
             updateAllIndicators();
             hideLoading();
             renderMASelector();
-            if (state.mode === 'index') renderIndexList();
-            if (state.mode === 'stock' && typeof scheduleWatchlistRender === 'function') scheduleWatchlistRender();
+            const leftTxn = beginRefreshTransaction('leftList', { source: 'cachedFetch-memory', id });
+            const rightTxn = beginRefreshTransaction('rightPanel', { source: 'cachedFetch-memory', id });
+            if (typeof renderActiveLeftListAfterDataApply === 'function') renderActiveLeftListAfterDataApply(leftTxn, { id });
             requestAnimationFrame(() => {
                 const currentStateKey = `${state.mode}_${state.id}_${state.period}_${state.strategy}`;
                 if (currentStateKey !== fetchStateKey || id !== state.id) return;
                 draw();
                 safeUpdateSidebar();
+                markRefreshTime(rightTxn, { path: 'restore-memory-chart', id });
             });
             PERF.mark(perfTrace, 'restore-memory-chart', { points: state.rawData[id].length });
             PERF.end(perfTrace, { status: 'active-memory-render', firstLoad: false });
@@ -1178,13 +1187,15 @@ async function cachedFetch(id) {
         updateAllIndicators();
         hideLoading();
         renderMASelector();
-        if (state.mode === 'index') renderIndexList();
-        if (state.mode === 'stock' && typeof scheduleWatchlistRender === 'function') scheduleWatchlistRender();
+        const leftTxn = beginRefreshTransaction('leftList', { source: 'cachedFetch-cache', id });
+        const rightTxn = beginRefreshTransaction('rightPanel', { source: 'cachedFetch-cache', id });
+        if (typeof renderActiveLeftListAfterDataApply === 'function') renderActiveLeftListAfterDataApply(leftTxn, { id });
         requestAnimationFrame(() => {
             const currentStateKey = `${state.mode}_${state.id}_${state.period}_${state.strategy}`;
             if (currentStateKey !== fetchStateKey || id !== state.id) return;
             draw();
             safeUpdateSidebar();
+            markRefreshTime(rightTxn, { path: 'cache-first', id });
         });
         PERF.mark(perfTrace, 'use-cache', { points: cachedResult.data.length });
         PERF.end(perfTrace, { status: 'cache-first', firstLoad: false });
@@ -1205,6 +1216,8 @@ async function cachedFetch(id) {
     const hasUpdate = getDataMutationMeta(old, fresh).mode !== 'unchanged';
     const visibleHasUpdate = id === state.id && getDataMutationMeta(oldVisible, getActiveData()).mode !== 'unchanged';
     const shouldApplyFresh = !old || !old.length || hasUpdate;
+    const leftTxn = beginRefreshTransaction('leftList', { source: 'cachedFetch', id });
+    const rightTxn = beginRefreshTransaction('rightPanel', { source: 'cachedFetch', id });
     
     if (shouldApplyFresh) {
         setRawData(id, fresh);
@@ -1225,6 +1238,7 @@ async function cachedFetch(id) {
                 if (currentStateKey !== fetchStateKey || id !== state.id) return;
                 draw();
                 safeUpdateSidebar();
+                markRefreshTime(rightTxn, { path: 'apply-fresh', id });
             });
         }
         PERF.mark(perfTrace, 'apply-fresh', { hasUpdate, firstLoad: !old || !old.length });
@@ -1235,6 +1249,7 @@ async function cachedFetch(id) {
             const currentStateKey = `${state.mode}_${state.id}_${state.period}_${state.strategy}`;
             if (currentStateKey !== fetchStateKey || id !== state.id) return;
             applyActiveDataRefresh(id);
+            markRefreshTime(rightTxn, { path: 'apply-live-overlay', id });
         });
         PERF.mark(perfTrace, 'apply-live-overlay', { points: getActiveData()?.length || 0 });
     } else if (id === state.id) {
@@ -1245,12 +1260,11 @@ async function cachedFetch(id) {
             if (currentStateKey !== fetchStateKey || id !== state.id) return;
             draw();
             safeUpdateSidebar();
+            markRefreshTime(rightTxn, { path: 'reuse-state', id });
         });
         PERF.mark(perfTrace, 'reuse-state', { points: old.length });
     }
-    if (state.mode === 'index') renderIndexList(); 
-    if (state.mode === 'stock' && typeof scheduleWatchlistRender === 'function') scheduleWatchlistRender();
-    markRefreshTime();
+    if (typeof renderActiveLeftListAfterDataApply === 'function') renderActiveLeftListAfterDataApply(leftTxn, { id });
     PERF.end(perfTrace, { status: shouldApplyFresh ? (hasUpdate ? 'updated' : 'initial') : 'unchanged', firstLoad: !old || !old.length });
 }
 
@@ -1292,10 +1306,17 @@ function scheduleCachedFetchRefresh(id) {
             PERF.mark(perfTrace, 'queue-active-apply');
         }
         if (state.mode === 'index') {
+            const leftTxn = beginRefreshTransaction('leftList', { source: 'cachedFetchRefresh', id });
             renderIndexList();
+            if (typeof markLeftListRefreshForActiveTab === 'function') markLeftListRefreshForActiveTab(leftTxn, { area: 'index-list', id });
             PERF.mark(perfTrace, 'render-index-list');
         }
-        if (state.mode === 'stock' && typeof scheduleWatchlistRender === 'function') scheduleWatchlistRender();
+        if (state.mode === 'stock' && typeof scheduleWatchlistRender === 'function') {
+            scheduleWatchlistRender({
+                markRefresh: true,
+                refreshTxn: beginRefreshTransaction('leftList', { source: 'cachedFetchRefresh', id })
+            });
+        }
         PERF.end(perfTrace, { status: 'updated' });
     })().finally(() => {
         cachedFetchRefreshJobs.delete(id);
@@ -1320,9 +1341,15 @@ async function preloadCacheOnly() {
     }
 }
 
+function shouldEnsureMarketTemperatureData(id) {
+    const data = state.rawData?.[id];
+    if (!data || data.length < 60) return true;
+    return !isConfirmedSeriesFreshEnough(data);
+}
+
 async function ensureMarketTemperatureData() {
     for (const id of INDEX_IDS) {
-        if (state.rawData[id] && state.rawData[id].length >= 60) continue;
+        if (!shouldEnsureMarketTemperatureData(id)) continue;
         try {
             const data = await syncData(id);
             if (data && data.length >= 30) {

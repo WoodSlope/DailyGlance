@@ -6,7 +6,7 @@
 const rootStyle = getComputedStyle(document.documentElement);
 const getCssVar = (name) => rootStyle.getPropertyValue(name).trim();
 
-const APP_BUILD = '2026-07-08-09';
+const APP_BUILD = '2026-07-08-18';
 const SYS_CONFIG = {
     THROTTLE_MS: 30000,
     REQ_TIMEOUT: 5000,
@@ -50,6 +50,12 @@ let state = {
     liveWeeklyData: {},
     confirmedStatus: {},
     displayStatus: {},
+    leftListRefreshAt: 0,
+    refreshSeq: 0,
+    refreshSnapshots: {
+        leftList: null,
+        rightPanel: null
+    },
     period: 'daily',
     activeMAs: [5, 20, 60],
     indicators: { ma: {}, macd: null, rsi: null, kdj: null },
@@ -224,6 +230,76 @@ const UI = {
     sectionTitle: (title, colorClass) => `<div class="signal-section-title ${colorClass}">${title}</div>`
 };
 
+function formatLeftListRefreshTime(ts = state.leftListRefreshAt) {
+    return ts ? new Date(ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }) : '--:--';
+}
+
+function beginRefreshTransaction(scope, meta = {}) {
+    state.refreshSeq = (state.refreshSeq || 0) + 1;
+    return {
+        id: `${scope}-${state.refreshSeq}`,
+        version: state.refreshSeq,
+        scope,
+        startedAt: Date.now(),
+        meta: { ...meta }
+    };
+}
+
+function commitRefreshSnapshot(scope, txn = null, patch = {}) {
+    const appliedAt = Date.now();
+    const version = txn?.version || ((state.refreshSeq || 0) + 1);
+    if (!txn?.version) state.refreshSeq = version;
+    const snapshot = {
+        id: txn?.id || `${scope}-${version}`,
+        version,
+        scope,
+        startedAt: txn?.startedAt || appliedAt,
+        appliedAt,
+        meta: { ...(txn?.meta || {}), ...patch }
+    };
+    if (!state.refreshSnapshots) state.refreshSnapshots = {};
+    state.refreshSnapshots[scope] = snapshot;
+    return snapshot;
+}
+
+function getRefreshSnapshot(scope) {
+    return state.refreshSnapshots?.[scope] || null;
+}
+
+function getLeftListRefreshText() {
+    const snapshot = getRefreshSnapshot('leftList');
+    return `列表刷新于 ${formatLeftListRefreshTime(snapshot?.appliedAt || state.leftListRefreshAt)}`;
+}
+
+function renderLeftListHeader(title) {
+    const snapshot = getRefreshSnapshot('leftList') || {};
+    return `
+        <div class="stock-header">
+            <div class="title-wrap">
+                <span>${escapeHTML(title)}</span>
+                <span class="left-list-refresh-time" data-left-list-refresh data-refresh-id="${escapeHTML(snapshot.id || '')}" data-refresh-version="${snapshot.version || 0}" data-refresh-applied-at="${snapshot.appliedAt || 0}">${getLeftListRefreshText()}</span>
+            </div>
+        </div>
+    `;
+}
+
+function updateLeftListRefreshLabels() {
+    const snapshot = getRefreshSnapshot('leftList') || {};
+    document.querySelectorAll('[data-left-list-refresh]').forEach(el => {
+        el.textContent = getLeftListRefreshText();
+        el.dataset.refreshId = snapshot.id || '';
+        el.dataset.refreshVersion = String(snapshot.version || 0);
+        el.dataset.refreshAppliedAt = String(snapshot.appliedAt || 0);
+    });
+}
+
+function markLeftListRefreshTime(txn = null, patch = {}) {
+    const snapshot = commitRefreshSnapshot('leftList', txn && typeof txn === 'object' ? txn : null, patch);
+    state.leftListRefreshAt = snapshot.appliedAt;
+    updateLeftListRefreshLabels();
+    return snapshot;
+}
+
 const SVG_ICONS = {
     SPIN: `<svg class="icon spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/></svg>`,
     UPDATE: `<svg class="icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M44 31C44 36.5228 39.5228 41 34 41C32.2091 41 30.5281 40.5292 29.0741 39.7046C26.5143 38.2529 24.6579 35.7046 24.1436 32.6983C24.0492 32.1463 24 31.5789 24 31C24 28.4323 24.9678 26.0906 26.5585 24.3198C28.3892 22.2818 31.0449 21 34 21C39.5228 21 44 25.4772 44 31Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M34 12V20V21C31.0449 21 28.3892 22.2818 26.5585 24.3198C24.9678 26.0906 24 28.4323 24 31C24 31.5789 24.0492 32.1463 24.1436 32.6983C24.6579 35.7046 26.5143 38.2529 29.0741 39.7046C26.4116 40.5096 22.8776 41 19 41C10.7157 41 4 38.7614 4 36V28V20V12" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M34 12C34 14.7614 27.2843 17 19 17C10.7157 17 4 14.7614 4 12C4 9.23858 10.7157 7 19 7C27.2843 7 34 9.23858 34 12Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 28C4 30.7614 10.7157 33 19 33C20.807 33 22.5393 32.8935 24.1436 32.6983" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 20C4 22.7614 10.7157 25 19 25C21.7563 25 24.339 24.7522 26.5585 24.3198" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M38 31C38 33.2091 36.2091 35 34 35" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M30 31C30 28.7909 31.7909 27 34 27" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`
@@ -304,12 +380,24 @@ function _dismissToast(id) {
 function dismissToast(id) { _dismissToast(id); }
 
 // === P1-5: 数据刷新时间戳 ===
-function markRefreshTime() {
+function markRefreshTime(txn = null, patch = {}) {
+    const snapshot = commitRefreshSnapshot('rightPanel', txn && typeof txn === 'object' ? txn : null, patch);
     var el = document.getElementById('lastRefreshTime');
     var bar = document.getElementById('lastRefreshBar');
-    if (el) el.textContent = new Date().toLocaleTimeString('en-GB', { hour12: false });
-    if (bar) bar.style.display = 'flex';
+    if (el) {
+        el.textContent = new Date(snapshot.appliedAt).toLocaleTimeString('en-GB', { hour12: false });
+        el.dataset.refreshId = snapshot.id;
+        el.dataset.refreshVersion = String(snapshot.version);
+        el.dataset.refreshAppliedAt = String(snapshot.appliedAt);
+    }
+    if (bar) {
+        bar.style.display = 'flex';
+        bar.dataset.refreshId = snapshot.id;
+        bar.dataset.refreshVersion = String(snapshot.version);
+        bar.dataset.refreshAppliedAt = String(snapshot.appliedAt);
+    }
     if (typeof updateDataStatusRefreshBadge === 'function') updateDataStatusRefreshBadge();
+    return snapshot;
 }
 
 document.addEventListener('keydown', (e) => {

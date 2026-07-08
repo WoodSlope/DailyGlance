@@ -379,6 +379,8 @@ const WATCHLIST_STATUS_META = {
 };
 
 let watchlistRenderRAF = 0;
+let watchlistRenderShouldMarkRefresh = false;
+let watchlistRenderRefreshTxn = null;
 let watchlistSnapshotFlushHandle = 0;
 const watchlistSnapshotQueue = new Map();
 
@@ -436,11 +438,22 @@ function setWatchlistStatusSnapshot(code, status) {
     if (item) item._navStatus = status || null;
 }
 
-function scheduleWatchlistRender() {
+function scheduleWatchlistRender(options = {}) {
+    if (options.markRefresh) {
+        watchlistRenderShouldMarkRefresh = true;
+        watchlistRenderRefreshTxn = options.refreshTxn || beginRefreshTransaction('leftList', { source: 'watchlist-render' });
+    }
     if (watchlistRenderRAF) return;
     watchlistRenderRAF = requestAnimationFrame(() => {
         watchlistRenderRAF = 0;
-        if (state.mode === 'stock') renderWatchlist();
+        const shouldMarkRefresh = watchlistRenderShouldMarkRefresh;
+        const refreshTxn = watchlistRenderRefreshTxn;
+        watchlistRenderShouldMarkRefresh = false;
+        watchlistRenderRefreshTxn = null;
+        if (state.mode === 'stock') {
+            renderWatchlist();
+            if (shouldMarkRefresh) markLeftListRefreshForActiveTab(refreshTxn, { area: 'stock-list' });
+        }
     });
 }
 
@@ -662,12 +675,11 @@ let sidebarFullSyncTimer = 0;
 function debounceWatchlistUpdate() {
     if (watchlistUpdateTimer) clearTimeout(watchlistUpdateTimer);
     watchlistUpdateTimer = setTimeout(async () => {
-        await updateAllWatchlistData();
-        renderWatchlist();
+        await updateAllWatchlistData({ renderNow: true });
     }, 2000);
 }
 
-async function updateAllWatchlistData() {
+async function updateAllWatchlistData(options = {}) {
     if (!state.watchlist || !state.watchlist.length) return [];
     const stocks = state.watchlist.filter(s => codeToSecid(s.code) !== state.id);
     const results = await pLimit(stocks, SYS_CONFIG.SIDEBAR_SYNC_CONCURRENCY, async (stock) => {
@@ -696,7 +708,16 @@ async function updateAllWatchlistData() {
             }
         }
     });
-    scheduleWatchlistRender();
+    const shouldMarkRefresh = results.some(r => r.success);
+    const refreshTxn = shouldMarkRefresh
+        ? beginRefreshTransaction('leftList', { source: 'watchlist-data', successCount: results.filter(r => r.success).length })
+        : null;
+    if (options.renderNow) {
+        renderWatchlist();
+        if (shouldMarkRefresh) markLeftListRefreshForActiveTab(refreshTxn, { area: 'stock-list' });
+    } else {
+        scheduleWatchlistRender({ markRefresh: shouldMarkRefresh, refreshTxn });
+    }
     return results;
 }
 
@@ -738,10 +759,15 @@ async function refreshSidebarRealtime() {
         changed = true;
     }
     if (changed) {
+        const leftTxn = beginRefreshTransaction('leftList', { source: 'realtime-batch', count: Object.keys(prices).length });
         if (state.tab === 'index' || state.mode === 'index') refreshIndexListQuotes();
         if (state.tab === 'stock' || state.mode === 'stock') refreshWatchlistQuotes();
-        if (activeOverlayChanged && !state.isFrozen) applyActiveDataRefresh(state.id);
-        markRefreshTime();
+        markLeftListRefreshForActiveTab(leftTxn, { area: state.tab === 'stock' || state.mode === 'stock' ? 'stock-list' : 'index-list' });
+        if (activeOverlayChanged && !state.isFrozen) {
+            const rightTxn = beginRefreshTransaction('rightPanel', { source: 'realtime-batch', id: state.id });
+            applyActiveDataRefresh(state.id);
+            markRefreshTime(rightTxn, { path: 'active-overlay' });
+        }
     }
 }
 
@@ -760,7 +786,9 @@ function startSidebarFullSync() {
                 } catch(e) { failCnt++; }
             });
             if (failCnt >= 2) showToast('\u90e8\u5206\u6307\u6570\u5386\u53f2\u6570\u636e\u540c\u6b65\u5931\u8d25', 'warn', 4000);
+            const leftTxn = failCnt < ids.length ? beginRefreshTransaction('leftList', { source: 'sidebar-full-sync', area: 'index-list' }) : null;
             renderIndexList();
+            if (leftTxn) markLeftListRefreshForActiveTab(leftTxn, { area: 'index-list' });
         } else if (state.tab === 'stock' || state.mode === 'stock') {
             if (!state.watchlist || !state.watchlist.length) return;
             const results = await updateAllWatchlistData();
@@ -924,6 +952,23 @@ function updateLeftMarketContext(date) {
     `;
 }
 
+function markLeftListRefreshForActiveTab(txn = null, patch = {}) {
+    if (typeof markLeftListRefreshTime === 'function' && (state.tab === 'index' || state.tab === 'stock' || state.mode === 'index' || state.mode === 'stock')) {
+        const refreshTxn = txn && typeof txn === 'object' ? txn : beginRefreshTransaction('leftList', { source: 'left-list' });
+        markLeftListRefreshTime(refreshTxn, patch);
+    }
+}
+
+function renderActiveLeftListAfterDataApply(txn = null, patch = {}) {
+    const refreshTxn = txn && typeof txn === 'object' ? txn : beginRefreshTransaction('leftList', { source: 'active-data' });
+    if (state.mode === 'index') {
+        renderIndexList();
+        markLeftListRefreshForActiveTab(refreshTxn, { area: 'index-list', ...patch });
+    } else if (state.mode === 'stock' && typeof scheduleWatchlistRender === 'function') {
+        scheduleWatchlistRender({ markRefresh: true, refreshTxn });
+    }
+}
+
 function renderIndexList() {
     const container = document.getElementById('indexNavList'); 
     if(!container) return;
@@ -952,9 +997,7 @@ function renderIndexList() {
     }).join('');
     
     container.innerHTML = `
-        <div class="stock-header">
-            <div class="title-wrap"><span>核心宽基指数</span></div>
-        </div>
+        ${renderLeftListHeader('核心宽基指数')}
         <div>${html}</div>
         <div id="leftMarketContext"></div>
     `;
@@ -997,7 +1040,7 @@ function renderWatchlist() {
     
     if(!state.watchlist.length) { 
         container.innerHTML = `
-            <div class="stock-header"><div class="title-wrap"><span>自选股池</span></div></div>
+            ${renderLeftListHeader('自选股池')}
             ${sHtml}
             <div class="stock-empty"><strong>添加自选股</strong><br/>开启量化追踪</div>
         `; 
@@ -1037,7 +1080,7 @@ function renderWatchlist() {
     }).join('');
     
     container.innerHTML = `
-        <div class="stock-header"><div class="title-wrap"><span>自选股池</span></div></div>
+        ${renderLeftListHeader('自选股池')}
         ${sHtml}
         <div>${lHtml}</div>
     `;
