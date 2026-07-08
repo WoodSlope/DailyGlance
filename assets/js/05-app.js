@@ -471,7 +471,7 @@ function getLatestDecisionFromData(full) {
     return null;
 }
 
-function computeWatchlistDecisionSnapshot(full) {
+function computeWatchlistDecisionSnapshot(full, code) {
     if (!full || full.length < 60) return null;
 
     const cachedDecision = getLatestDecisionFromData(full);
@@ -505,6 +505,9 @@ function computeWatchlistDecisionSnapshot(full) {
             full[i]._strategy = state.strategy;
             full[i]._decision = computeDecisionForIndex(i, full, prevPos);
             prevPos = full[i]._decision.position;
+        }
+        if (code && typeof codeToSecid === 'function' && typeof storeDerivedIndicatorCache === 'function') {
+            storeDerivedIndicatorCache(codeToSecid(code), 'daily', state.strategy, full, localIndicators);
         }
         return full[full.length - 1]?._decision || null;
     } finally {
@@ -565,7 +568,7 @@ function syncWatchlistSignalSnapshot(code, full) {
         return;
     }
 
-    const decision = computeWatchlistDecisionSnapshot(full);
+    const decision = computeWatchlistDecisionSnapshot(full, code);
     applyWatchlistDecisionSnapshot(code, decision, last.date);
 }
 

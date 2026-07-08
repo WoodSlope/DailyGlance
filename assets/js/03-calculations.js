@@ -707,13 +707,40 @@ function getWeeklyDirectionContext(idx, full, ind) {
     return { direction, directionReason, position, repair, dailyImpact: direction === '周线多头' ? '日线买点可信度提高，可关注回踩后的确认' : direction === '周线空头' ? '日线买点降权，优先等待周线重新站回' : '只适合轻仓观察，避免把震荡当趋势', ma20, ma60, support: low20, pressure: high20, distMA20 };
 }
 
-function getIndicatorKey(data = getActiveData()) {
+function buildIndicatorKeyForData(id, period, strategy, data) {
     if(!data || !data.length) return ''; const last = data[data.length - 1];
     const dataSig = data.map((item, idx) => {
         item = item || {};
         return [idx, item.date || '', item.open, item.high, item.low, item.close, item.vol, item.amt].join(':');
     }).join('|');
-    return `${state.id}_${state.period}_${state.strategy}_${data.length}_${last.date}_${last.close}_${hashString32(dataSig)}`;
+    return `${id}_${period}_${strategy}_${data.length}_${last.date}_${last.close}_${hashString32(dataSig)}`;
+}
+
+function getIndicatorKey(data = getActiveData()) {
+    return buildIndicatorKeyForData(state.id, state.period, state.strategy, data);
+}
+
+function storeDerivedIndicatorCache(id, period, strategy, data, indicators) {
+    if (!id || !period || !strategy || !data?.length || !indicators?.macd || !indicators?.rsi || !indicators?.kdj) return;
+    const cacheKey = buildIndicatorKeyForData(id, period, strategy, data);
+    if (!cacheKey) return;
+    derivedIndicatorCache.set(cacheKey, {
+        indicators: {
+            ma: { ...(indicators.ma || {}) },
+            macd: indicators.macd,
+            rsi: indicators.rsi,
+            kdj: indicators.kdj
+        },
+        rows: data.map(item => item ? ({
+            _signals: item._signals,
+            _signalVersion: item._signalVersion,
+            _strategy: item._strategy,
+            _decision: item._decision
+        }) : null)
+    });
+    if (derivedIndicatorCache.size > SYS_CONFIG.RENDER_CACHE_SIZE) {
+        derivedIndicatorCache.delete(derivedIndicatorCache.keys().next().value);
+    }
 }
 
 function markIndicatorsDirty() { state.indicatorKey = ''; }
@@ -807,21 +834,5 @@ function updateAllIndicators(incrementalIdx = -1) {
 
     state.indicatorKey = nextKey;
     state.pendingIndicatorMutation = null;
-    derivedIndicatorCache.set(cacheKey, {
-        indicators: {
-            ma: { ...state.indicators.ma },
-            macd: state.indicators.macd,
-            rsi: state.indicators.rsi,
-            kdj: state.indicators.kdj
-        },
-        rows: full.map(item => item ? ({
-            _signals: item._signals,
-            _signalVersion: item._signalVersion,
-            _strategy: item._strategy,
-            _decision: item._decision
-        }) : null)
-    });
-    if (derivedIndicatorCache.size > SYS_CONFIG.RENDER_CACHE_SIZE) {
-        derivedIndicatorCache.delete(derivedIndicatorCache.keys().next().value);
-    }
+    storeDerivedIndicatorCache(state.id, state.period, state.strategy, full, state.indicators);
 }
