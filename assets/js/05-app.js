@@ -1173,12 +1173,32 @@ function toggleHelp() {
     if(o) o.classList.toggle('show'); 
 }
 
+function isBackgroundPerfTrace(item) {
+    const label = String(item?.label || '');
+    return [
+        'cachedFetchRefresh',
+        'cachedFetchRefreshApply',
+        'refreshSidebarRealtime',
+        'syncData'
+    ].includes(label);
+}
+
+function splitPerfItems(items) {
+    return (items || []).reduce((groups, item) => {
+        if (isBackgroundPerfTrace(item)) groups.background.push(item);
+        else groups.interaction.push(item);
+        return groups;
+    }, { interaction: [], background: [] });
+}
+
 function renderPerfPanel() {
     const panel = document.getElementById('perfPanel');
     if (!panel) return;
 
     const traces = (window.__DG_PERF__?.traces || []).slice().reverse();
     const baseline = window.__DG_PERF__?.baseline?.() || [];
+    const traceGroups = splitPerfItems(traces);
+    const baselineGroups = splitPerfItems(baseline);
     const longTaskSummary = window.__DG_PERF__?.longTaskSummary?.() || { count: 0, avg: 0, max: 0, last: 0 };
     const longTaskHtml = longTaskSummary.count ? `
         <div class="perf-item">
@@ -1189,7 +1209,7 @@ function renderPerfPanel() {
             <div class="perf-item-meta">次数 ${longTaskSummary.count} · 平均 ${longTaskSummary.avg}ms · 最近 ${longTaskSummary.last}ms</div>
         </div>
     ` : '<div class="perf-empty">暂无浏览器长任务记录。</div>';
-    const baselineHtml = baseline.length ? baseline.map(item => {
+    const renderBaselineList = (items, emptyText) => items.length ? items.map(item => {
         const title = item.path ? `${item.label} · ${item.path}` : item.label;
         return `
             <div class="perf-item">
@@ -1200,8 +1220,15 @@ function renderPerfPanel() {
                 <div class="perf-item-meta">次数 ${item.count} · 峰值 ${item.max}ms · 最近 ${item.last}ms</div>
             </div>
         `;
-    }).join('') : '<div class="perf-empty">暂无可汇总的性能基线。</div>';
-    const listHtml = traces.length ? traces.map(item => {
+    }).join('') : `<div class="perf-empty">${escapeHTML(emptyText)}</div>`;
+    const baselineHtml = `
+        <div class="perf-section-note">交互手感：点击、切换、绘图等用户能直接感到的耗时。</div>
+        <div class="perf-list">${renderBaselineList(baselineGroups.interaction, '暂无交互性能基线。')}</div>
+        <div class="perf-item-title" style="margin:12px 0 8px;">后台同步</div>
+        <div class="perf-section-note">后台同步：网络等待或刷新应用，不直接代表点击卡顿。</div>
+        <div class="perf-list">${renderBaselineList(baselineGroups.background, '暂无后台同步性能基线。')}</div>
+    `;
+    const renderTraceList = (items, emptyText) => items.length ? items.map(item => {
         const metaEntries = Object.entries(item.meta || {});
         const refreshPath = metaEntries.find(([k]) => k === 'path')?.[1] || '';
         const meta = metaEntries.filter(([k]) => k !== 'path').map(([k, v]) => `${k}: ${v}`).join(' · ');
@@ -1227,7 +1254,9 @@ function renderPerfPanel() {
                 <div class="perf-steps">${steps || '<div class="perf-item-meta">无分步记录</div>'}</div>
             </div>
         `;
-    }).join('') : '<div class="perf-empty">先操作几次切换、刷新或图表交互，这里会出现最近性能记录。</div>';
+    }).join('') : `<div class="perf-empty">${escapeHTML(emptyText)}</div>`;
+    const interactionHtml = renderTraceList(traceGroups.interaction, '先操作几次切换、绘图或策略切换，这里会出现交互耗时。');
+    const backgroundHtml = renderTraceList(traceGroups.background, '暂无后台同步记录。');
 
     panel.innerHTML = `
         <div class="sg-header">
@@ -1244,8 +1273,11 @@ function renderPerfPanel() {
             <div class="perf-list">${baselineHtml}</div>
             <div class="perf-item-title" style="margin:14px 0 8px;">长任务</div>
             <div class="perf-list">${longTaskHtml}</div>
-            <div class="perf-item-title" style="margin:14px 0 8px;">最近记录</div>
-            <div class="perf-list">${listHtml}</div>
+            <div class="perf-item-title" style="margin:14px 0 8px;">交互手感</div>
+            <div class="perf-list">${interactionHtml}</div>
+            <div class="perf-item-title" style="margin:14px 0 8px;">后台同步</div>
+            <div class="perf-section-note">网络等待或刷新应用，不直接代表点击卡顿。</div>
+            <div class="perf-list">${backgroundHtml}</div>
         </div>
     `;
 }
