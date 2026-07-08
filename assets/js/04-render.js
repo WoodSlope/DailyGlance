@@ -224,6 +224,9 @@ const bsMarkerPlugin = {
 
 let hoverRAF = null;
 let pendingHoverIdx = -1;
+let hoverSidebarTimer = null;
+let hoverSidebarLastAt = Number.NEGATIVE_INFINITY;
+const HOVER_SIDEBAR_MIN_MS = 48;
 let chartPointerResetBound = false;
 let chartDragPanBound = false;
 let chartDragPanRAF = 0;
@@ -236,11 +239,36 @@ function cancelPendingChartHoverSelection() {
         cancelAnimationFrame(hoverRAF);
         hoverRAF = null;
     }
+    if (hoverSidebarTimer) {
+        clearTimeout(hoverSidebarTimer);
+        hoverSidebarTimer = null;
+    }
 }
 
 function suppressChartHoverSelection(ms = 350) {
     cancelPendingChartHoverSelection();
     chartHoverSuppressUntil = Date.now() + ms;
+}
+
+function runHoverSidebarUpdate() {
+    hoverRAF = null;
+    hoverSidebarTimer = null;
+    hoverSidebarLastAt = Date.now();
+    safeUpdateSidebar();
+}
+
+function scheduleHoverSidebarUpdate() {
+    if (hoverRAF || hoverSidebarTimer) return;
+    const elapsed = Date.now() - hoverSidebarLastAt;
+    const wait = Math.max(0, HOVER_SIDEBAR_MIN_MS - elapsed);
+    if (wait === 0) {
+        hoverRAF = requestAnimationFrame(runHoverSidebarUpdate);
+    } else {
+        hoverSidebarTimer = setTimeout(() => {
+            hoverSidebarTimer = null;
+            if (!hoverRAF) hoverRAF = requestAnimationFrame(runHoverSidebarUpdate);
+        }, wait);
+    }
 }
 
 function resolveVisibleDataIndex(activeData, renderedIndex) {
@@ -269,6 +297,10 @@ function resetHoverSelectionToLatest() {
     if (hoverRAF) {
         cancelAnimationFrame(hoverRAF);
         hoverRAF = null;
+    }
+    if (hoverSidebarTimer) {
+        clearTimeout(hoverSidebarTimer);
+        hoverSidebarTimer = null;
     }
     if (state.lockIdx === latestIdx) { updateFreezeBadge(); updateCrosshairOverlay(); return; }
     setLockIdx(latestIdx);
@@ -432,11 +464,8 @@ function handleChartHover(e, els) {
             // 十字线同步更新，零延迟跟随鼠标
             updateCrosshairOverlay();
             updateFreezeBadge();
-            // 侧边栏用 RAF 节流，避免频繁 DOM 操作
-            if (!hoverRAF) hoverRAF = requestAnimationFrame(() => {
-                hoverRAF = null;
-                safeUpdateSidebar();
-            });
+            // 侧边栏 DOM 更新节流，避免鼠标滑过多根 K 线时每帧重排。
+            scheduleHoverSidebarUpdate();
         }
     }
 }
