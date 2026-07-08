@@ -1179,6 +1179,16 @@ function renderPerfPanel() {
 
     const traces = (window.__DG_PERF__?.traces || []).slice().reverse();
     const baseline = window.__DG_PERF__?.baseline?.() || [];
+    const longTaskSummary = window.__DG_PERF__?.longTaskSummary?.() || { count: 0, avg: 0, max: 0, last: 0 };
+    const longTaskHtml = longTaskSummary.count ? `
+        <div class="perf-item">
+            <div class="perf-item-head">
+                <div class="perf-item-title">长任务</div>
+                <div class="perf-item-total mono">峰值 ${longTaskSummary.max}ms</div>
+            </div>
+            <div class="perf-item-meta">次数 ${longTaskSummary.count} · 平均 ${longTaskSummary.avg}ms · 最近 ${longTaskSummary.last}ms</div>
+        </div>
+    ` : '<div class="perf-empty">暂无浏览器长任务记录。</div>';
     const baselineHtml = baseline.length ? baseline.map(item => {
         const title = item.path ? `${item.label} · ${item.path}` : item.label;
         return `
@@ -1232,6 +1242,8 @@ function renderPerfPanel() {
             </div>
             <div class="perf-item-title" style="margin:10px 0 8px;">性能基线</div>
             <div class="perf-list">${baselineHtml}</div>
+            <div class="perf-item-title" style="margin:14px 0 8px;">长任务</div>
+            <div class="perf-list">${longTaskHtml}</div>
             <div class="perf-item-title" style="margin:14px 0 8px;">最近记录</div>
             <div class="perf-list">${listHtml}</div>
         </div>
@@ -1256,26 +1268,38 @@ async function copyPerfSummary() {
 }
 
 function clearPerfSummary() {
-    if (window.__DG_PERF__) window.__DG_PERF__.traces = [];
+    if (window.__DG_PERF__) {
+        window.__DG_PERF__.traces = [];
+        window.__DG_PERF__.longTasks = [];
+    }
     renderPerfPanel();
 }
 
 async function switchStrategy(name) { 
+    const perfTrace = PERF.start('switchStrategy', { strategy: name });
     if(!STRATEGIES[name]) return;
     const confirmed = await customConfirm(`确定切换到 [${name}]？\n${STRATEGIES[name].desc}`); 
     if(!confirmed) return;
     
+    const canReuseCurrentIndicators = !!(getActiveData()?.length && state.indicators.macd && state.indicators.rsi && state.indicators.kdj && state.indicators.ma);
     setActiveStrategy(name); 
     localStorage.setItem('quant_strategy', name); 
     renderSettings(); 
     
     if(getActiveData()) { 
+        state.pendingIndicatorMutation = canReuseCurrentIndicators ? { mode: 'strategy-only', startIdx: 0 } : { mode: 'full', startIdx: 0 };
+        markIndicatorsDirty();
         updateAllIndicators(); 
+        PERF.mark(perfTrace, 'indicators');
         draw(); 
+        PERF.mark(perfTrace, 'draw');
         safeUpdateSidebar(); 
+        PERF.mark(perfTrace, 'sidebar');
         refreshWatchlistSignalSnapshots();
+        PERF.mark(perfTrace, 'watchlist');
         renderWatchlist();
     } 
+    PERF.end(perfTrace, { selected: state.strategy });
 }
 
 function renderSettings() {
@@ -1346,6 +1370,25 @@ function toggleSettings() {
         } 
         o.classList.toggle('show'); 
     } 
+}
+
+function scheduleIdleTask(fn, timeout = 300) {
+    if (typeof window.requestIdleCallback === 'function') {
+        return window.requestIdleCallback(fn, { timeout });
+    }
+    return window.setTimeout(fn, timeout);
+}
+
+function scheduleStartupBackgroundHydration() {
+    scheduleIdleTask(async () => {
+        await preloadCacheOnly();
+        await ensureMarketTemperatureData();
+        if (state.mode === 'index') {
+            renderIndexList();
+            if (!document.hidden && isMarketOpen()) await refreshSidebarRealtime();
+        }
+    }, 600);
+    scheduleIdleTask(() => refreshWatchlistSignalSnapshots(), 900);
 }
 
 async function init() {
@@ -1485,15 +1528,9 @@ async function init() {
         else if (state.mode === 'stock' && state.id) cachedFetch(state.id);
     });
 
-    await preloadCacheOnly(); 
-    await ensureMarketTemperatureData(); 
-    if (state.mode === 'index') {
-        renderIndexList();
-        if (!document.hidden && isMarketOpen()) await refreshSidebarRealtime();
-    }
     await _selectIndexImpl('sh');  // init 直接调用 impl，跳过防抖
 
-    requestAnimationFrame(() => refreshWatchlistSignalSnapshots());
+    scheduleStartupBackgroundHydration();
 }
 
 // 启动应用

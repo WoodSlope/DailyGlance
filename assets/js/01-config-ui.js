@@ -6,7 +6,7 @@
 const rootStyle = getComputedStyle(document.documentElement);
 const getCssVar = (name) => rootStyle.getPropertyValue(name).trim();
 
-const APP_BUILD = '2026-07-08-04';
+const APP_BUILD = '2026-07-08-06';
 const SYS_CONFIG = {
     THROTTLE_MS: 30000,
     REQ_TIMEOUT: 5000,
@@ -78,7 +78,9 @@ const derivedIndicatorCache = new Map();
 const PERF = {
     enabled: true,
     maxEntries: 80,
+    maxLongTasks: 80,
     traces: [],
+    longTasks: [],
     start(label, meta = {}) {
         if (!this.enabled) return null;
         return { label, meta, start: performance.now(), marks: [] };
@@ -140,10 +142,43 @@ const PERF = {
                 last: Number(last.toFixed(1))
             };
         });
+    },
+    recordLongTask(entry = {}) {
+        const task = {
+            name: entry.name || 'longtask',
+            startTime: Number((Number(entry.startTime) || 0).toFixed(1)),
+            duration: Number((Number(entry.duration) || 0).toFixed(1))
+        };
+        this.longTasks.push(task);
+        if (this.longTasks.length > this.maxLongTasks) this.longTasks.shift();
+        return task;
+    },
+    longTaskSummary() {
+        if (!this.longTasks.length) return { count: 0, avg: 0, max: 0, last: 0 };
+        const durations = this.longTasks.map(item => Number(item.duration) || 0);
+        const sum = durations.reduce((acc, value) => acc + value, 0);
+        const last = durations[durations.length - 1] || 0;
+        return {
+            count: durations.length,
+            avg: Number((sum / durations.length).toFixed(1)),
+            max: Number(Math.max(...durations).toFixed(1)),
+            last: Number(last.toFixed(1))
+        };
     }
 };
 
 window.__DG_PERF__ = PERF;
+
+function installPerformanceLongTaskObserver() {
+    if (typeof PerformanceObserver === 'undefined') return;
+    try {
+        const observer = new PerformanceObserver(list => {
+            for (const entry of list.getEntries()) PERF.recordLongTask(entry);
+        });
+        observer.observe({ entryTypes: ['longtask'] });
+    } catch (error) {}
+}
+installPerformanceLongTaskObserver();
 
 function clearDerivedCaches() { renderCache.clear(); dateIndexCache.clear(); }
 function clearLookupCacheOnly() { dateIndexCache.clear(); }

@@ -760,7 +760,13 @@ function updateAllIndicators(incrementalIdx = -1) {
     const mutation = incrementalIdx >= 0
         ? { mode: 'incremental', startIdx: incrementalIdx }
         : (state.pendingIndicatorMutation || { mode: 'full', startIdx: 0 });
-    const shouldFullRebuild = !state.indicators.macd || full.length < 60 || mutation.mode === 'full';
+    const isStrategyOnlyMutation = mutation.mode === 'strategy-only' &&
+        state.indicators.macd &&
+        state.indicators.rsi &&
+        state.indicators.kdj &&
+        state.indicators.ma;
+    const shouldFullRebuild = !isStrategyOnlyMutation &&
+        (!state.indicators.macd || full.length < 60 || mutation.mode === 'full');
 
     if (mutation.mode === 'unchanged' && state.indicators.macd) {
         state.indicatorKey = nextKey;
@@ -768,7 +774,7 @@ function updateAllIndicators(incrementalIdx = -1) {
         return;
     }
 
-    if (incrementalIdx === -1 && mutation.mode === 'full' && derivedIndicatorCache.has(cacheKey)) {
+    if (incrementalIdx === -1 && (mutation.mode === 'full' || mutation.mode === 'strategy-only') && derivedIndicatorCache.has(cacheKey)) {
         const cached = derivedIndicatorCache.get(cacheKey);
         state.indicators.ma = cached.indicators.ma;
         state.indicators.macd = cached.indicators.macd;
@@ -787,20 +793,22 @@ function updateAllIndicators(incrementalIdx = -1) {
     }
 
     const calcStart = shouldFullRebuild ? 0 : Math.max(0, mutation.startIdx || 0);
-    MA_OPTIONS.forEach(n => {
-        state.indicators.ma[n] = shouldFullRebuild
-            ? Calcs.ma(full, n)
-            : Calcs.maIncremental(full, n, state.indicators.ma?.[n], calcStart);
-    });
-    state.indicators.macd = shouldFullRebuild
-        ? Calcs.macd(full)
-        : Calcs.macdIncremental(full, state.indicators.macd, calcStart);
-    state.indicators.rsi = shouldFullRebuild
-        ? Calcs.rsi(full)
-        : Calcs.rsiIncremental(full, state.indicators.rsi, 14, calcStart);
-    state.indicators.kdj = shouldFullRebuild
-        ? Calcs.kdj(full)
-        : Calcs.kdjIncremental(full, state.indicators.kdj, 9, calcStart);
+    if (!isStrategyOnlyMutation) {
+        MA_OPTIONS.forEach(n => {
+            state.indicators.ma[n] = shouldFullRebuild
+                ? Calcs.ma(full, n)
+                : Calcs.maIncremental(full, n, state.indicators.ma?.[n], calcStart);
+        });
+        state.indicators.macd = shouldFullRebuild
+            ? Calcs.macd(full)
+            : Calcs.macdIncremental(full, state.indicators.macd, calcStart);
+        state.indicators.rsi = shouldFullRebuild
+            ? Calcs.rsi(full)
+            : Calcs.rsiIncremental(full, state.indicators.rsi, 14, calcStart);
+        state.indicators.kdj = shouldFullRebuild
+            ? Calcs.kdj(full)
+            : Calcs.kdjIncremental(full, state.indicators.kdj, 9, calcStart);
+    }
 
     const isLatestOnlyMutation = !shouldFullRebuild &&
         mutation.mode === 'incremental' &&
@@ -809,7 +817,9 @@ function updateAllIndicators(incrementalIdx = -1) {
         full[full.length - 2]?._decision &&
         full[full.length - 2]?._strategy === state.strategy &&
         full[full.length - 2]?._signalVersion === SIGNAL_VERSION;
-    const rebuildStart = shouldFullRebuild
+    const rebuildStart = isStrategyOnlyMutation
+        ? 0
+        : shouldFullRebuild
         ? 0
         : (isLatestOnlyMutation ? full.length - 1 : Math.max(0, Math.min(full.length - 1, mutation.startIdx || 0) - DECISION_REBUILD_LOOKBACK));
 
@@ -824,7 +834,9 @@ function updateAllIndicators(incrementalIdx = -1) {
             continue;
         }
         if (full[i]) {
-            full[i]._signals = calculateDailySignals(i, full, state.indicators);
+            if (!full[i]._signals || full[i]._signalVersion !== SIGNAL_VERSION) {
+                full[i]._signals = calculateDailySignals(i, full, state.indicators);
+            }
             full[i]._signalVersion = SIGNAL_VERSION;
             full[i]._strategy = state.strategy;
             full[i]._decision = computeDecisionForIndex(i, full, prevPos);
