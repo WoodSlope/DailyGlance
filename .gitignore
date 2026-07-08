@@ -1,0 +1,9 @@
+# Local-only work files
+/.workbuddy/
+
+# Local caches, reports, and backups
+/.local/
+/backups/
+
+# OS files
+.DS_Store

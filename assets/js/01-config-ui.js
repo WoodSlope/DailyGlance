@@ -6,7 +6,7 @@
 const rootStyle = getComputedStyle(document.documentElement);
 const getCssVar = (name) => rootStyle.getPropertyValue(name).trim();
 
-const APP_BUILD = '2026-07-03-06';
+const APP_BUILD = '2026-07-08-01';
 const SYS_CONFIG = {
     THROTTLE_MS: 30000,
     REQ_TIMEOUT: 5000,
@@ -118,6 +118,28 @@ const PERF = {
             meta: item.meta,
             steps: item.steps.map(step => `${step.step}:${step.duration}ms`).join(' | ')
         }));
+    },
+    baseline(label) {
+        const list = label ? this.traces.filter(item => item.label === label) : this.traces;
+        const groups = new Map();
+        for (const item of list) {
+            const path = item.meta?.path || '';
+            const key = `${item.label}||${path}`;
+            if (!groups.has(key)) groups.set(key, { label: item.label, path, totals: [] });
+            groups.get(key).totals.push(Number(item.total) || 0);
+        }
+        return Array.from(groups.values()).map(group => {
+            const sum = group.totals.reduce((acc, value) => acc + value, 0);
+            const last = group.totals[group.totals.length - 1] || 0;
+            return {
+                label: group.label,
+                path: group.path,
+                count: group.totals.length,
+                avg: Number((sum / group.totals.length).toFixed(1)),
+                max: Number(Math.max(...group.totals).toFixed(1)),
+                last: Number(last.toFixed(1))
+            };
+        });
     }
 };
 

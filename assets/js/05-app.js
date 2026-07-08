@@ -1175,6 +1175,19 @@ function renderPerfPanel() {
     if (!panel) return;
 
     const traces = (window.__DG_PERF__?.traces || []).slice().reverse();
+    const baseline = window.__DG_PERF__?.baseline?.() || [];
+    const baselineHtml = baseline.length ? baseline.map(item => {
+        const title = item.path ? `${item.label} · ${item.path}` : item.label;
+        return `
+            <div class="perf-item">
+                <div class="perf-item-head">
+                    <div class="perf-item-title">${escapeHTML(title)}</div>
+                    <div class="perf-item-total mono">平均 ${item.avg}ms</div>
+                </div>
+                <div class="perf-item-meta">次数 ${item.count} · 峰值 ${item.max}ms · 最近 ${item.last}ms</div>
+            </div>
+        `;
+    }).join('') : '<div class="perf-empty">暂无可汇总的性能基线。</div>';
     const listHtml = traces.length ? traces.map(item => {
         const metaEntries = Object.entries(item.meta || {});
         const refreshPath = metaEntries.find(([k]) => k === 'path')?.[1] || '';
@@ -1214,6 +1227,9 @@ function renderPerfPanel() {
                 <button type="button" onclick="copyPerfSummary()">复制摘要</button>
                 <button type="button" onclick="clearPerfSummary()">清空记录</button>
             </div>
+            <div class="perf-item-title" style="margin:10px 0 8px;">性能基线</div>
+            <div class="perf-list">${baselineHtml}</div>
+            <div class="perf-item-title" style="margin:14px 0 8px;">最近记录</div>
             <div class="perf-list">${listHtml}</div>
         </div>
     `;

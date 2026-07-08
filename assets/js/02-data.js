@@ -365,7 +365,7 @@ function setLiveBar(id, bar, source = 'api', meta = {}) {
         _cachedAt: cachedAt,
         _cacheAgeMs: cacheAgeMs
     };
-    state.liveWeeklyData[id] = convertDailyToWeekly(getMergedLiveDailyData(id));
+    delete state.liveWeeklyData[id];
     setDisplayStatus(id, {
         mode: displayMode,
         reason: displayReason,
