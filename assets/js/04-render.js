@@ -370,16 +370,17 @@ function getChartDragMainBox(target) {
 }
 
 function handleChartWheelPan(event) {
-    const activeData = getActiveData();
-    if (!activeData || activeData.length <= getViewportLength()) return;
     const deltaX = Number(event?.deltaX) || 0;
     if (Math.abs(deltaX) < 1 || Math.abs(deltaX) < Math.abs(Number(event?.deltaY) || 0)) return;
+    event?.preventDefault?.();
+
+    const activeData = getActiveData();
+    if (!activeData || activeData.length <= getViewportLength()) return;
     const barWidth = getChartPanBarWidth();
     if (!barWidth) return;
     const deltaBars = Math.trunc(deltaX / barWidth);
     if (deltaBars === 0) return;
 
-    event?.preventDefault?.();
     cancelPendingChartHoverSelection();
     if (panViewportByBars(deltaBars, activeData)) {
         suppressChartHoverSelection();

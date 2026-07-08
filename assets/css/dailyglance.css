@@ -67,8 +67,8 @@
    2. 基础重置与排版 (Reset & Typography)
 ========================================= */
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { height: 100%; width: 100%; }
-body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--dark-bg); color: var(--text-main); overflow: hidden; overscroll-behavior: none; }
+html, body { height: 100%; width: 100%; overscroll-behavior: none; overscroll-behavior-x: none; }
+body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--dark-bg); color: var(--text-main); overflow: hidden; overscroll-behavior: none; overscroll-behavior-x: none; }
 .mono { font-family: 'JetBrains Mono', monospace; }
 
 #mobileGate { display: none; }
@@ -248,7 +248,7 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 .ma-checkbox input { display: none; }
 .ma-checkbox .check-box { width: 12px; height: 12px; border: 2px solid; border-radius: var(--radius-sm); transition: all var(--transition-instant); }
 
-.integrated-container { flex: 1; display: flex; flex-direction: column; background: var(--dark-bg); border: 1px solid var(--border-color); border-radius: var(--radius-sm); min-height: 0; overflow: hidden; position: relative; }
+.integrated-container { flex: 1; display: flex; flex-direction: column; background: var(--dark-bg); border: 1px solid var(--border-color); border-radius: var(--radius-sm); min-height: 0; overflow: hidden; position: relative; overscroll-behavior: contain; overscroll-behavior-x: none; }
 .main-chart-box { flex: 5; position: relative; min-height: 0; z-index: 1; }
 .crosshair-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 5; display: none; }
 .crosshair-overlay.active { display: block; }
