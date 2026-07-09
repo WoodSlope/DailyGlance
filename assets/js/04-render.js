@@ -1253,22 +1253,25 @@ function generateSidebarBundle(item, prev, safeIdx, rd) {
     const formatPrice = (value) => Number.isFinite(Number(value)) ? Number(value).toFixed(pricePrecision) : '--';
     const formatUnit = (v) => !v ? '--' : (v >= 1e8 ? `${(v/1e8).toFixed(2)}亿` : v >= 1e4 ? `${(v/1e4).toFixed(2)}万` : v.toFixed(0));
     
-    const stockMeta = activeSecurity
-        ? (() => {
-            const shortName = typeof getSecurityShortName === 'function' ? getSecurityShortName(activeSecurity) : activeSecurity.name;
-            const title = activeSecurity.type === 'fund' ? `${activeSecurity.name} · ${activeSecurity.code}` : activeSecurity.name;
-            const visible = activeSecurity.type === 'fund'
-                ? shortName
-                : `${shortName} · ${activeSecurity.code}`;
-            return `<span class="text-dim" style="margin:0 8px;">|</span><span class="text-main" title="${escapeHTML(title)}">${escapeHTML(visible)}</span>`;
-        })()
-        : (state.mode === 'stock' ? `<span class="text-dim" style="margin:0 8px;">|</span><span class="mono text-main">${escapeHTML(state.stockId)}</span>` : '');
-    const headerMeta = `${item.date}${stockMeta}`;
+    const headerIdentity = (() => {
+        if (activeSecurity) {
+            const visible = typeof getSecurityShortName === 'function' ? getSecurityShortName(activeSecurity) : activeSecurity.name;
+            const title = `${activeSecurity.name || visible} · ${activeSecurity.code}`;
+            return { visible, title };
+        }
+        if (state.mode === 'index') {
+            const cfg = typeof getIndexConfig === 'function' ? getIndexConfig(state.id) : null;
+            if (cfg) return { visible: cfg.name, title: `${cfg.name} · ${(cfg.tencent || state.id || '').toUpperCase()}` };
+        }
+        if (state.mode === 'stock' && state.stockId) return { visible: state.stockId, title: state.stockId };
+        return null;
+    })();
+    const headerMeta = `${item.date}${headerIdentity ? `<span class="text-dim" style="margin:0 8px;">|</span><span class="text-main" title="${escapeHTML(headerIdentity.title)}">${escapeHTML(headerIdentity.visible)}</span>` : ''}`;
     
     const priceHtml = `
         <div class="terminal-block">
             <div class="header-meta-row">
-                <div class="mono text-dim" style="font-size:12px;font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                <div class="price-header-identity mono text-dim">
                     ${headerMeta}
                 </div>
                 <div class="nav-capsule">

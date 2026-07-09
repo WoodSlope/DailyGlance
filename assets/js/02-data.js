@@ -281,6 +281,14 @@ function getVisibleQuoteData(id) {
     if (!confirmed.length) return [quote];
     const last = confirmed[confirmed.length - 1];
     if (!last || quote.date < last.date) return getMergedLiveDailyData(id);
+    const confirmedStatus = state.confirmedStatus?.[id] || {};
+    if (
+        quote.date === last.date &&
+        confirmedStatus.status === 'fresh' &&
+        confirmedStatus.lastDate === last.date
+    ) {
+        return confirmed;
+    }
     if (quote.date === last.date) return confirmed.slice(0, -1).concat(quote);
     return confirmed.concat(quote);
 }
@@ -1430,7 +1438,7 @@ function scheduleCachedFetchRefresh(id) {
 async function preloadCacheOnly() {
     const symbols = [...INDEX_IDS];
     if (state.watchlist && state.watchlist.length > 0) {
-        symbols.push(...state.watchlist.slice(0, 5).map(s => normalizeSecurityTarget(s).secid).filter(s => !symbols.includes(s)));
+        symbols.push(...state.watchlist.map(s => normalizeSecurityTarget(s).secid).filter(s => !symbols.includes(s)));
     }
     for (const id of symbols) {
         try {

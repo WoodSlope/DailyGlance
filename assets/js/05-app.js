@@ -1481,6 +1481,11 @@ function scheduleStartupBackgroundHydration() {
         if (state.mode === 'index') {
             renderIndexList();
             if (!document.hidden && isMarketOpen()) await refreshSidebarRealtime();
+        } else if (state.mode === 'stock' || state.tab === 'stock') {
+            const leftTxn = beginRefreshTransaction('leftList', { source: 'startup-cache-preload', area: 'stock-list' });
+            renderWatchlist();
+            markLeftListRefreshForActiveTab(leftTxn, { area: 'stock-list' });
+            if (!document.hidden && isMarketOpen()) await refreshSidebarRealtime();
         }
     }, 600);
     scheduleIdleTask(() => refreshWatchlistSignalSnapshots(), 900);
