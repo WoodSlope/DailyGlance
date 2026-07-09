@@ -268,6 +268,7 @@ body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sa
 .main-chart-box canvas, .volume-chart-box canvas, .macd-chart-box canvas, .kdj-chart-box canvas { width: 100% !important; height: 100% !important; touch-action: pan-y; }
 .main-chart-box canvas { cursor: grab; }
 .main-chart-box.drag-panning canvas { cursor: grabbing; }
+.chart-copyright-line { flex: 0 0 14px; display: flex; align-items: center; justify-content: center; box-sizing: border-box; margin-top: 8px; padding: 0 16px; color: var(--text-dim); font-size: 10px; font-weight: 500; line-height: 1; letter-spacing: 0; opacity: .62; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; user-select: none; }
 
 .header-meta-row { display: flex; justify-content: space-between; align-items: center; }
 .data-status-pill { position: relative; display: inline-flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-2); height: 20px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: rgba(255,255,255,0.035); max-width: 120px; min-width: 0; cursor: help; outline-offset: 2px; }
