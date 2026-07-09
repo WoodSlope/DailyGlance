@@ -158,8 +158,11 @@ async function runBacktest() {
 function searchLocalStocks(q) { 
     const qt = q.toLowerCase(); 
     return STOCK_DATABASE
-        .concat(stockCache.filter(s => !STOCK_DATABASE.some(b => b.Code === s.Code)))
-        .map(s => ({ Code: s.Code, Name: normalizeStockDisplayName(s.Code, s.Name) }))
+        .concat(stockCache.filter(s => !STOCK_DATABASE.some(b => b.Code === (s.Code || s.code))))
+        .map(s => {
+            const target = normalizeSecurityTarget(s);
+            return { Code: target.code, Name: target.name, QuoteID: target.secid, Type: target.type, TencentSymbol: target.tencentSymbol };
+        })
         .filter(s => s.Name.toLowerCase().includes(qt) || s.Code.includes(qt)); 
 }
 
@@ -178,7 +181,14 @@ function jsonpSearchEastmoney(query) {
         window[cb] = data => {
             cleanup();
             const list = data?.QuotationCodeTable?.Data || [];
-            resolve(list.filter(x => /^\d{6}$/.test(x.Code)).map(x => ({ Code: x.Code, Name: x.Name || x.SecurityName || x.Code })));
+            resolve(list.filter(x => /^\d{6}$/.test(x.Code)).map(x => ({
+                Code: x.Code,
+                Name: x.Name || x.SecurityName || x.Code,
+                QuoteID: x.QuoteID,
+                Classify: x.Classify,
+                SecurityTypeName: x.SecurityTypeName,
+                SecurityType: x.SecurityType
+            })));
         };
         const script = document.createElement('script');
         script.id = 'jq_' + cb;
@@ -277,37 +287,40 @@ async function searchAndShowInSuggest(q) {
     renderSuggest(sug, res.slice(0, 20));
 }
 
-function renderSuggest(container, res) { 
-    container.innerHTML = res.map(x => `
-        <div class="stock-suggest-item" onclick="selectSuggestItem('${escapeJSArg(x.Code)}','${escapeJSArg(normalizeStockDisplayName(x.Code, x.Name))}')">
-            <span class="ss-name">${escapeHTML(normalizeStockDisplayName(x.Code, x.Name))}</span>
-            <span class="ss-code mono">${escapeHTML(x.Code)}</span>
+function renderSuggest(container, res) {
+    container.innerHTML = res.map(x => {
+        const target = normalizeSecurityTarget(x);
+        return `
+        <div class="stock-suggest-item" onclick="selectSuggestItem('${escapeJSArg(target.code)}','${escapeJSArg(target.name)}','${escapeJSArg(target.secid)}','${escapeJSArg(target.type)}','${escapeJSArg(target.tencentSymbol)}')">
+            <span class="ss-name">${escapeHTML(target.name)}</span>
+            <span class="ss-code mono">${escapeHTML(target.code)}</span>
         </div>
-    `).join(''); 
-    container.style.display = 'block'; 
+    `;
+    }).join('');
+    container.style.display = 'block';
     suggestActiveIdx = -1;
 }
 
-function selectSuggestItem(code, name) { 
-    closeSuggestions(); 
+function selectSuggestItem(code, name, secid = '', type = '', tencentSymbol = '') {
+    closeSuggestions();
     const i = document.getElementById('stockSearchInput');
-    const safeCode = String(code || '').trim();
-    const safeName = normalizeStockDisplayName(safeCode, name); 
+    const target = normalizeSecurityTarget({ Code: code, Name: name, QuoteID: secid, type, tencentSymbol });
+    const safeCode = target.code;
     
-    if(i) i.value = ''; 
-    if(!/^\d{6}$/.test(safeCode)) return; 
+    if(i) i.value = '';
+    if(!/^\d{6}$/.test(safeCode)) return;
     
     const alreadyWatched = state.watchlist.some(s => s.code === safeCode);
-    if(!alreadyWatched && state.watchlist.length >= 10) { 
-        customAlert('最多只能添加 10 只自选股。'); 
-        return; 
+    if(!alreadyWatched && state.watchlist.length >= 10) {
+        customAlert('最多只能添加 10 只自选股。');
+        return;
     }
     
-    if(!STOCK_DATABASE.some(s => s.Code === safeCode) && !stockCache.some(s => s.Code === safeCode)) { 
-        stockCache.push({ Code: safeCode, Name: safeName }); 
-        dbSet('stock_cache', stockCache); 
-    } 
-    selectStock(safeCode, safeName); 
+    if(!STOCK_DATABASE.some(s => s.Code === safeCode) && !stockCache.some(s => (s.Code || s.code) === safeCode)) {
+        stockCache.push({ Code: target.code, Name: target.name, QuoteID: target.secid, type: target.type, tencentSymbol: target.tencentSymbol });
+        dbSet('stock_cache', stockCache);
+    }
+    selectStock(target.code, target.name, target.secid, target.type, target.tencentSymbol);
 }
 
 function onSearchKeydown(e) {
@@ -352,10 +365,7 @@ async function loadWatchlist() {
     try { 
         const w = await dbGet('watchlist_list'); 
         const rawWatchlist = (w && w.data) || [];
-        state.watchlist = rawWatchlist.map(stock => ({
-            ...stock,
-            name: normalizeStockDisplayName(stock.code, stock.name)
-        }));
+        state.watchlist = rawWatchlist.map(stock => normalizeSecurityTarget(stock));
         if (JSON.stringify(state.watchlist) !== JSON.stringify(rawWatchlist)) {
             try {
                 await saveWatchlist();
@@ -519,8 +529,10 @@ function computeWatchlistDecisionSnapshot(full, code) {
             full[i]._decision = computeDecisionForIndex(i, full, prevPos);
             prevPos = full[i]._decision.position;
         }
-        if (code && typeof codeToSecid === 'function' && typeof storeDerivedIndicatorCache === 'function') {
-            storeDerivedIndicatorCache(codeToSecid(code), 'daily', state.strategy, full, localIndicators);
+        if (code && typeof storeDerivedIndicatorCache === 'function') {
+            const matched = (state.watchlist || []).find(stock => stock.code === code);
+            const cacheId = matched ? normalizeSecurityTarget(matched).secid : codeToSecid(code);
+            storeDerivedIndicatorCache(cacheId, 'daily', state.strategy, full, localIndicators);
         }
         return full[full.length - 1]?._decision || null;
     } finally {
@@ -587,7 +599,8 @@ function syncWatchlistSignalSnapshot(code, full) {
 
 function refreshWatchlistSignalSnapshots() {
     state.watchlist.forEach(stock => {
-        const full = state.rawData[codeToSecid(stock.code)];
+        const target = normalizeSecurityTarget(stock);
+        const full = state.rawData[target.secid];
         syncWatchlistSignalSnapshotFast(stock.code, full);
     });
     scheduleWatchlistRender();
@@ -607,23 +620,25 @@ function resolveWatchlistRowStatus(stock, statusData, lastDate) {
     return status;
 }
 
-async function addToWatchlist(code, name) { 
-    const displayName = normalizeStockDisplayName(code, name);
-    const existing = state.watchlist.find(s => s.code === code);
+async function addToWatchlist(code, name, meta = {}) {
+    const target = normalizeSecurityTarget({ ...meta, Code: code, Name: name });
+    const displayName = target.name;
+    const existing = state.watchlist.find(s => s.code === target.code);
     if (existing) {
-        if (existing.name !== displayName) {
-            existing.name = displayName;
+        const next = { ...existing, ...target, name: displayName };
+        if (JSON.stringify(existing) !== JSON.stringify(next)) {
+            Object.assign(existing, next);
             await saveWatchlist();
             renderWatchlist();
         }
         return;
     }
-    if(state.watchlist.length >= 10) { 
-        await customAlert('最多只能添加 10 只自选股。'); 
-        return; 
-    } 
-    state.watchlist.push({ code, name: displayName }); 
-    await saveWatchlist(); 
+    if(state.watchlist.length >= 10) {
+        await customAlert('最多只能添加 10 只自选股。');
+        return;
+    }
+    state.watchlist.push(target);
+    await saveWatchlist();
     renderWatchlist(); 
 }
 
@@ -681,9 +696,9 @@ function debounceWatchlistUpdate() {
 
 async function updateAllWatchlistData(options = {}) {
     if (!state.watchlist || !state.watchlist.length) return [];
-    const stocks = state.watchlist.filter(s => codeToSecid(s.code) !== state.id);
+    const stocks = state.watchlist.map(s => normalizeSecurityTarget(s)).filter(s => s.secid !== state.id);
     const results = await pLimit(stocks, SYS_CONFIG.SIDEBAR_SYNC_CONCURRENCY, async (stock) => {
-        const secid = codeToSecid(stock.code);
+        const secid = stock.secid;
         try {
             const data = await syncData(secid);
             if (data && data.length >= 30 && isValidPrice(data[data.length - 1].close, secid)) {
@@ -727,7 +742,7 @@ async function refreshSidebarRealtime() {
     if (state.tab === 'index' || state.mode === 'index') {
         ids = [...INDEX_IDS];
     } else if (state.tab === 'stock' || state.mode === 'stock') {
-        ids = (state.watchlist || []).map(s => codeToSecid(s.code)).filter(Boolean);
+        ids = (state.watchlist || []).map(s => normalizeSecurityTarget(s).secid).filter(Boolean);
         if (state.id) ids.push(state.id);
     }
     ids = Array.from(new Set(ids));
@@ -842,25 +857,26 @@ async function _selectIndexImpl(id) {
     }
 }
 
-function selectStock(code, name) {
+function selectStock(code, name, secid = '', type = '', tencentSymbol = '') {
     clearTimeout(_selectDebounceTimer);
-    _selectDebounceTimer = setTimeout(() => _selectStockImpl(code, name), 120);
+    _selectDebounceTimer = setTimeout(() => _selectStockImpl(code, name, secid, type, tencentSymbol), 120);
 }
 
-async function _selectStockImpl(code, name) {
+async function _selectStockImpl(code, name, secid = '', type = '', tencentSymbol = '') {
     const perfTrace = PERF.start('selectStock', { code });
-    const safeCode = String(code || '').trim();
-    const safeName = normalizeStockDisplayName(safeCode, name);
+    const target = normalizeSecurityTarget({ Code: code, Name: name, QuoteID: secid, type, tencentSymbol });
+    const safeCode = target.code;
+    const safeName = target.name;
     if (!/^\d{6}$/.test(safeCode)) return;
 
     const selectionSeq = ++globalSelectionSeq;
-    const secid = codeToSecid(safeCode);
-    await addToWatchlist(safeCode, safeName);
+    const targetSecid = target.secid;
+    await addToWatchlist(safeCode, safeName, target);
     if (selectionSeq !== globalSelectionSeq) return;
 
     state.tab = 'stock';
     state.mode = 'stock';
-    state.id = secid;
+    state.id = targetSecid;
     state.stockId = safeCode;
     state.isFrozen = false;
     resetViewportToLatest(null);
@@ -878,12 +894,12 @@ async function _selectStockImpl(code, name) {
     renderCache.clear();
 
     try {
-        await cachedFetch(secid);
+        await cachedFetch(targetSecid);
         PERF.mark(perfTrace, 'cachedFetch');
-        if (selectionSeq !== globalSelectionSeq || state.id !== secid || state.stockId !== safeCode) return;
+        if (selectionSeq !== globalSelectionSeq || state.id !== targetSecid || state.stockId !== safeCode) return;
         const data = getActiveData();
-        if (!(data && data.length >= 30 && isValidPrice(data[data.length - 1].close, secid))) {
-            setRawData(secid, null);
+        if (!(data && data.length >= 30 && isValidPrice(data[data.length - 1].close, targetSecid))) {
+            setRawData(targetSecid, null);
             clearCharts();
             const cPrice = document.getElementById('cardPrice');
             const cAnalysis = document.getElementById('cardAnalysis');
@@ -895,8 +911,8 @@ async function _selectStockImpl(code, name) {
         }
         PERF.mark(perfTrace, 'post-check', { points: data?.length || 0 });
     } catch(e) {
-        if (selectionSeq !== globalSelectionSeq || state.id !== secid || state.stockId !== safeCode) return;
-        setRawData(secid, null);
+        if (selectionSeq !== globalSelectionSeq || state.id !== targetSecid || state.stockId !== safeCode) return;
+        setRawData(targetSecid, null);
         clearCharts();
         const cPrice = document.getElementById('cardPrice');
         const cAnalysis = document.getElementById('cardAnalysis');
@@ -1012,16 +1028,18 @@ function renderIndexList() {
 }
 
 function getLeftQuoteDisplay(id) {
-    const d = getVisibleQuoteData(id);
+    const quoteId = id && typeof id === 'object' ? resolveSecuritySecid(id) : id;
+    const d = getVisibleQuoteData(quoteId);
     const price = d?.length ? Number(d[d.length - 1].close) : 0;
-    const prev = Number(getVisibleQuoteChangeBase(id, d));
+    const prev = Number(getVisibleQuoteChangeBase(quoteId, d));
     const hasPrice = Number.isFinite(price) && price > 0;
     const hasPrev = Number.isFinite(prev) && prev > 0;
     const change = hasPrice && hasPrev ? price - prev : 0;
     const pct = hasPrice && hasPrev ? change / prev * 100 : null;
     const cl = !hasPrice || !hasPrev || change === 0 ? 'flat' : (change > 0 ? 'up' : 'down');
+    const precision = getSecurityPricePrecision(id);
     return {
-        priceText: hasPrice ? price.toFixed(2) : '--',
+        priceText: hasPrice ? price.toFixed(precision) : '--',
         changeText: pct == null ? '--' : `${change > 0 ? '+' : ''}${pct.toFixed(2)}%`,
         cl
     };
@@ -1048,31 +1066,33 @@ function renderWatchlist() {
     }
     
     const lHtml = state.watchlist.map(s => {
-        const displayName = normalizeStockDisplayName(s.code, s.name);
-        const id = codeToSecid(s.code);
+        const target = normalizeSecurityTarget(s);
+        const displayName = target.name;
+        const shortName = getSecurityShortName(target);
+        const id = target.secid;
         const d = getVisibleQuoteData(id);
         const statusData = getMergedLiveDailyData(id);
         const lastDate = statusData?.length ? statusData[statusData.length - 1].date : '';
         const rowStatus = resolveWatchlistRowStatus(s, statusData, lastDate);
-        const quoteDisplay = getLeftQuoteDisplay(id);
+        const quoteDisplay = getLeftQuoteDisplay(target);
         const statusTitle = rowStatus.detail || rowStatus.action || rowStatus.label;
         
         return `
-            <div class="nav-list-item ${s.code === state.stockId ? 'active' : ''}${s._pendingRemove ? ' pending-remove' : ''}" data-code="${s.code}" ${s._pendingRemove ? '' : `onclick="selectStock('${escapeJSArg(s.code)}','${escapeJSArg(displayName)}')"`}>
+            <div class="nav-list-item ${target.code === state.stockId ? 'active' : ''}${s._pendingRemove ? ' pending-remove' : ''}" data-code="${target.code}" ${s._pendingRemove ? '' : `onclick="selectStock('${escapeJSArg(target.code)}','${escapeJSArg(displayName)}','${escapeJSArg(target.secid)}','${escapeJSArg(target.type)}','${escapeJSArg(target.tencentSymbol)}')"`}>
                 <div class="nav-list-main">
                     <div class="lname-wrap">
-                        <span class="lname">${escapeHTML(displayName)}</span>
+                        <span class="lname" title="${escapeHTML(displayName)}">${escapeHTML(shortName)}</span>
                         <span class="wl-status ${rowStatus.toneClass}" title="${escapeHTML(statusTitle)}">${rowStatus.label}</span>
                     </div>
-                    ${s._pendingRemove ? '' : `<button type="button" class="wl-close" title="移除自选股" aria-label="移除 ${escapeHTML(displayName)}" onclick="event.stopPropagation();removeStock('${escapeJSArg(s.code)}')">×</button>`}
+                    ${s._pendingRemove ? '' : `<button type="button" class="wl-close" title="移除自选股" aria-label="移除 ${escapeHTML(displayName)}" onclick="event.stopPropagation();removeStock('${escapeJSArg(target.code)}')">×</button>`}
                 </div>
                 <div class="nav-list-sub">
                     <div class="wl-sub-left">
-                        <span class="lcode mono">${escapeHTML(s.code)}</span>
+                        <span class="lcode mono">${escapeHTML(target.code)}</span>
                     </div>
                     <div class="lquote">
-                        <span class="lprice mono ${quoteDisplay.cl}" data-code="${s.code}">${quoteDisplay.priceText}</span>
-                        <span class="lchange mono ${quoteDisplay.cl}" data-code="${s.code}">${quoteDisplay.changeText}</span>
+                        <span class="lprice mono ${quoteDisplay.cl}" data-code="${target.code}">${quoteDisplay.priceText}</span>
+                        <span class="lchange mono ${quoteDisplay.cl}" data-code="${target.code}">${quoteDisplay.changeText}</span>
                     </div>
                 </div>
             </div>
@@ -1088,10 +1108,10 @@ function renderWatchlist() {
 
 function refreshWatchlistQuotes() {
     (state.watchlist || []).forEach(s => {
-        const id = codeToSecid(s.code);
-        const quoteDisplay = getLeftQuoteDisplay(id);
-        const priceEl = document.querySelector(`#stockNavList .lprice[data-code="${s.code}"]`);
-        const changeEl = document.querySelector(`#stockNavList .lchange[data-code="${s.code}"]`);
+        const target = normalizeSecurityTarget(s);
+        const quoteDisplay = getLeftQuoteDisplay(target);
+        const priceEl = document.querySelector(`#stockNavList .lprice[data-code="${target.code}"]`);
+        const changeEl = document.querySelector(`#stockNavList .lchange[data-code="${target.code}"]`);
         if (priceEl) {
             priceEl.textContent = quoteDisplay.priceText;
             priceEl.className = `lprice mono ${quoteDisplay.cl}`;

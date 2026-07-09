@@ -6,11 +6,25 @@
 const INDEX_CONFIG = { sh: {name: '上证指数', eastmoney: '1.000001', tencent: 'sh000001'}, cy: {name: '创业板指', eastmoney: '0.399006', tencent: 'sz399006'}, zz1000: {name: '中证1000', eastmoney: '1.000852', tencent: 'sh000852'}, kc50: {name: '科创50', eastmoney: '1.000688', tencent: 'sh000688'} };
 const INDEX_IDS = Object.keys(INDEX_CONFIG);
 function getIndexConfig(id) { return INDEX_CONFIG[id] || null; }
-function resolveSecid(id) { return getIndexConfig(id)?.eastmoney || id; }
-function resolveTencentSymbol(id) { const cfg = getIndexConfig(id); if(cfg) return cfg.tencent; let cleanCode = id.includes('.') ? id.split('.')[1] : id; return cleanCode.startsWith('6') ? 'sh' + cleanCode : 'sz' + cleanCode; }
+function resolveSecid(id) {
+    const cfg = getIndexConfig(id);
+    if (cfg) return cfg.eastmoney;
+    if (id && typeof id === 'object') return resolveSecuritySecid(id);
+    const text = String(id || '').trim();
+    if (/^\d{6}$/.test(text)) return codeToSecid(text);
+    return text;
+}
+function resolveTencentSymbol(id) {
+    const cfg = getIndexConfig(id);
+    if(cfg) return cfg.tencent;
+    return resolveSecurityTencentSymbol(id);
+}
 
 const STOCK_TOKEN='D43BF722C8E33BDC906FB84D85E326E8';
-function codeToSecid(c){ return c.match(/^6/) ? '1.' + c : '0.' + c }
+function codeToSecid(c){
+    const code = String(c || '').trim();
+    return /^(5|6|9)/.test(code) ? '1.' + code : '0.' + code;
+}
 const STOCK_DATABASE = [
     {Code:'601398',Name:'工商银行'},{Code:'601939',Name:'建设银行'},{Code:'601988',Name:'中国银行'},{Code:'601318',Name:'中国平安'},{Code:'600519',Name:'贵州茅台'},{Code:'000858',Name:'五粮液'},{Code:'000333',Name:'美的集团'},{Code:'002594',Name:'比亚迪'},{Code:'300750',Name:'宁德时代'},{Code:'601012',Name:'隆基绿能'},{Code:'002371',Name:'北方华创'},{Code:'603501',Name:'韦尔股份'},{Code:'002475',Name:'立讯精密'},{Code:'600276',Name:'恒瑞医药'},{Code:'300760',Name:'迈瑞医疗'},{Code:'601899',Name:'紫金矿业'}
 ];
@@ -27,6 +41,94 @@ function normalizeStockDisplayName(code, name) {
     if (builtInName) return builtInName;
     const strippedName = stripCorporateActionNamePrefix(name);
     return strippedName || safeCode;
+}
+function getSecurityCode(input) {
+    if (!input) return '';
+    if (typeof input === 'string') {
+        const text = input.trim();
+        return text.includes('.') ? text.split('.')[1] : text;
+    }
+    return String(input.code || input.Code || input.UnifiedCode || '').trim();
+}
+function getSecurityQuoteId(input) {
+    if (!input || typeof input !== 'object') return '';
+    return String(input.secid || input.QuoteID || input.quoteId || input.quoteID || '').trim();
+}
+function getMarketFromSecid(secid) {
+    const text = String(secid || '').trim();
+    if (text.startsWith('1.')) return 'sh';
+    if (text.startsWith('0.')) return 'sz';
+    return '';
+}
+function inferSecurityType(input = {}) {
+    if (typeof input === 'string') return 'stock';
+    const typeText = [
+        input.type,
+        input.Classify,
+        input.SecurityTypeName,
+        input.SecurityType
+    ].map(v => String(v || '').toLowerCase()).join('|');
+    const name = String(input.name || input.Name || '');
+    if (typeText.includes('fund') || typeText.includes('基金') || typeText.includes('|8') || /ETF/i.test(name)) return 'fund';
+    return 'stock';
+}
+function resolveSecuritySecid(input) {
+    const cfg = typeof input === 'string' ? getIndexConfig(input) : null;
+    if (cfg) return cfg.eastmoney;
+    const quoteId = getSecurityQuoteId(input);
+    if (/^[01]\.\d{6}$/.test(quoteId)) return quoteId;
+    const code = getSecurityCode(input);
+    if (/^\d{6}$/.test(code)) return codeToSecid(code);
+    return typeof input === 'string' ? input : quoteId;
+}
+function resolveSecurityTencentSymbol(input) {
+    if (input && typeof input === 'object' && input.tencentSymbol) return input.tencentSymbol;
+    const secid = resolveSecuritySecid(input);
+    const code = getSecurityCode(input) || (String(secid || '').includes('.') ? String(secid).split('.')[1] : String(secid || ''));
+    const market = getMarketFromSecid(secid);
+    if (market === 'sh') return 'sh' + code;
+    if (market === 'sz') return 'sz' + code;
+    return String(code || '').startsWith('6') ? 'sh' + code : 'sz' + code;
+}
+function normalizeSecurityTarget(input = {}) {
+    const code = getSecurityCode(input);
+    const rawName = typeof input === 'string' ? code : (input.name || input.Name || code);
+    const name = normalizeStockDisplayName(code, rawName);
+    const type = inferSecurityType(input);
+    const secid = resolveSecuritySecid({ ...input, code });
+    const market = getMarketFromSecid(secid) || (secid.startsWith('1.') ? 'sh' : 'sz');
+    return {
+        code,
+        name,
+        type,
+        secid,
+        market,
+        tencentSymbol: resolveSecurityTencentSymbol({ ...input, code, secid })
+    };
+}
+function isFundSecurity(input) {
+    if (!input) return false;
+    if (typeof input === 'object') return normalizeSecurityTarget(input).type === 'fund';
+    const text = String(input || '').trim();
+    const matched = state?.watchlist?.find(item => item.secid === text || item.code === text);
+    return matched ? normalizeSecurityTarget(matched).type === 'fund' : false;
+}
+function getSecurityPricePrecision(input) {
+    return isFundSecurity(input) ? 3 : 2;
+}
+function getSecurityShortName(input, fallbackName = '') {
+    const target = typeof input === 'object'
+        ? normalizeSecurityTarget(input)
+        : normalizeSecurityTarget({ Code: getSecurityCode(input), Name: fallbackName || input });
+    if (target.type !== 'fund') return target.name;
+    const idx = target.name.toUpperCase().indexOf('ETF');
+    return idx >= 0 ? target.name.slice(0, idx + 3) : target.name;
+}
+function getActiveSecurityTarget() {
+    if (state.mode !== 'stock' || !state.stockId) return null;
+    const found = (state.watchlist || []).find(item => item.code === state.stockId || item.secid === state.id);
+    if (found) return normalizeSecurityTarget(found);
+    return normalizeSecurityTarget({ Code: state.stockId, Name: state.stockId, secid: state.id });
 }
 const cachedFetchRefreshJobs = new Map();
 let cachedFetchRefreshApplyTimer = 0;
@@ -1225,7 +1327,7 @@ async function cachedFetch(id) {
         await dbSet(id, fresh);
         PERF.mark(perfTrace, 'dbSet');
         if (typeof syncWatchlistSignalSnapshotFast === 'function') {
-            const matched = (state.watchlist || []).find(stock => codeToSecid(stock.code) === id);
+            const matched = (state.watchlist || []).find(stock => normalizeSecurityTarget(stock).secid === id);
             if (matched) syncWatchlistSignalSnapshotFast(matched.code, fresh);
             PERF.mark(perfTrace, 'watchlist');
         }
@@ -1297,7 +1399,7 @@ function scheduleCachedFetchRefresh(id) {
             PERF.mark(perfTrace, 'apply-live-overlay');
         }
         if (hasUpdate && typeof syncWatchlistSignalSnapshotFast === 'function') {
-            const matched = (state.watchlist || []).find(stock => codeToSecid(stock.code) === id);
+            const matched = (state.watchlist || []).find(stock => normalizeSecurityTarget(stock).secid === id);
             if (matched) syncWatchlistSignalSnapshotFast(matched.code, fresh);
             PERF.mark(perfTrace, 'watchlist');
         }
@@ -1328,7 +1430,7 @@ function scheduleCachedFetchRefresh(id) {
 async function preloadCacheOnly() {
     const symbols = [...INDEX_IDS];
     if (state.watchlist && state.watchlist.length > 0) {
-        symbols.push(...state.watchlist.slice(0, 5).map(s => codeToSecid(s.code)).filter(s => !symbols.includes(s)));
+        symbols.push(...state.watchlist.slice(0, 5).map(s => normalizeSecurityTarget(s).secid).filter(s => !symbols.includes(s)));
     }
     for (const id of symbols) {
         try {

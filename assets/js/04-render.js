@@ -1248,9 +1248,22 @@ function generateSidebarBundle(item, prev, safeIdx, rd) {
     const ch = item.close - (prev ? prev.close : item.open);
     const pct = (ch / (prev ? prev.close : item.open) * 100).toFixed(2);
     const cls = ch >= 0 ? 'up' : 'down';
+    const activeSecurity = typeof getActiveSecurityTarget === 'function' ? getActiveSecurityTarget() : null;
+    const pricePrecision = typeof getSecurityPricePrecision === 'function' ? getSecurityPricePrecision(activeSecurity || state.id) : 2;
+    const formatPrice = (value) => Number.isFinite(Number(value)) ? Number(value).toFixed(pricePrecision) : '--';
     const formatUnit = (v) => !v ? '--' : (v >= 1e8 ? `${(v/1e8).toFixed(2)}亿` : v >= 1e4 ? `${(v/1e4).toFixed(2)}万` : v.toFixed(0));
     
-    const headerMeta = `${item.date}${state.mode === 'stock' ? `<span class="text-dim" style="margin:0 8px;">|</span><span class="mono text-main">${state.stockId}</span>` : ''}`;
+    const stockMeta = activeSecurity
+        ? (() => {
+            const shortName = typeof getSecurityShortName === 'function' ? getSecurityShortName(activeSecurity) : activeSecurity.name;
+            const title = activeSecurity.type === 'fund' ? `${activeSecurity.name} · ${activeSecurity.code}` : activeSecurity.name;
+            const visible = activeSecurity.type === 'fund'
+                ? shortName
+                : `${shortName} · ${activeSecurity.code}`;
+            return `<span class="text-dim" style="margin:0 8px;">|</span><span class="text-main" title="${escapeHTML(title)}">${escapeHTML(visible)}</span>`;
+        })()
+        : (state.mode === 'stock' ? `<span class="text-dim" style="margin:0 8px;">|</span><span class="mono text-main">${escapeHTML(state.stockId)}</span>` : '');
+    const headerMeta = `${item.date}${stockMeta}`;
     
     const priceHtml = `
         <div class="terminal-block">
@@ -1265,13 +1278,13 @@ function generateSidebarBundle(item, prev, safeIdx, rd) {
                 </div>
             </div>
             <div class="price-hero-compact">
-                <div class="price-main mono ${cls}">${item.close.toFixed(2)}</div>
-                <div class="price-sub mono ${cls}">${ch >= 0 ? '+' : ''}${ch.toFixed(2)} (${ch >= 0 ? '+' : ''}${pct}%)</div>
+                <div class="price-main mono ${cls}">${formatPrice(item.close)}</div>
+                <div class="price-sub mono ${cls}">${ch >= 0 ? '+' : ''}${ch.toFixed(pricePrecision)} (${ch >= 0 ? '+' : ''}${pct}%)</div>
             </div>
             <div class="data-grid-2x2">
-                <div class="data-box-row"><span class="lbl">今开</span><span class="val mono">${item.open.toFixed(2)}</span></div>
-                <div class="data-box-row"><span class="lbl">最高</span><span class="val mono">${item.high.toFixed(2)}</span></div>
-                <div class="data-box-row"><span class="lbl">最低</span><span class="val mono">${item.low.toFixed(2)}</span></div>
+                <div class="data-box-row"><span class="lbl">今开</span><span class="val mono">${formatPrice(item.open)}</span></div>
+                <div class="data-box-row"><span class="lbl">最高</span><span class="val mono">${formatPrice(item.high)}</span></div>
+                <div class="data-box-row"><span class="lbl">最低</span><span class="val mono">${formatPrice(item.low)}</span></div>
                 <div class="data-box-row"><span class="lbl">成交</span><span class="val mono">${formatUnit(item.vol)}手</span></div>
             </div>
             <div class="amt-row">
