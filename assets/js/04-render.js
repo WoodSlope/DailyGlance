@@ -203,7 +203,7 @@ const bsMarkerPlugin = {
         const slice = activeData.slice(visibleRange.start, visibleRange.end + 1);
         const colorUpHex = getCssVar('--up-color') || '#f6465d', colorDownHex = getCssVar('--down-color') || '#0ecb81';
 
-        ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = 'bold 11px "JetBrains Mono", monospace';
+        ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = 'bold 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
         slice.forEach((d, i) => {
             const px = x.getPixelForValue(i);
             if (isNaN(px) || px < left || px > right || !d._decision) return;
@@ -516,7 +516,7 @@ function renderChartViewport(perfTrace) {
         grid: { color: 'rgba(255,255,255,0.04)' }, 
         ticks: { 
             color: colorDim, 
-            font: { family: "'JetBrains Mono', monospace", size: 10 }, 
+            font: { family: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', size: 10 },
             padding: 12,
             callback: isVol ? (v => v >= 100000000 ? (v / 100000000).toFixed(1) + '亿' : (v >= 10000 ? (v / 10000).toFixed(0) + '万' : v)) : undefined
         }, 

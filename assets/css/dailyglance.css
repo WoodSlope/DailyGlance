@@ -68,8 +68,8 @@
 ========================================= */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { height: 100%; width: 100%; overscroll-behavior: none; overscroll-behavior-x: none; }
-body { font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--dark-bg); color: var(--text-main); overflow: hidden; overscroll-behavior: none; overscroll-behavior-x: none; }
-.mono { font-family: 'JetBrains Mono', monospace; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif; background: var(--dark-bg); color: var(--text-main); overflow: hidden; overscroll-behavior: none; overscroll-behavior-x: none; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
 
 #mobileGate { display: none; }
 

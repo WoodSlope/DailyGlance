@@ -97,7 +97,7 @@ async function runBacktest() {
         let tradeRows = [...trades].reverse().map(t => {
             const colorClass = t.posTo > t.posFrom ? 'text-bull' : 'text-bear';
             return `
-                <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px dashed var(--border-color); font-family:'JetBrains Mono', monospace; font-size:11px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px dashed var(--border-color); font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size:11px;">
                     <span class="text-dim" style="flex:1; text-align:left;">${t.date.length > 5 ? t.date.substring(5) : t.date}</span>
                     <span class="${colorClass}" style="font-weight:bold; width:50px; text-align:center; flex-shrink:0;">${t.action.substring(0, 4)}</span>
                     <span class="text-main" style="flex:1; text-align:right;">${t.price.toFixed(2)}</span>
