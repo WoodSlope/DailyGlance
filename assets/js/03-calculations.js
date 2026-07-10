@@ -431,8 +431,17 @@ function getSignalMeta(idx, full, ind) {
     return { ...sigs, windowSignals, type, cls, detail, logic, warningSignals: warns, windowBuyCount: windowSignals.filter(w => w.signal.startsWith('B')).length, windowExitCount: windowSignals.filter(w => w.signal.startsWith('L')).length, triggeredSignals: [...sigs.buySignals, ...sigs.exitSignals] };
 }
 
+function getWatchPositionForStrategy(strategy, meta) {
+    const watchPosition = Number(strategy?.watchPosition || 0);
+    if (watchPosition <= 0) return 0;
+    const allowedSignals = strategy?.watchPositionSignals;
+    if (!Array.isArray(allowedSignals) || allowedSignals.length === 0) return watchPosition;
+    const hasAllowedSignal = (meta?.windowSignals || []).some(item => allowedSignals.includes(item.signal));
+    return hasAllowedSignal ? watchPosition : 0;
+}
+
 function getBasePosition(idx, full, ind, meta) {
-    if (meta.type === '✅ 明确转强') return 80; if (meta.type === '⚠️ 谨慎看多') return 50; if (meta.type === '👀 关注异动') return 30; 
+    if (meta.type === '✅ 明确转强') return 80; if (meta.type === '⚠️ 谨慎看多') return 50; if (meta.type === '👀 关注异动') return getWatchPositionForStrategy(STRATEGY, meta);
     if (meta.type === '📈 趋势抱单') return (ind.ma?.[20]?.[idx] && ind.ma?.[60]?.[idx] && ind.ma[20][idx] > ind.ma[60][idx]) ? 60 : 40; 
     return 0;
 }
