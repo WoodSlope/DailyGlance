@@ -294,125 +294,6 @@ function checkVolumeRiseDivergence(ctx) {
     return priceStillRising && upDays(ctx.idx - 4, ctx.idx) >= 3 && volumeShrinking && extendedOrHot;
 }
 
-function getAverageVolume(full, start, end) {
-    let sum = 0, count = 0;
-    for (let i = Math.max(0, start); i <= end; i++) {
-        const vol = full[i]?.vol || 0;
-        if (vol > 0) { sum += vol; count++; }
-    }
-    return count ? sum / count : 0;
-}
-
-function getBaipangBaseBreakoutLevel(full, idx) {
-    if (idx < 80 || !full[idx]) return null;
-    const base = full.slice(Math.max(0, idx - 45), idx).filter(Boolean);
-    if (base.length < 30) return null;
-    const pressure = Math.max(...base.map(d => d.high || 0));
-    const support = Math.min(...base.map(d => d.low || Infinity));
-    if (!pressure || !Number.isFinite(support) || support <= 0) return null;
-    const rangePct = (pressure - support) / support;
-    return rangePct <= 0.25 ? { level: pressure, support, rangePct } : null;
-}
-
-function checkBaipangBaseBreakout(ctx) {
-    const base = getBaipangBaseBreakoutLevel(ctx.full, ctx.idx);
-    if (!base || !ctx.prev || !ctx.item) return false;
-    const close = ctx.item.close || 0, open = ctx.item.open || close, prevClose = ctx.prev.close || 0;
-    const avgVol20 = getAverageVolume(ctx.full, ctx.idx - 20, ctx.idx - 1);
-    if (!close || !prevClose || !avgVol20) return false;
-    const brokePressure = prevClose <= base.level * 1.01 && close >= base.level * 1.01;
-    const volumeConfirmed = (ctx.item.vol || 0) >= avgVol20 * 1.25;
-    const aboveTrend = !ctx.ma20 || close >= ctx.ma20;
-    return brokePressure && volumeConfirmed && close > open && aboveTrend;
-}
-
-function getBaipangHalfBreakoutLevel(full, idx) {
-    if (idx < 70 || !full[idx]) return null;
-    const start = Math.max(0, idx - 60);
-    let high = 0, highIdx = -1;
-    for (let i = start; i < idx - 3; i++) {
-        const value = full[i]?.high || 0;
-        if (value > high) { high = value; highIdx = i; }
-    }
-    if (highIdx < 0) return null;
-
-    let low = Infinity, lowIdx = -1;
-    for (let i = highIdx + 1; i < idx; i++) {
-        const value = full[i]?.low || Infinity;
-        if (value < low) { low = value; lowIdx = i; }
-    }
-    if (lowIdx < 0 || !Number.isFinite(low) || low <= 0 || lowIdx >= idx) return null;
-    const dropPct = (high - low) / high;
-    if (dropPct < 0.08) return null;
-    return { level: (high + low) / 2, high, low, highIdx, lowIdx, dropPct };
-}
-
-function checkBaipangHalfBreakout(ctx) {
-    const half = getBaipangHalfBreakoutLevel(ctx.full, ctx.idx);
-    if (!half || !ctx.prev || !ctx.item) return false;
-    const close = ctx.item.close || 0, open = ctx.item.open || close, prevClose = ctx.prev.close || 0;
-    const avgVol20 = getAverageVolume(ctx.full, ctx.idx - 20, ctx.idx - 1);
-    if (!close || !prevClose || !avgVol20) return false;
-    const crossedHalf = prevClose <= half.level && close > half.level;
-    const volumeConfirmed = (ctx.item.vol || 0) >= avgVol20 * 1.2;
-    return crossedHalf && volumeConfirmed && close > open;
-}
-
-function getBaipangSignalSupport(full, idx, sigs = null) {
-    const signals = sigs || full[idx]?._signals || [];
-    if (signals.includes('B24')) return getBaipangHalfBreakoutLevel(full, idx);
-    if (signals.includes('B23')) return getBaipangBaseBreakoutLevel(full, idx);
-    return null;
-}
-
-function findRecentBaipangEntry(full, idx, lookback = 15, includePullback = true) {
-    const accepted = includePullback ? ['B25', 'B24', 'B23'] : ['B24', 'B23'];
-    for (let i = idx - 1; i >= Math.max(0, idx - lookback); i--) {
-        const sigs = full[i]?._signals || [];
-        if (!sigs.some(sig => accepted.includes(sig))) continue;
-        let support = getBaipangSignalSupport(full, i, sigs);
-        if (!support && sigs.includes('B25')) support = findRecentBaipangEntry(full, i, 15, false)?.support;
-        if (support?.level) return { idx: i, signal: sigs.find(sig => accepted.includes(sig)), support };
-    }
-    return null;
-}
-
-function checkBaipangPullbackConfirm(ctx) {
-    const entry = findRecentBaipangEntry(ctx.full, ctx.idx, 15, false);
-    if (!entry || !ctx.prev || !ctx.item) return false;
-    const days = ctx.idx - entry.idx;
-    if (days < 1 || days > 15) return false;
-    const level = entry.support.level, close = ctx.item.close || 0, open = ctx.item.open || close;
-    const touchedSupport = (ctx.item.low || close) <= level * 1.035 || (ctx.prev.low || close) <= level * 1.035 || (ctx.ma20 && (ctx.item.low || close) <= ctx.ma20 * 1.02);
-    const heldSupport = close >= level * 0.98;
-    const turnedUp = close > open || close > (ctx.prev.close || 0);
-    return touchedSupport && heldSupport && turnedUp;
-}
-
-function checkBaipangKeyLevelFailure(ctx) {
-    const entry = findRecentBaipangEntry(ctx.full, ctx.idx, 20, true);
-    if (!entry || !ctx.prev || !ctx.item) return false;
-    const level = entry.support.level, close = ctx.item.close || 0, prevClose = ctx.prev.close || 0;
-    if (!close || !prevClose) return false;
-    const avgVol20 = getAverageVolume(ctx.full, ctx.idx - 20, ctx.idx - 1);
-    const highVolumeFailure = avgVol20 && (ctx.item.vol || 0) >= avgVol20 * 1.1;
-    return close < level * 0.97 || (prevClose >= level && close < level && highVolumeFailure);
-}
-
-function checkBaipangTimeStop(ctx) {
-    const entry = findRecentBaipangEntry(ctx.full, ctx.idx, 13, true);
-    if (!entry || !ctx.item) return false;
-    const days = ctx.idx - entry.idx;
-    if (days < 8 || days > 13) return false;
-    const entryClose = ctx.full[entry.idx]?.close || 0, close = ctx.item.close || 0;
-    if (!entryClose || !close) return false;
-    const sinceEntry = ctx.full.slice(entry.idx, ctx.idx + 1).filter(Boolean);
-    const maxHigh = Math.max(...sinceEntry.map(d => d.high || 0));
-    const didNotLift = maxHigh < entryClose * 1.1;
-    const stillWeak = close <= entryClose * 1.03 || (ctx.ma20 && close < ctx.ma20) || close < (ctx.prev?.close || close);
-    return didNotLift && stillWeak;
-}
-
 function checkConfirmedHighPullback(full, ind, idx, high20, prev) {
     if(high20 === Infinity || idx < 20 || !full[idx]) return false;
     const item = full[idx], atr = getATR(full, idx), atrPct = item.close ? atr / item.close : 0;
@@ -467,10 +348,6 @@ const SIGNAL_RULES = [
     { id: 'B16', check: ctx => ctx.weeklySupport > 0 && ctx.item.low <= ctx.weeklySupport * 1.03 && ctx.item.close > ctx.item.open && ctx.item.close > ctx.weeklySupport },
     { id: 'B17', check: ctx => checkOversoldStopFallRebound(ctx) },
     { id: 'B18', check: ctx => checkBollLowerBandReclaim(ctx) },
-    { id: 'B23', check: ctx => checkBaipangBaseBreakout(ctx) },
-    { id: 'B24', check: ctx => checkBaipangHalfBreakout(ctx) },
-    { id: 'B25', check: ctx => checkBaipangPullbackConfirm(ctx) },
-    
     { id: 'L1', check: ctx => ctx.prev && ctx.prev.close >= ctx.prevMa10 && ctx.item.close < ctx.ma10 && ctx.ma5 < ctx.prevMa5 },
     { id: 'L2', check: ctx => ctx.prevMa5 >= ctx.prevMa20 && ctx.ma5 < ctx.ma20 },
     { id: 'L3', check: ctx => ctx.prevDif >= ctx.prevDea && ctx.dif < ctx.dea },
@@ -481,9 +358,6 @@ const SIGNAL_RULES = [
     { id: 'L8', check: ctx => ctx.boll && ctx.item.high >= ctx.boll.upper && ctx.item.close < ctx.boll.upper && ctx.item.close < ctx.item.open },
     { id: 'L9', check: ctx => ctx.state.period !== 'weekly' && checkConfirmedHighPullback(ctx.full, ctx.ind, ctx.idx, ctx.high20, ctx.prev) },
     { id: 'L10', check: ctx => ctx.lookback30.length > 0 && ctx.item.high >= Math.max(...ctx.lookback30.map(d=>d?.high||0)) && ctx.dif < Math.max(...(ctx.ind.macd?.diff?.slice(Math.max(0,ctx.idx-30),ctx.idx)||[])) && ctx.dif < ctx.prevDif },
-    { id: 'L13', check: ctx => checkBaipangKeyLevelFailure(ctx) },
-    { id: 'L14', check: ctx => checkBaipangTimeStop(ctx) },
-    
     { id: 'W1', check: ctx => ctx.ma60 > 0 && (ctx.item.close - ctx.ma60) / ctx.ma60 > 0.25 },
     { id: 'W2', check: ctx => ctx.prev && ctx.prev2 && ctx.prev3 && ctx.prev.close > ctx.prev.open && ctx.prev2.close > ctx.prev2.open && ctx.item.close > ctx.item.open && ctx.prev.vol > ctx.prev2.vol && ctx.item.vol < ctx.prev.vol },
     { id: 'W3', check: ctx => checkVolumePriceStalling(ctx) },
@@ -760,7 +634,6 @@ function getNoviceDecisionSummary(meta, decision) {
     const hasWarning = (meta?.warningSignals || []).length > 0 || riskFlags.length > 0;
     const hasCriticalExit = ['清仓防守', '强离场'].includes(exitLevel) || ['清仓离场', '执行离场', '规避风险'].includes(action);
     const isFavorableMarket = ['全面多头', '温和偏多'].includes(marketLabel);
-
     let stateLabel = '弱势观察';
     let userAction = '先不碰';
     if (hasCriticalExit || position === 0 && action === '规避风险') {
@@ -794,7 +667,6 @@ function getNoviceDecisionSummary(meta, decision) {
     reasonParts.push(`风险状态：${riskLevel}`);
     if (decision?.positionCap?.reason) reasonParts.push(decision.positionCap.reason);
     if (hasCriticalExit) reasonParts.push(`防守信号：${exitLevel}`);
-
     const invalidCondition = getNoviceInvalidCondition(meta, decision, position, hasWarning);
 
     return {
