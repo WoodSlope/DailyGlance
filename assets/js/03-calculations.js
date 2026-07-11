@@ -376,6 +376,17 @@ function getStrongExitSignals(strategy = STRATEGY) {
     return new Set(list);
 }
 
+function isWindowBuySignalEligible(signal, signalDay, full, strategy = STRATEGY) {
+    const guard = strategy?.windowSignalGuards?.[signal];
+    if (!guard) return true;
+    const companionSignals = new Set(guard.companionSignals || []);
+    const recentDays = Math.max(1, Number(guard.recentDays) || 1);
+    for (let day = Math.max(0, signalDay - recentDays + 1); day <= signalDay; day++) {
+        if ((full[day]?._signals || []).some(item => companionSignals.has(item))) return true;
+    }
+    return false;
+}
+
 function calculateAllSignals(idx, full, ind) {
     if(idx < 60 || !full[idx]) return { buySignals: [], exitSignals: [], allSignals: {}, windowScore: 0, windowSignals: [], inCooldown: false, cooldownDays: 3, daysSinceExit: Infinity };
     
@@ -398,7 +409,7 @@ function calculateAllSignals(idx, full, ind) {
         (full[i]?._signals || []).forEach(sig => {
             if(!usedSignals.has(sig)) {
                 if(sig.startsWith('L') && S.exitSignals?.includes(sig)) { windowSignals.push({day: i, signal: sig}); usedSignals.add(sig); } 
-                else if(sig.startsWith('B') && S.buySignals?.includes(sig) && i > lastExitIdx) {
+                else if(sig.startsWith('B') && S.buySignals?.includes(sig) && i > lastExitIdx && isWindowBuySignalEligible(sig, i, full, S)) {
                     if (!(i < idx && full[idx].close < full[i].low)) {
                         const score = getSignalScore(sig, S), groupKey = getScoreGroupKey(S, sig), existing = groupBest.get(groupKey);
                         if(!existing || score > existing.score) groupBest.set(groupKey, { score, signal: sig });
