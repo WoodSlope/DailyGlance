@@ -1357,10 +1357,10 @@ function clearPerfSummary() {
 }
 
 async function switchStrategy(name) { 
-    const perfTrace = PERF.start('switchStrategy', { strategy: name });
     if(!STRATEGIES[name]) return;
     const confirmed = await customConfirm(`确定切换到 [${name}]？\n${STRATEGIES[name].desc}`); 
     if(!confirmed) return;
+    const perfTrace = PERF.start('switchStrategy', { strategy: name });
     
     const canReuseCurrentIndicators = !!(getActiveData()?.length && state.indicators.macd && state.indicators.rsi && state.indicators.kdj && state.indicators.ma);
     setActiveStrategy(name); 
