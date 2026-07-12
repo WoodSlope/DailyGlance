@@ -665,10 +665,7 @@ async function removeStock(code) {
         renderWatchlist();
         
         if(state.stockId === code) { 
-            state.stockId = null; 
-            state.id = 'sh'; 
-            state.mode = 'index'; 
-            state.isFrozen = false;
+            applyActiveSelectionState({ tab: 'index', mode: 'index', id: 'sh', stockId: null });
             
             document.querySelectorAll('#mainTabs .nav-btn').forEach(btn => btn.classList.remove('active')); 
             document.querySelector('#mainTabs .nav-btn[data-tab="index"]').classList.add('active');
@@ -826,11 +823,7 @@ async function _selectIndexImpl(id) {
     const selectionSeq = ++globalSelectionSeq;
     const config = getIndexConfig(id);
 
-    state.tab = 'index';
-    state.mode = 'index';
-    state.id = id;
-    state.stockId = null;
-    state.isFrozen = false;
+    applyActiveSelectionState({ tab: 'index', mode: 'index', id, stockId: null });
     resetViewportToLatest(null);
 
     document.querySelectorAll('#mainTabs .nav-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === 'index'));
@@ -874,11 +867,7 @@ async function _selectStockImpl(code, name, secid = '', type = '', tencentSymbol
     await addToWatchlist(safeCode, safeName, target);
     if (selectionSeq !== globalSelectionSeq) return;
 
-    state.tab = 'stock';
-    state.mode = 'stock';
-    state.id = targetSecid;
-    state.stockId = safeCode;
-    state.isFrozen = false;
+    applyActiveSelectionState({ tab: 'stock', mode: 'stock', id: targetSecid, stockId: safeCode });
     resetViewportToLatest(null);
 
     document.querySelectorAll('#mainTabs .nav-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === 'stock'));
@@ -1187,8 +1176,7 @@ function suppressStaleHoverSelection() {
 
 function prevDay() {
     if(state.lockIdx > 0) {
-        state.isFrozen = true;
-        setLockIdx(state.lockIdx - 1);
+        applyHistoryNavigationState({ lockIdx: state.lockIdx - 1, isFrozen: true });
         anchorViewportAt(state.lockIdx);
         clearStaleTooltips();
         redrawCurrentViewport();
@@ -1201,8 +1189,7 @@ function nextDay() {
     const rd = getActiveData();
     if(rd && state.lockIdx < rd.length - 1) {
         const nextIdx = state.lockIdx + 1;
-        setLockIdx(nextIdx);
-        state.isFrozen = nextIdx < rd.length - 1;
+        applyHistoryNavigationState({ lockIdx: nextIdx, isFrozen: nextIdx < rd.length - 1 });
         if (state.isFrozen) anchorViewportAt(nextIdx);
         else {
             suppressStaleHoverSelection();
@@ -1220,8 +1207,7 @@ function resetLatest() {
     const rd = getActiveData();
     if(rd) {
         suppressStaleHoverSelection();
-        state.isFrozen = false;
-        setLockIdx(rd.length - 1);
+        applyHistoryNavigationState({ lockIdx: rd.length - 1, isFrozen: false });
         resetViewportToLatest(rd);
         clearStaleTooltips();
         redrawCurrentViewport();
@@ -1539,9 +1525,7 @@ async function init() {
                 if(state.watchlist.length > 0) {
                     selectStock(state.watchlist[0].code, state.watchlist[0].name);
                 } else { 
-                    state.mode = 'stock'; 
-                    state.id = null; 
-                    state.stockId = null; 
+                    applyActiveSelectionState({ tab: 'stock', mode: 'stock', id: null, stockId: null });
                     clearCharts(); 
                     applySidebarHTML({ priceHtml: '', analysisHtml: '', isHide: true }); 
                 }
@@ -1561,8 +1545,7 @@ async function init() {
             const prevLock = getPeriodLock(prevPeriod);
             const anchorDate = prevData?.[prevLock]?.date;
 
-            state.period = p; 
-            state.isFrozen = false; 
+            applyPeriodState(p);
             
             setLockIdx(alignLockToPeriod(p, anchorDate)); 
             resetViewportToLatest(getActiveData());

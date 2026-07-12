@@ -598,12 +598,10 @@ function panViewportByBars(deltaBars, data = getActiveData()) {
     const nextEnd = Math.max(visibleLen - 1, Math.min(latestIdx, currentEnd + Math.trunc(deltaBars)));
 
     if (nextEnd === latestIdx) {
-        state.isFrozen = false;
-        setLockIdx(latestIdx);
+        applyHistoryNavigationState({ lockIdx: latestIdx, isFrozen: false });
         resetViewportToLatest(data);
     } else {
-        state.isFrozen = true;
-        setLockIdx(nextEnd);
+        applyHistoryNavigationState({ lockIdx: nextEnd, isFrozen: true });
         state.viewport = { mode: 'pan', endIdx: nextEnd, anchorIdx: nextEnd };
     }
     return nextEnd !== currentEnd;
@@ -1255,6 +1253,17 @@ async function handleClearCache() {
     }
 }
 
+function buildDataRefreshResult(id, oldConfirmed, oldVisible, freshConfirmed, nextVisible) {
+    const confirmedChanged = getDataMutationMeta(oldConfirmed, freshConfirmed).mode !== 'unchanged';
+    const visibleChanged = getDataMutationMeta(oldVisible, nextVisible).mode !== 'unchanged';
+    return {
+        id,
+        confirmedChanged,
+        visibleChanged,
+        path: confirmedChanged ? 'confirmed' : (visibleChanged ? 'live-overlay' : 'unchanged')
+    };
+}
+
 async function cachedFetch(id) {
     const perfTrace = PERF.start('cachedFetch', { id, activeId: state.id, mode: state.mode });
     const fetchStateKey = `${state.mode}_${state.id}_${state.period}_${state.strategy}`;
@@ -1323,9 +1332,10 @@ async function cachedFetch(id) {
     }
 
     const old = state.rawData[id];
-    const hasUpdate = getDataMutationMeta(old, fresh).mode !== 'unchanged';
-    const visibleHasUpdate = id === state.id && getDataMutationMeta(oldVisible, getActiveData()).mode !== 'unchanged';
-    const shouldApplyFresh = !old || !old.length || hasUpdate;
+    const refreshResult = buildDataRefreshResult(id, old, oldVisible, fresh, id === state.id ? getActiveData() : oldVisible);
+    const hasUpdate = refreshResult.confirmedChanged;
+    const visibleHasUpdate = id === state.id && refreshResult.visibleChanged;
+    const shouldApplyFresh = !old || !old.length || refreshResult.confirmedChanged;
     const leftTxn = beginRefreshTransaction('leftList', { source: 'cachedFetch', id });
     const rightTxn = beginRefreshTransaction('rightPanel', { source: 'cachedFetch', id });
     
@@ -1391,8 +1401,9 @@ function scheduleCachedFetchRefresh(id) {
         }
 
         const old = state.rawData[id];
-        const hasUpdate = getDataMutationMeta(old, fresh).mode !== 'unchanged';
-        const visibleHasUpdate = id === state.id && getDataMutationMeta(oldVisible, getActiveData()).mode !== 'unchanged';
+        const refreshResult = buildDataRefreshResult(id, old, oldVisible, fresh, id === state.id ? getActiveData() : oldVisible);
+        const hasUpdate = refreshResult.confirmedChanged;
+        const visibleHasUpdate = id === state.id && refreshResult.visibleChanged;
         if (!hasUpdate && !visibleHasUpdate) {
             PERF.end(perfTrace, { status: 'unchanged' });
             return;

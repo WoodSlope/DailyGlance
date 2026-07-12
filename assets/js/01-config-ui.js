@@ -6,7 +6,7 @@
 const rootStyle = getComputedStyle(document.documentElement);
 const getCssVar = (name) => rootStyle.getPropertyValue(name).trim();
 
-const APP_BUILD = '2026-07-12-01';
+const APP_BUILD = '2026-07-12-02';
 const SYS_CONFIG = {
     THROTTLE_MS: 30000,
     REQ_TIMEOUT: 5000,
@@ -67,6 +67,29 @@ let state = {
     isFrozen: false
 };
 let globalSelectionSeq = 0;
+function applyActiveSelectionState({ tab, mode, id, stockId = null }) {
+    state.tab = tab;
+    state.mode = mode;
+    state.id = id;
+    state.stockId = stockId;
+    state.isFrozen = false;
+}
+
+function applyPeriodState(period) {
+    if (!['daily', 'weekly'].includes(period)) return false;
+    state.period = period;
+    state.isFrozen = false;
+    return true;
+}
+
+function applyHistoryNavigationState({ lockIdx, isFrozen }) {
+    if (Number.isFinite(lockIdx)) {
+        if (typeof setLockIdx === 'function') setLockIdx(lockIdx);
+        else state.lockIdx = lockIdx;
+    }
+    state.isFrozen = !!isFrozen;
+}
+
 function setActiveStrategy(name) {
     if (!STRATEGIES[name]) return false;
     for (const key of Object.keys(STRATEGY)) delete STRATEGY[key];
