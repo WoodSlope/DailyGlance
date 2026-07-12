@@ -626,7 +626,7 @@ function getNoviceEvidenceCopy(meta, decision, displayExitLevel, guardHint) {
     const scoreText = `${meta?.windowScore ?? 0}/${STRATEGY?.buyThreshold ?? '-'}`;
     const action = decision?.simpleAction || '';
     const isDefensive = ['清仓离场', '执行离场', '规避风险'].includes(action) || position === 0;
-    const isReduce = action.includes('减仓') || displayExitLevel !== '无明确离场';
+    const isReduce = action.includes('减仓') || ['减仓观察', '延续防守'].includes(decision?.exit?.level);
 
     let marketHint = '大盘给背景，不直接等于买点；个股/指数自身信号仍要达标。';
     if (decision?.market?.cls === 'bear') marketHint = '大盘环境偏弱，先降低预期；个股买点需要更强确认。';
@@ -642,7 +642,7 @@ function getNoviceEvidenceCopy(meta, decision, displayExitLevel, guardHint) {
     let guardAction = '接下来怎么防守：没有额外风险时，重点盯防守位和强离场信号。';
     if (isDefensive) guardAction = '接下来怎么防守：先不要新开仓，等买入积分重新达标并脱离冷静期。';
     else if (isReduce) guardAction = '接下来怎么防守：降低仓位，若继续跌破防守位或再出离场信号，优先退出。';
-    else if (guardHint) guardAction = `接下来怎么防守：${guardHint}。`;
+    else if (guardHint) guardAction = `接下来怎么防守：重点盯防守位和强离场信号；当前提示：${guardHint}。`;
 
     return { marketHint, signalHint, guardHint: guardAction };
 }
