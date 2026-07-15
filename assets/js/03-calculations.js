@@ -624,14 +624,14 @@ function getNoviceInvalidCondition(meta, decision, position, hasWarning) {
 
     if (position <= 30) {
         const stopGuard = canShowStop ? `防守位 ${stopText}` : '短期趋势防守位';
-        return `轻仓观察只在重新站回短期趋势且买入积分继续改善时成立；若跌破${stopGuard}或再出离场信号，降到 0%。`;
+        return `轻仓观察只在重新站回短期趋势且买入积分继续改善时成立；若跌破${stopGuard}，或再出离场信号，降到 0%。`;
     }
 
     const stopGuard = canShowStop ? `防守位 ${stopText}` : '防守位';
     if (hasWarning) {
-        return `只要风险降温且不跌破${stopGuard}，可继续观察；若风险继续升高、跌破${stopGuard}或出现强离场信号，先降仓或离场。`;
+        return `只要风险降温且不跌破${stopGuard}，可继续观察；若风险继续升高、跌破${stopGuard}，或出现强离场信号，先降仓或离场。`;
     }
-    return `只要不跌破${stopGuard}且不出现强离场信号，当前判断继续有效；若触发其一，先降仓或离场。`;
+    return `只要不跌破${stopGuard}，且不出现强离场信号，当前判断继续有效；若触发其一，先降仓或离场。`;
 }
 
 function getNoviceDecisionSummary(meta, decision) {
@@ -639,7 +639,6 @@ function getNoviceDecisionSummary(meta, decision) {
     const action = decision?.simpleAction || '持币观望';
     const exitLevel = decision?.exit?.level || '无明确离场';
     const marketLabel = decision?.market?.label || '环境未知';
-    const riskLevel = decision?.risk?.level || '风险未知';
     const riskFlags = decision?.risk?.flags || [];
     const scoreReady = !!decision?.signalReady || (meta?.windowScore ?? 0) >= (STRATEGY?.buyThreshold ?? Infinity);
     const hasWarning = (meta?.warningSignals || []).length > 0 || riskFlags.length > 0;
@@ -664,27 +663,24 @@ function getNoviceDecisionSummary(meta, decision) {
         userAction = action.includes('加仓') ? '顺势持有' : '继续持有';
     }
 
-    const reasonParts = [];
-    if (isFavorableMarket && (position === 0 || hasCriticalExit || !scoreReady)) {
-        const defensiveCauses = [];
-        if (!scoreReady) defensiveCauses.push('信号未达标');
-        if (hasCriticalExit) defensiveCauses.push('触发防守');
-        if (meta?.inCooldown) defensiveCauses.push('处于离场冷静期');
-        reasonParts.push(`大盘环境偏好，但当前标的/指数自身${defensiveCauses.length ? defensiveCauses.join('、') : '暂不满足开仓条件'}，所以先按防守处理`);
+    const scoreText = `${meta?.windowScore ?? 0}/${STRATEGY?.buyThreshold ?? '-'}`;
+    let reason = '';
+    if (hasCriticalExit) {
+        reason = `市场环境为${marketLabel}，但已出现${exitLevel}信号，当前先${position === 0 ? '空仓防守' : '处理风险'}`;
+    } else if (position === 0) {
+        reason = `${isFavorableMarket ? '大盘虽偏好，但' : ''}买入积分只有 ${scoreText}，当前还不满足开仓条件`;
+    } else if (position <= 30) {
+        reason = `买入积分 ${scoreText}${scoreReady ? '，已达标' : '，仍偏弱'}，当前只适合 ${position}% 轻仓观察`;
+    } else {
+        reason = `买入积分 ${scoreText}${scoreReady ? '，已达标' : '，仍偏弱'}，当前按 ${position}% 仓位继续观察`;
     }
-    if (scoreReady) reasonParts.push(`信号积分达标 ${meta?.windowScore ?? 0}/${STRATEGY?.buyThreshold ?? '-'}`);
-    else reasonParts.push(`信号积分未达标 ${meta?.windowScore ?? 0}/${STRATEGY?.buyThreshold ?? '-'}`);
-    reasonParts.push(`市场环境：${marketLabel}`);
-    reasonParts.push(`风险状态：${riskLevel}`);
-    if (decision?.positionCap?.reason) reasonParts.push(decision.positionCap.reason);
-    if (hasCriticalExit) reasonParts.push(`防守信号：${exitLevel}`);
     const invalidCondition = getNoviceInvalidCondition(meta, decision, position, hasWarning);
 
     return {
         state: stateLabel,
         action: userAction,
         positionText: `${position}%`,
-        reason: reasonParts.join('；'),
+        reason,
         invalidCondition
     };
 }
