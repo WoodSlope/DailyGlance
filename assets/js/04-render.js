@@ -580,6 +580,19 @@ function renderChartViewport(perfTrace) {
     const mainOpts = getBaseOptions();
     mainOpts.plugins = { legend: { display: false }, tooltip: { enabled: false } };
     mainOpts.scales = { x: { display: false, type: 'category', offset: false, bounds: 'ticks', grid: { offset: false } }, y: getYScale() };
+    const visiblePriceValues = slice.flatMap(d => [d.low, d.high]).filter(Number.isFinite);
+    state.activeMAs.forEach(n => {
+        const values = state.indicators.ma?.[n]?.slice(visibleRange.start, visibleRange.end + 1) || [];
+        visiblePriceValues.push(...values.filter(Number.isFinite));
+    });
+    if (visiblePriceValues.length) {
+        const priceMin = Math.min(...visiblePriceValues);
+        const priceMax = Math.max(...visiblePriceValues);
+        const priceSpread = Math.max(priceMax - priceMin, Math.abs(priceMax) * 0.01, 0.01);
+        const pricePad = priceSpread * 0.1;
+        mainOpts.scales.y.min = priceMin - pricePad;
+        mainOpts.scales.y.max = priceMax + pricePad;
+    }
     uc('main', 'mainChart', { type: 'line', data: { labels, datasets: ds }, options: mainOpts, plugins: [localAlignPlugin, bsMarkerPlugin, freezePlugin] });
     
     const volOpts = getBaseOptions();
