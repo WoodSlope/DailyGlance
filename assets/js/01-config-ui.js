@@ -6,7 +6,7 @@
 const rootStyle = getComputedStyle(document.documentElement);
 const getCssVar = (name) => rootStyle.getPropertyValue(name).trim();
 
-const APP_BUILD = '2026-07-15-03';
+const APP_BUILD = '2026-07-16-06';
 const SYS_CONFIG = {
     THROTTLE_MS: 30000,
     REQ_TIMEOUT: 5000,
@@ -129,6 +129,8 @@ const PERF = {
         const entry = {
             label: trace.label,
             total: Number((end - trace.start).toFixed(1)),
+            startTime: Number(trace.start.toFixed(1)),
+            endTime: Number(end.toFixed(1)),
             meta: { ...trace.meta, ...meta },
             steps,
             endedAt: new Date().toISOString()

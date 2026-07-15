@@ -669,22 +669,33 @@ function getSafeIndex(data) {
     return state.lockIdx;
 }
 
+function getTradingWeekKey(date) {
+    const dateObj = new Date(date + "T00:00:00Z");
+    const day = dateObj.getUTCDay() || 7;
+    dateObj.setUTCDate(dateObj.getUTCDate() - day + 1);
+    return `${dateObj.getUTCFullYear()}-${String(dateObj.getUTCMonth()+1).padStart(2,'0')}-${String(dateObj.getUTCDate()).padStart(2,'0')}`;
+}
+
+function appendDailyBarToWeeklySeries(weekly, d) {
+    if (!Array.isArray(weekly) || !d) return weekly;
+    const currentWeek = weekly[weekly.length - 1];
+    if (!currentWeek || getTradingWeekKey(currentWeek.date) !== getTradingWeekKey(d.date)) {
+        weekly.push({ date: d.date, open: d.open, high: d.high, low: d.low, close: d.close, vol: d.vol, amt: d.amt });
+        return weekly;
+    }
+    currentWeek.date = d.date;
+    currentWeek.high = Math.max(currentWeek.high, d.high);
+    currentWeek.low = Math.min(currentWeek.low, d.low);
+    currentWeek.close = d.close;
+    currentWeek.vol += d.vol;
+    currentWeek.amt += d.amt;
+    return weekly;
+}
+
 function convertDailyToWeekly(dailyData) {
     if (!dailyData || !dailyData.length) return [];
-    const weekly = []; let currentWeekKey = null, currentWeek = null;
-    for (const d of dailyData) {
-        const dateObj = new Date(d.date + "T00:00:00Z"); const day = dateObj.getUTCDay() || 7;
-        dateObj.setUTCDate(dateObj.getUTCDate() - day + 1);
-        const wk = `${dateObj.getUTCFullYear()}-${String(dateObj.getUTCMonth()+1).padStart(2,'0')}-${String(dateObj.getUTCDate()).padStart(2,'0')}`;
-        if (wk !== currentWeekKey) {
-            if (currentWeek) weekly.push(currentWeek);
-            currentWeekKey = wk; currentWeek = { date: d.date, open: d.open, high: d.high, low: d.low, close: d.close, vol: d.vol, amt: d.amt };
-        } else {
-            currentWeek.date = d.date; currentWeek.high = Math.max(currentWeek.high, d.high); currentWeek.low = Math.min(currentWeek.low, d.low);
-            currentWeek.close = d.close; currentWeek.vol += d.vol; currentWeek.amt += d.amt;
-        }
-    }
-    if (currentWeek) weekly.push(currentWeek); 
+    const weekly = [];
+    for (const d of dailyData) appendDailyBarToWeeklySeries(weekly, d);
     return weekly;
 }
 
@@ -1278,12 +1289,15 @@ async function cachedFetch(id) {
             const rd = getActiveData();
             setLockIdx(rd?.length ? rd.length - 1 : -1);
             resetViewportToLatest(rd);
+            PERF.mark(perfTrace, 'active-data', { source: 'memory', points: rd?.length || 0 });
             updateAllIndicators();
+            PERF.mark(perfTrace, 'indicators');
             hideLoading();
             renderMASelector();
             const leftTxn = beginRefreshTransaction('leftList', { source: 'cachedFetch-memory', id });
             const rightTxn = beginRefreshTransaction('rightPanel', { source: 'cachedFetch-memory', id });
             if (typeof renderActiveLeftListAfterDataApply === 'function') renderActiveLeftListAfterDataApply(leftTxn, { id });
+            PERF.mark(perfTrace, 'left-list');
             requestAnimationFrame(() => {
                 const currentStateKey = `${state.mode}_${state.id}_${state.period}_${state.strategy}`;
                 if (currentStateKey !== fetchStateKey || id !== state.id) return;
@@ -1291,6 +1305,7 @@ async function cachedFetch(id) {
                 safeUpdateSidebar();
                 markRefreshTime(rightTxn, { path: 'restore-memory-chart', id });
             });
+            PERF.mark(perfTrace, 'schedule-draw');
             PERF.mark(perfTrace, 'restore-memory-chart', { points: state.rawData[id].length });
             PERF.end(perfTrace, { status: 'active-memory-render', firstLoad: false });
             return;
@@ -1303,12 +1318,15 @@ async function cachedFetch(id) {
         setRawData(id, cachedResult.data);
         tryApplyCachedLiveOverlay(id, state.rawData[id]);
         setLockIdx(getActiveData()?.length - 1 || -1);
+        PERF.mark(perfTrace, 'active-data', { source: 'cache', points: cachedResult.data.length });
         updateAllIndicators();
+        PERF.mark(perfTrace, 'indicators');
         hideLoading();
         renderMASelector();
         const leftTxn = beginRefreshTransaction('leftList', { source: 'cachedFetch-cache', id });
         const rightTxn = beginRefreshTransaction('rightPanel', { source: 'cachedFetch-cache', id });
         if (typeof renderActiveLeftListAfterDataApply === 'function') renderActiveLeftListAfterDataApply(leftTxn, { id });
+        PERF.mark(perfTrace, 'left-list');
         requestAnimationFrame(() => {
             const currentStateKey = `${state.mode}_${state.id}_${state.period}_${state.strategy}`;
             if (currentStateKey !== fetchStateKey || id !== state.id) return;
@@ -1316,6 +1334,7 @@ async function cachedFetch(id) {
             safeUpdateSidebar();
             markRefreshTime(rightTxn, { path: 'cache-first', id });
         });
+        PERF.mark(perfTrace, 'schedule-draw');
         PERF.mark(perfTrace, 'use-cache', { points: cachedResult.data.length });
         PERF.end(perfTrace, { status: 'cache-first', firstLoad: false });
         scheduleCachedFetchRefresh(id);
@@ -1342,6 +1361,7 @@ async function cachedFetch(id) {
     if (shouldApplyFresh) {
         setRawData(id, fresh);
         setLockIdx(getActiveData()?.length - 1 || -1);
+        PERF.mark(perfTrace, 'active-data', { source: 'fresh', points: fresh.length });
         await dbSet(id, fresh);
         PERF.mark(perfTrace, 'dbSet');
         if (typeof syncWatchlistSignalSnapshotFast === 'function') {
@@ -1353,6 +1373,7 @@ async function cachedFetch(id) {
             hideLoading();
             renderMASelector();
             updateAllIndicators();
+            PERF.mark(perfTrace, 'indicators');
             requestAnimationFrame(() => {
                 const currentStateKey = `${state.mode}_${state.id}_${state.period}_${state.strategy}`;
                 if (currentStateKey !== fetchStateKey || id !== state.id) return;
@@ -1360,6 +1381,7 @@ async function cachedFetch(id) {
                 safeUpdateSidebar();
                 markRefreshTime(rightTxn, { path: 'apply-fresh', id });
             });
+            PERF.mark(perfTrace, 'schedule-draw');
         }
         PERF.mark(perfTrace, 'apply-fresh', { hasUpdate, firstLoad: !old || !old.length });
     } else if (id === state.id && visibleHasUpdate) {
@@ -1385,6 +1407,7 @@ async function cachedFetch(id) {
         PERF.mark(perfTrace, 'reuse-state', { points: old.length });
     }
     if (typeof renderActiveLeftListAfterDataApply === 'function') renderActiveLeftListAfterDataApply(leftTxn, { id });
+    PERF.mark(perfTrace, 'left-list');
     PERF.end(perfTrace, { status: shouldApplyFresh ? (hasUpdate ? 'updated' : 'initial') : 'unchanged', firstLoad: !old || !old.length });
 }
 

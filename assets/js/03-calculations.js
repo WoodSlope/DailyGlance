@@ -169,6 +169,23 @@ function getWeeklyData(full, idx, weeksOverride = null) {
     return { aboveMA5W: cur.close > ma5w && prev.close <= prevMa5w, volUp: avgPrevVol > 0 && cur.vol > avgPrevVol * 1.2 }; 
 }
 
+function getWeeklySupportFromSeries(weeks) {
+    const recentWeeks = weeks.slice(Math.max(0, weeks.length - 21), -1);
+    return recentWeeks.length ? Math.min(...recentWeeks.map(d => d?.low || 0)) : 0;
+}
+
+function buildWeeklySignalContexts(full) {
+    if (!Array.isArray(full) || !full.length) return [];
+    const weeks = [];
+    return full.map((item, idx) => {
+        appendDailyBarToWeeklySeries(weeks, item);
+        return {
+            wd: getWeeklyData(full, idx, weeks),
+            weeklySupport: getWeeklySupportFromSeries(weeks)
+        };
+    });
+}
+
 function checkPlatformBreak(full, idx) { 
     if(idx < 20 || !full[idx]) return false; 
     const pd = full.slice(idx - 20, idx), ph = Math.max(...pd.map(d => d?.high || 0)), pl = Math.min(...pd.map(d => d?.low || 0)); 
@@ -303,8 +320,9 @@ function checkConfirmedHighPullback(full, ind, idx, high20, prev) {
 }
 
 class SignalContext {
-    constructor(idx, full, ind, state) {
+    constructor(idx, full, ind, state, weeklyContext = null) {
         this.idx = idx; this.full = full; this.ind = ind; this.state = state;
+        this.weeklyContext = weeklyContext;
         this.item = full[idx] || {}; this.prev = full[idx-1] || {}; this.prev2 = full[idx-2] || {}; this.prev3 = full[idx-3] || {};
         this.ma5 = ind.ma?.[5]?.[idx]; this.ma10 = ind.ma?.[10]?.[idx]; this.ma20 = ind.ma?.[20]?.[idx]; this.ma60 = ind.ma?.[60]?.[idx];
         this.prevMa5 = ind.ma?.[5]?.[idx-1]; this.prevMa10 = ind.ma?.[10]?.[idx-1]; this.prevMa20 = ind.ma?.[20]?.[idx-1]; this.prevMa60 = ind.ma?.[60]?.[idx-1];
@@ -323,8 +341,8 @@ class SignalContext {
     get lookback30() { return this._lb30 || (this._lb30 = this.full.slice(Math.max(0, this.idx - 30), this.idx)); }
     get lookback5WithToday() { return this._lb5t || (this._lb5t = this.full.slice(Math.max(0, this.idx - 4), this.idx + 1)); }
     get weeklySeries() { return this._weeks || (this._weeks = getCalendarWeeksUntil(this.full, this.idx)); }
-    get wd() { return this._wd || (this._wd = getWeeklyData(this.full, this.idx, this.weeklySeries)); }
-    get weeklySupport() { if(this._weeklySupport !== undefined) return this._weeklySupport; const recentWeeks = this.weeklySeries.slice(Math.max(0, this.weeklySeries.length - 21), -1); return (this._weeklySupport = recentWeeks.length ? Math.min(...recentWeeks.map(d => d?.low || 0)) : 0); }
+    get wd() { if(this.weeklyContext) return this.weeklyContext.wd; return this._wd || (this._wd = getWeeklyData(this.full, this.idx, this.weeklySeries)); }
+    get weeklySupport() { if(this.weeklyContext) return this.weeklyContext.weeklySupport; if(this._weeklySupport !== undefined) return this._weeklySupport; return (this._weeklySupport = getWeeklySupportFromSeries(this.weeklySeries)); }
     get boll() { return this._boll || (this._boll = calculateBollinger(this.full, this.idx)); }
     get consecutiveBullish() { if(this._cb !== undefined) return this._cb; let c = 0; for(let i = this.idx - 1; i >= Math.max(0, this.idx - 5); i--) { if(this.full[i]?.close > this.full[i]?.open) c++; else break; } return (this._cb = c); }
 }
@@ -364,10 +382,22 @@ const SIGNAL_RULES = [
     { id: 'W4', check: ctx => checkVolumeRiseDivergence(ctx) }
 ];
 
-function calculateDailySignals(idx, full, ind) {
+function calculateDailySignals(idx, full, ind, perfStats = null, weeklyContext = null) {
     if(idx < 60 || !full[idx]) return [];
-    const ctx = new SignalContext(idx, full, ind, state), result = [];
-    for (let i = 0; i < SIGNAL_RULES.length; i++) if (SIGNAL_RULES[i].check(ctx)) result.push(SIGNAL_RULES[i].id);
+    const contextStarted = perfStats ? performance.now() : 0;
+    const ctx = new SignalContext(idx, full, ind, state, weeklyContext), result = [];
+    if (perfStats) perfStats.contextMs += performance.now() - contextStarted;
+    for (let i = 0; i < SIGNAL_RULES.length; i++) {
+        const rule = SIGNAL_RULES[i];
+        const ruleStarted = perfStats ? performance.now() : 0;
+        const matched = rule.check(ctx);
+        if (perfStats) {
+            perfStats.ruleMs[rule.id] = (perfStats.ruleMs[rule.id] || 0) + performance.now() - ruleStarted;
+            perfStats.ruleChecks[rule.id] = (perfStats.ruleChecks[rule.id] || 0) + 1;
+            if (matched) perfStats.ruleHits[rule.id] = (perfStats.ruleHits[rule.id] || 0) + 1;
+        }
+        if (matched) result.push(rule.id);
+    }
     return result;
 }
 
@@ -795,9 +825,17 @@ function resetIndicatorState() {
 }
 
 function updateAllIndicators(incrementalIdx = -1) {
-    const full = getActiveData(); if(!full || !full.length) return;
+    const perfTrace = PERF.start('updateAllIndicators', { id: state.id, period: state.period, strategy: state.strategy, incrementalIdx });
+    const full = getActiveData();
+    if(!full || !full.length) {
+        PERF.end(perfTrace, { status: 'empty' });
+        return;
+    }
     const nextKey = getIndicatorKey(full);
-    if (incrementalIdx === -1 && state.indicatorKey === nextKey && state.indicators.macd && state.indicators.rsi && state.indicators.kdj) return;
+    if (incrementalIdx === -1 && state.indicatorKey === nextKey && state.indicators.macd && state.indicators.rsi && state.indicators.kdj) {
+        PERF.end(perfTrace, { status: 'unchanged-key', points: full.length });
+        return;
+    }
     const cacheKey = nextKey;
 
     const mutation = incrementalIdx >= 0
@@ -814,6 +852,7 @@ function updateAllIndicators(incrementalIdx = -1) {
     if (mutation.mode === 'unchanged' && state.indicators.macd) {
         state.indicatorKey = nextKey;
         state.pendingIndicatorMutation = null;
+        PERF.end(perfTrace, { status: 'unchanged-mutation', points: full.length });
         return;
     }
 
@@ -832,6 +871,7 @@ function updateAllIndicators(incrementalIdx = -1) {
         }
         state.indicatorKey = nextKey;
         state.pendingIndicatorMutation = null;
+        PERF.end(perfTrace, { status: 'derived-cache', points: full.length });
         return;
     }
 
@@ -852,6 +892,9 @@ function updateAllIndicators(incrementalIdx = -1) {
             ? Calcs.kdj(full)
             : Calcs.kdjIncremental(full, state.indicators.kdj, 9, calcStart);
     }
+    PERF.mark(perfTrace, 'base-indicators', { skipped: !!isStrategyOnlyMutation, fullRebuild: !!shouldFullRebuild, calcStart });
+    const weeklySignalContexts = shouldFullRebuild ? buildWeeklySignalContexts(full) : null;
+    PERF.mark(perfTrace, 'weekly-signal-context', { precomputed: !!weeklySignalContexts, points: weeklySignalContexts?.length || 0 });
 
     const isLatestOnlyMutation = !shouldFullRebuild &&
         mutation.mode === 'incremental' &&
@@ -871,23 +914,51 @@ function updateAllIndicators(incrementalIdx = -1) {
         prevPos = full[rebuildStart - 1]?._decision?.position || 0;
     }
 
+    let signalMs = 0;
+    let decisionMs = 0;
+    let reusedRows = 0;
+    let signalRows = 0;
+    let decisionRows = 0;
+    const signalBreakdown = { contextMs: 0, ruleMs: {}, ruleChecks: {}, ruleHits: {} };
     for(let i = shouldFullRebuild ? 0 : rebuildStart; i < full.length; i++) {
         if (full[i]?._signals && full[i]._signalVersion === SIGNAL_VERSION && full[i]._strategy === state.strategy && full[i]._decision) {
             prevPos = full[i]._decision.position;
+            reusedRows += 1;
             continue;
         }
         if (full[i]) {
             if (!full[i]._signals || full[i]._signalVersion !== SIGNAL_VERSION) {
-                full[i]._signals = calculateDailySignals(i, full, state.indicators);
+                const signalStarted = performance.now();
+                full[i]._signals = calculateDailySignals(i, full, state.indicators, signalBreakdown, weeklySignalContexts?.[i] || null);
+                signalMs += performance.now() - signalStarted;
+                signalRows += 1;
             }
             full[i]._signalVersion = SIGNAL_VERSION;
             full[i]._strategy = state.strategy;
+            const decisionStarted = performance.now();
             full[i]._decision = computeDecisionForIndex(i, full, prevPos);
+            decisionMs += performance.now() - decisionStarted;
+            decisionRows += 1;
             prevPos = full[i]._decision.position;
         }
     }
+    signalBreakdown.contextMs = Number(signalBreakdown.contextMs.toFixed(1));
+    Object.keys(signalBreakdown.ruleMs).forEach(id => {
+        signalBreakdown.ruleMs[id] = Number(signalBreakdown.ruleMs[id].toFixed(1));
+    });
+    PERF.mark(perfTrace, 'decision-loop', {
+        rebuildStart,
+        signalMs: Number(signalMs.toFixed(1)),
+        decisionMs: Number(decisionMs.toFixed(1)),
+        signalRows,
+        decisionRows,
+        reusedRows,
+        signalBreakdown
+    });
 
     state.indicatorKey = nextKey;
     state.pendingIndicatorMutation = null;
     storeDerivedIndicatorCache(state.id, state.period, state.strategy, full, state.indicators);
+    PERF.mark(perfTrace, 'cache-store');
+    PERF.end(perfTrace, { status: shouldFullRebuild ? 'full' : mutation.mode, points: full.length });
 }

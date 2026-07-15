@@ -520,10 +520,11 @@ function computeWatchlistDecisionSnapshot(full, code) {
         const priorDecision = tailStartIdx > 0 ? full[tailStartIdx - 1]?._decision : null;
         const canUseTailRebuild = priorDecision && full[tailStartIdx - 1]?._strategy === state.strategy && full[tailStartIdx - 1]?._signalVersion === SIGNAL_VERSION;
         const startIdx = canUseTailRebuild ? tailStartIdx : 0;
+        const weeklySignalContexts = buildWeeklySignalContexts(full);
         prevPos = canUseTailRebuild ? (priorDecision.position || 0) : 0;
         for (let i = startIdx; i < full.length; i++) {
             if (!full[i]) continue;
-            full[i]._signals = calculateDailySignals(i, full, localIndicators);
+            full[i]._signals = calculateDailySignals(i, full, localIndicators, null, weeklySignalContexts[i]);
             full[i]._signalVersion = SIGNAL_VERSION;
             full[i]._strategy = state.strategy;
             full[i]._decision = computeDecisionForIndex(i, full, prevPos);
@@ -1478,9 +1479,12 @@ function scheduleStartupBackgroundHydration() {
 }
 
 async function init() {
+    const startupPerf = PERF.start('startup', { path: 'initial-load' });
     showLoading(); 
     await openDB(); 
+    PERF.mark(startupPerf, 'open-db');
     await loadWatchlist();
+    PERF.mark(startupPerf, 'load-watchlist');
     if (typeof hydrateLiveOverlayCacheState === 'function') hydrateLiveOverlayCacheState();
     try {
         const sc = await dbGet('stock_cache');
@@ -1488,6 +1492,7 @@ async function init() {
     } catch(e) {
         stockCache = [];
     }
+    PERF.mark(startupPerf, 'load-stock-cache');
     
     const savedStrategy = localStorage.getItem('quant_strategy');
     if(savedStrategy && STRATEGIES[savedStrategy]) { 
@@ -1570,6 +1575,7 @@ async function init() {
     
     renderMASelector();
     renderIndexList();
+    PERF.mark(startupPerf, 'prepare-ui');
 
     // 同步 range 按钮 active 状态到当前 state.range
     document.querySelectorAll('#rangeTabs .seg-btn').forEach(btn => {
@@ -1612,6 +1618,8 @@ async function init() {
     });
 
     await _selectIndexImpl('sh');  // init 直接调用 impl，跳过防抖
+    PERF.mark(startupPerf, 'initial-selection');
+    PERF.end(startupPerf, { path: 'initial-index-ready' });
 
     scheduleStartupBackgroundHydration();
 }
