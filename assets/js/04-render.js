@@ -204,18 +204,27 @@ const bsMarkerPlugin = {
         const colorUpHex = getCssVar('--up-color') || '#f6465d', colorDownHex = getCssVar('--down-color') || '#0ecb81';
 
         ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = 'bold 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+        ctx.lineWidth = 4; ctx.strokeStyle = getCssVar('--dark-bg') || '#0b0e14'; ctx.lineJoin = 'round';
         slice.forEach((d, i) => {
             const px = x.getPixelForValue(i);
             if (isNaN(px) || px < left || px > right || !d._decision) return;
             if (d._decision.bsMark === 'B') { 
                 ctx.fillStyle = colorUpHex; 
                 const py = y.getPixelForValue(d.low);
-                if (!isNaN(py)) { ctx.fillText('B', px, Math.min(py + 14, bottom - 8)); }
+                if (!isNaN(py)) {
+                    const markerY = Math.min(py + 18, bottom - 9);
+                    ctx.strokeText('B', px, markerY);
+                    ctx.fillText('B', px, markerY);
+                }
             } 
             else if (d._decision.bsMark === 'S') { 
                 ctx.fillStyle = colorDownHex; 
                 const py = y.getPixelForValue(d.high);
-                if (!isNaN(py)) { ctx.fillText('S', px, Math.max(py - 14, top + 8)); }
+                if (!isNaN(py)) {
+                    const markerY = Math.max(py - 18, top + 9);
+                    ctx.strokeText('S', px, markerY);
+                    ctx.fillText('S', px, markerY);
+                }
             }
         });
         ctx.restore();
