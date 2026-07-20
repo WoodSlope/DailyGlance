@@ -368,7 +368,7 @@ function setLiveOverlayCache(id, bar, meta = {}) {
     if (!id) return false;
     const normalizedBar = normalizeLiveOverlayCacheBar(id, bar);
     if (!normalizedBar) return false;
-    if (!state.liveOverlayCache) hydrateLiveOverlayCacheState();
+    hydrateLiveOverlayCacheState();
     state.liveOverlayCache[id] = {
         cachedAt: Number(meta.cachedAt) || Date.now(),
         cacheAgeMs: Number.isFinite(Number(meta.cacheAgeMs)) ? Number(meta.cacheAgeMs) : 0,
@@ -380,7 +380,7 @@ function setLiveOverlayCache(id, bar, meta = {}) {
 }
 
 function clearLiveOverlayCache(id) {
-    if (!state.liveOverlayCache) hydrateLiveOverlayCacheState();
+    hydrateLiveOverlayCacheState();
     if (state.liveOverlayCache && state.liveOverlayCache[id]) {
         delete state.liveOverlayCache[id];
         persistLiveOverlayCacheState();
