@@ -699,15 +699,41 @@ function getNoviceDecisionSummary(meta, decision) {
     const strongExitSignals = directExitSignals.filter(signal => strongExitSet.has(signal));
     const otherExitSignals = directExitSignals.filter(signal => !strongExitSet.has(signal));
     const formatExitSignal = signal => `${signal} ${getUserSignalText(signal)}`;
+    const previousPosition = Number(decision?.prevAdv) || 0;
+    const hasPreviousPosition = previousPosition > 0;
+    const scoreIsEmpty = (meta?.windowScore ?? 0) <= 0;
+    const threshold = Number(STRATEGY?.buyThreshold);
+    const scoreBelowThreshold = Number.isFinite(threshold) && (meta?.windowScore ?? 0) < threshold;
+    const basePosition = Number(decision?.basePosition);
+    const basePositionIsEmpty = Number.isFinite(basePosition) ? basePosition <= 0 : scoreBelowThreshold;
+    const positionToZeroText = hasPreviousPosition ? `当前从${previousPosition}%降至 0%` : '建议仓位降至 0%';
+    const positionPressure = [];
+    if (Number(decision?.market?.coef) < 1) positionPressure.push(`市场系数 ${Number(decision.market.coef).toFixed(2)}`);
+    if (Number(decision?.risk?.coef) < 1) positionPressure.push(`风险系数 ${Number(decision.risk.coef).toFixed(2)}`);
     let reason = '';
-    if (hasCriticalExit && exitLevel === '无明确离场') {
-        reason = `市场环境为${marketLabel}，当前策略持仓条件已失效，建议仓位降至 0%，先空仓观察`;
+    if (hasCriticalExit && exitLevel === '无明确离场' && meta?.inCooldown) {
+        reason = `市场环境为${marketLabel}，当前处于离场冷静期，买入积分为 ${scoreText}，${positionToZeroText}，先空仓观察`;
+    } else if (hasCriticalExit && exitLevel === '无明确离场' && hasPreviousPosition && basePositionIsEmpty) {
+        const scoreReason = scoreIsEmpty
+            ? `此前持仓依赖的买入信号已失效，买入积分降为 ${scoreText}`
+            : `此前持仓依赖的买入条件已不足，买入积分为 ${scoreText}，低于开仓门槛 ${threshold}/${threshold}`;
+        reason = `市场环境为${marketLabel}，${scoreReason}，基础仓位归零，${positionToZeroText}，先空仓观察`;
+    } else if (hasCriticalExit && exitLevel === '无明确离场' && hasPreviousPosition) {
+        const baseText = Number.isFinite(basePosition) ? `基础仓位原为 ${basePosition}%` : '基础仓位仍大于 0%';
+        const pressureText = positionPressure.length ? positionPressure.join('、') : '市场与风险限制';
+        reason = `买入积分为 ${scoreText}，${baseText}，但${marketLabel}下的${pressureText}使建议仓位归零，${positionToZeroText}，先空仓防守`;
+    } else if (hasCriticalExit && exitLevel === '无明确离场') {
+        reason = `市场环境为${marketLabel}，当前未满足开仓条件，建议仓位降至 0%，先空仓观察`;
     } else if (hasCriticalExit && strongExitSignals.length) {
         const strongText = strongExitSignals.map(formatExitSignal).join(' / ');
         const otherText = otherExitSignals.length ? `，同时出现 ${otherExitSignals.map(formatExitSignal).join(' / ')}` : '';
-        reason = `触发强离场 ${strongText}${otherText}；强离场会让此前买入积分失效，当前清零为 ${scoreText}`;
+        reason = `触发强离场 ${strongText}${otherText}；强离场会让此前买入积分失效，当前清零为 ${scoreText}，${positionToZeroText}，先空仓防守`;
     } else if (hasCriticalExit) {
-        reason = `市场环境为${marketLabel}，但已出现${exitLevel}信号，当前先${position === 0 ? '空仓防守' : '处理风险'}`;
+        const exitReason = directExitSignals.length
+            ? `出现 ${directExitSignals.map(formatExitSignal).join(' / ')}，当前按${exitLevel}处理`
+            : (decision?.exit?.detail || `当前按${exitLevel}处理`);
+        const zeroPositionText = position === 0 ? `，${positionToZeroText}，先空仓防守` : '，当前先处理风险';
+        reason = `市场环境为${marketLabel}，${exitReason}${zeroPositionText}`;
     } else if (position === 0) {
         reason = `${isFavorableMarket ? '大盘虽偏好，但' : ''}买入积分只有 ${scoreText}，当前还不满足开仓条件`;
     } else if (position <= 30) {
