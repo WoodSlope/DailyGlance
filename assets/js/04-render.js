@@ -766,6 +766,7 @@ function generateAnalysisHTML(idx, full, meta) {
         const wk = getWeeklyDirectionContext(idx, full, state.indicators);
         const wkClass = wk.direction === '周线多头' ? 'panel-bull' : (wk.direction === '周线空头' ? 'panel-bear' : 'panel-info');
         const wkTextClass = wk.direction === '周线多头' ? 'text-bull' : (wk.direction === '周线空头' ? 'text-bear' : 'text-info');
+        const wkRepairTextClass = wk.repair === '已修复' ? 'text-bull' : (wk.repair === '修复中' ? 'text-info' : 'text-dim');
 
         return `
             <div class="action-panel ${wkClass}">
@@ -777,14 +778,18 @@ function generateAnalysisHTML(idx, full, meta) {
             </div>
             <div class="terminal-block">
                 <div class="block-title">周线关键位</div>
-                <div class="evidence-grid">
-                    <div class="evidence-item">
-                        <div class="k">当前位置</div>
-                        <div class="right-side"><div class="v">${escapeHTML(wk.position)}</div></div>
+                <div class="decision-evidence-list weekly-context-list">
+                    <div class="decision-evidence-row">
+                        <div class="decision-evidence-head">
+                            <span>当前位置</span>
+                            <strong class="text-main">${escapeHTML(wk.position)}</strong>
+                        </div>
                     </div>
-                    <div class="evidence-item">
-                        <div class="k">趋势修复</div>
-                        <div class="right-side"><div class="v">${escapeHTML(wk.repair)}</div></div>
+                    <div class="decision-evidence-row">
+                        <div class="decision-evidence-head">
+                            <span>趋势修复</span>
+                            <strong class="${wkRepairTextClass}">${escapeHTML(wk.repair)}</strong>
+                        </div>
                     </div>
                 </div>
                 <div class="level-line weekly-level-line">
