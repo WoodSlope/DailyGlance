@@ -227,7 +227,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC"
 .nav-list-item .wl-status.tone-warn { color: var(--yellow); background: var(--bg-warn-light); border-color: rgba(245, 166, 35, 0.18); }
 .nav-list-item .wl-status.tone-bear { color: var(--down-color); background: rgba(14, 203, 129, 0.10); border-color: rgba(14, 203, 129, 0.18); }
 .nav-list-item .wl-status.tone-dim { color: var(--text-dim); }
-.nav-list-item .wl-status-change { min-width: 0; max-width: 88px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); font-size: 10px; font-weight: 600; letter-spacing: 0; }
+.nav-list-item .wl-status-change { flex-shrink: 0; white-space: nowrap; color: var(--text-dim); font-size: 10px; font-weight: 600; letter-spacing: 0; }
 .nav-list-item .wl-status-change.is-live { color: var(--yellow); }
 
 .stock-search { position: relative; width: 100%; margin-bottom: var(--space-2); }

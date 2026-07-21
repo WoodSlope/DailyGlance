@@ -467,7 +467,7 @@ function buildWatchlistStatusChange(full) {
     if (positionChanged) detailParts.push(`建议仓位：${previousPosition}%→${currentPosition}%`);
 
     return {
-        text: `${isLive ? '盘中·' : ''}${statusChanged ? `${previousStatus.label}→${currentStatus.label}` : `${previousPosition}%→${currentPosition}%`}`,
+        text: statusChanged ? `${previousStatus.label}→${currentStatus.label}` : `${previousPosition}%→${currentPosition}%`,
         detail: `${isLive ? '盘中临时预览' : '确认日变化'}；${detailParts.join('；')}。`,
         isLive,
         date: currentRow.date || '',
