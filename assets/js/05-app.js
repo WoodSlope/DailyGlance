@@ -443,39 +443,23 @@ function resolveWatchlistStatus(decision) {
     return buildWatchlistStatus(WATCHLIST_STATUS_META.observe, decision, toneClass);
 }
 
-function buildWatchlistStatusChange(full) {
+function buildWatchlistPositionChange(full) {
     if (!Array.isArray(full) || full.length < 2) return null;
 
     const currentRow = full[full.length - 1];
     const previousRow = full[full.length - 2];
     if (!hasCurrentWatchlistDecision(currentRow) || !hasCurrentWatchlistDecision(previousRow)) return null;
 
-    const currentStatus = resolveWatchlistStatus(currentRow._decision);
-    const previousStatus = resolveWatchlistStatus(previousRow._decision);
     const currentPosition = Number(currentRow._decision.position);
     const previousPosition = Number(previousRow._decision.position);
-    const statusChanged = currentStatus.label !== previousStatus.label;
     const positionChanged = Number.isFinite(currentPosition) &&
         Number.isFinite(previousPosition) &&
         currentPosition !== previousPosition;
 
-    if (!statusChanged && !positionChanged) return null;
-
-    const isLive = !!currentRow._isLive;
-    const detailParts = [];
-    if (statusChanged) detailParts.push(`状态：${previousStatus.label}→${currentStatus.label}`);
-    if (positionChanged) detailParts.push(`建议仓位：${previousPosition}%→${currentPosition}%`);
-
-    return {
-        text: statusChanged ? `${previousStatus.label}→${currentStatus.label}` : `${previousPosition}%→${currentPosition}%`,
-        detail: `${isLive ? '盘中临时预览' : '确认日变化'}；${detailParts.join('；')}。`,
-        isLive,
-        date: currentRow.date || '',
-        previousDate: previousRow.date || ''
-    };
+    return positionChanged ? `${previousPosition}%→${currentPosition}%` : null;
 }
 
-function hasWatchlistStatusChangeContext(full) {
+function hasWatchlistPositionChangeContext(full) {
     if (!Array.isArray(full) || full.length < 2) return true;
     return hasCurrentWatchlistDecision(full[full.length - 1]) && hasCurrentWatchlistDecision(full[full.length - 2]);
 }
@@ -506,8 +490,8 @@ function scheduleWatchlistRender(options = {}) {
 
 function applyWatchlistDecisionSnapshot(code, decision, date, full = null) {
     const status = resolveWatchlistStatus(decision);
-    const change = buildWatchlistStatusChange(full);
-    setWatchlistStatusSnapshot(code, { ...status, change, strategy: state.strategy, date: date || '' });
+    const positionChange = buildWatchlistPositionChange(full);
+    setWatchlistStatusSnapshot(code, { ...status, positionChange, strategy: state.strategy, date: date || '' });
 }
 
 function primeWatchlistStatusSnapshot(code, date) {
@@ -516,7 +500,7 @@ function primeWatchlistStatusSnapshot(code, date) {
     if (item._navStatus && item._navStatus.strategy === state.strategy) {
         const nextDate = date || item._navStatus.date || '';
         const dateChanged = !!(item._navStatus.date && nextDate && item._navStatus.date !== nextDate);
-        item._navStatus = { ...item._navStatus, change: dateChanged ? null : item._navStatus.change, date: nextDate };
+        item._navStatus = { ...item._navStatus, positionChange: dateChanged ? null : item._navStatus.positionChange, date: nextDate };
         return;
     }
     setWatchlistStatusSnapshot(code, { ...WATCHLIST_STATUS_META.pending, action: '信号同步中', toneClass: 'tone-dim', strategy: state.strategy, date: date || '' });
@@ -538,7 +522,7 @@ function computeWatchlistDecisionSnapshot(full, code) {
     if (!full || full.length < 60) return null;
 
     const cachedDecision = getLatestDecisionFromData(full);
-    if (cachedDecision && hasWatchlistStatusChangeContext(full)) return cachedDecision;
+    if (cachedDecision && hasWatchlistPositionChangeContext(full)) return cachedDecision;
 
     const localIndicators = { ma: {}, macd: null, rsi: null, kdj: null };
     MA_OPTIONS.forEach(n => localIndicators.ma[n] = Calcs.ma(full, n));
@@ -622,7 +606,7 @@ function syncWatchlistSignalSnapshotFast(code, full) {
     const decision = getLatestDecisionFromData(full);
     if (decision) {
         applyWatchlistDecisionSnapshot(code, decision, last.date, full);
-        if (hasWatchlistStatusChangeContext(full)) return;
+        if (hasWatchlistPositionChangeContext(full)) return;
     }
     queueWatchlistSignalSnapshot(code, full);
 }
@@ -656,7 +640,7 @@ function resolveWatchlistRowStatus(stock, statusData, lastDate) {
         return stock._navStatus;
     }
     const fallback = resolveWatchlistStatus(getLatestDecisionFromData(statusData));
-    const status = { ...fallback, change: buildWatchlistStatusChange(statusData), strategy: state.strategy, date: lastDate };
+    const status = { ...fallback, positionChange: buildWatchlistPositionChange(statusData), strategy: state.strategy, date: lastDate };
     setWatchlistStatusSnapshot(stock.code, status);
     return status;
 }
@@ -1106,8 +1090,8 @@ function renderWatchlist() {
         const rowStatus = resolveWatchlistRowStatus(s, statusData, lastDate);
         const quoteDisplay = getLeftQuoteDisplay(target);
         const statusTitle = rowStatus.detail || rowStatus.action || rowStatus.label;
-        const statusChangeHtml = rowStatus.change
-            ? `<span class="wl-status-change${rowStatus.change.isLive ? ' is-live' : ''}" title="${escapeHTML(rowStatus.change.detail)}">${escapeHTML(rowStatus.change.text)}</span>`
+        const positionChangeHtml = rowStatus.positionChange
+            ? `<span class="wl-position-change">${escapeHTML(rowStatus.positionChange)}</span>`
             : '';
         
         return `
@@ -1116,7 +1100,7 @@ function renderWatchlist() {
                     <div class="lname-wrap">
                         <span class="lname" title="${escapeHTML(displayName)}">${escapeHTML(shortName)}</span>
                         <span class="wl-status ${rowStatus.toneClass}" title="${escapeHTML(statusTitle)}">${rowStatus.label}</span>
-                        ${statusChangeHtml}
+                        ${positionChangeHtml}
                     </div>
                     ${s._pendingRemove ? '' : `<button type="button" class="wl-close" title="移除自选股" aria-label="移除 ${escapeHTML(displayName)}" onclick="event.stopPropagation();removeStock('${escapeJSArg(target.code)}')">×</button>`}
                 </div>
