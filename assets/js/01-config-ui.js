@@ -6,7 +6,7 @@
 const rootStyle = getComputedStyle(document.documentElement);
 const getCssVar = (name) => rootStyle.getPropertyValue(name).trim();
 
-const APP_BUILD = '2026-07-21-03';
+const APP_BUILD = '2026-07-21-12';
 const SYS_CONFIG = {
     THROTTLE_MS: 30000,
     REQ_TIMEOUT: 5000,
@@ -17,9 +17,11 @@ const SYS_CONFIG = {
     RENDER_CACHE_SIZE: 50,
     HISTORY_FRESH_MS: 15000,
     HISTORY_REFRESH_COOLDOWN_MS: 8000,
+    HISTORY_SOURCE_FAILURE_THRESHOLD: 2,
+    HISTORY_SOURCE_CIRCUIT_MS: 300000,
     SIDEBAR_SYNC_CONCURRENCY: 3,
     LIVE_OVERLAY_CACHE_TTL_MS: 45000,
-    LIVE_OVERLAY_CACHE_KEY: 'dg_live_overlay_cache_v1'
+    LIVE_OVERLAY_CACHE_KEY: 'dg_live_overlay_cache_v2'
 };
 
 const MA_OPTIONS = [5, 10, 20, 30, 60, 120, 250];
@@ -214,7 +216,7 @@ installPerformanceLongTaskObserver();
 function clearDerivedCaches() { renderCache.clear(); dateIndexCache.clear(); }
 function clearLookupCacheOnly() { dateIndexCache.clear(); }
 
-const SIGNAL_VERSION = 'v4.2.7';
+const SIGNAL_VERSION = 'v4.2.9';
 window.__DG_BUILD__ = APP_BUILD;
 
 function getDecisionSignature(decision) {
@@ -296,13 +298,15 @@ function getLeftListRefreshText() {
     return `列表刷新于 ${formatLeftListRefreshTime(snapshot?.appliedAt || state.leftListRefreshAt)}`;
 }
 
-function renderLeftListHeader(title) {
+function renderLeftListHeader(title, options = {}) {
     const snapshot = getRefreshSnapshot('leftList') || {};
+    const refreshHtml = options.showRefresh === false ? '' : `
+                <span class="left-list-refresh-time" data-left-list-refresh data-refresh-id="${escapeHTML(snapshot.id || '')}" data-refresh-version="${snapshot.version || 0}" data-refresh-applied-at="${snapshot.appliedAt || 0}">${getLeftListRefreshText()}</span>`;
     return `
         <div class="stock-header">
             <div class="title-wrap">
                 <span>${escapeHTML(title)}</span>
-                <span class="left-list-refresh-time" data-left-list-refresh data-refresh-id="${escapeHTML(snapshot.id || '')}" data-refresh-version="${snapshot.version || 0}" data-refresh-applied-at="${snapshot.appliedAt || 0}">${getLeftListRefreshText()}</span>
+                ${refreshHtml}
             </div>
         </div>
     `;

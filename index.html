@@ -15,9 +15,9 @@
 <link rel="icon" href="assets/icons/favicon.svg" type="image/svg+xml">
 <link rel="alternate icon" href="assets/icons/favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="assets/icons/favicon.png">
-<script src="assets/vendor/chart.umd.min.js?v=20260721-03"></script>
+<script src="assets/vendor/chart.umd.min.js?v=20260721-12"></script>
 <script>window.Chart || document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"><\/script>')</script>
-<link rel="stylesheet" href="assets/css/dailyglance.css?v=20260721-03">
+<link rel="stylesheet" href="assets/css/dailyglance.css?v=20260721-12">
 </head>
 <body>
 
@@ -62,7 +62,7 @@
             <div class="terminal-block no-bg">
                 <div class="block-title" style="border:none; padding-bottom:0; margin-bottom:8px;">多维度逻辑拆解</div>
                 <ul class="text-dim" style="margin:0 0 0 18px; font-size:13px; line-height:1.6; padding:0;">
-                    <li style="margin-bottom:8px;"><strong>大盘定基调：</strong> 由四个核心指数的趋势温度推导，决定市场环境系数和仓位上限。</li>
+                    <li style="margin-bottom:8px;"><strong>核心建仓门禁：</strong> 只由沪深300、中证500、中证1000的多数状态推导；全面弱势只限制新开仓和加仓，不强制已有仓减仓。上证、深证、创业板、科创50和北证50仅用于观察，不参与个股建仓门禁。</li>
                     <li style="margin-bottom:8px;"><strong>指数动能 / 个股信号：</strong> 由策略窗口内的 B/L 技术信号积分推导，判断交易动能是否达标。</li>
                     <li><strong>风控/防守：</strong> 合并风险评分、L 类离场信号、近窗防守信号和持仓状态，用于控制极端风险与仓位纪律。</li>
                 </ul>
@@ -170,6 +170,11 @@
             </div>
         </div>
         <div class="integrated-container">
+            <div id="watchlistEmptyState" class="workspace-empty" hidden>
+                <div class="workspace-empty-title">添加第一只自选股</div>
+                <div class="workspace-empty-copy">添加后可查看走势、指标和策略信号</div>
+                <button type="button" class="workspace-empty-action" onclick="focusWatchlistSearch()">开始搜索</button>
+            </div>
             <div id="crosshairOverlay" class="crosshair-overlay">
                 <div id="crosshairLine" class="crosshair-line"></div>
             </div>
@@ -183,16 +188,20 @@
     
     <aside class="info-section">
         <div id="lastRefreshBar" class="refresh-bar" style="display:none;"><span class="text-dim mono refresh-time-text">图表及右侧刷新于 <span id="lastRefreshTime">--:--:--</span></span></div>
+        <div id="watchlistInfoEmptyState" class="info-empty" hidden>
+            <div class="info-empty-title">等待选择股票</div>
+            <div class="info-empty-copy">选择后显示今日状态、动作、仓位与风险</div>
+        </div>
         <div id="cardPrice" style="display: none;"></div>
         <div id="cardAnalysis" style="display: none;"></div>
     </aside>
 </main>
 
 <div id="toastContainer"></div>
-<script src="assets/js/01-config-ui.js?v=20260721-03"></script>
-<script src="assets/js/02-data.js?v=20260721-03"></script>
-<script src="assets/js/03-calculations.js?v=20260721-03"></script>
-<script src="assets/js/04-render.js?v=20260721-03"></script>
-<script src="assets/js/05-app.js?v=20260721-03"></script>
+<script src="assets/js/01-config-ui.js?v=20260721-12"></script>
+<script src="assets/js/02-data.js?v=20260721-12"></script>
+<script src="assets/js/03-calculations.js?v=20260721-12"></script>
+<script src="assets/js/04-render.js?v=20260721-12"></script>
+<script src="assets/js/05-app.js?v=20260721-12"></script>
 </body>
 </html>

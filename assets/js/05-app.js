@@ -667,11 +667,53 @@ async function addToWatchlist(code, name, meta = {}) {
     renderWatchlist(); 
 }
 
+function focusWatchlistSearch() {
+    const input = document.getElementById('stockSearchInput');
+    if (!input) return;
+    input.focus();
+    if (typeof input.select === 'function') input.select();
+}
+
+function setWatchlistEmptyState(isEmpty) {
+    const active = !!isEmpty;
+    const chartSection = document.querySelector('.chart-section');
+    const chartEmpty = document.getElementById('watchlistEmptyState');
+    const infoEmpty = document.getElementById('watchlistInfoEmptyState');
+    const refreshBar = document.getElementById('lastRefreshBar');
+    const backtestBtn = document.getElementById('btnBacktest');
+
+    if (chartSection) chartSection.classList.toggle('watchlist-empty-mode', active);
+    if (chartEmpty) chartEmpty.hidden = !active;
+    if (infoEmpty) infoEmpty.hidden = !active;
+    document.querySelectorAll('.chart-toolbar button, .chart-toolbar input').forEach(control => {
+        control.disabled = active;
+    });
+
+    if (active) {
+        document.querySelectorAll('.empty-hint').forEach(el => el.remove());
+        if (refreshBar) refreshBar.style.display = 'none';
+        if (backtestBtn) backtestBtn.style.display = 'none';
+        applySidebarHTML({ priceHtml: '', analysisHtml: '', isHide: true });
+    } else if (backtestBtn && state.mode === 'stock' && state.stockId) {
+        backtestBtn.style.display = 'flex';
+    }
+}
+
+function showEmptyWatchlistView() {
+    globalSelectionSeq++;
+    applyActiveSelectionState({ tab: 'stock', mode: 'stock', id: null, stockId: null });
+    resetViewportToLatest(null);
+    clearCharts();
+    setWatchlistEmptyState(true);
+    hideLoading();
+}
+
 async function removeStock(code) { 
     var stock = state.watchlist.find(function(s) { return s.code === code; });
     if (!stock) return;
     if (stock._pendingRemove) return;
     
+    const removedIndex = state.watchlist.indexOf(stock);
     stock._pendingRemove = true;
     renderWatchlist();
     const displayName = normalizeStockDisplayName(code, stock.name);
@@ -689,19 +731,16 @@ async function removeStock(code) {
         await saveWatchlist(); 
         renderWatchlist();
         
-        if(state.stockId === code) { 
-            applyActiveSelectionState({ tab: 'index', mode: 'index', id: 'sh', stockId: null });
-            
-            document.querySelectorAll('#mainTabs .nav-btn').forEach(btn => btn.classList.remove('active')); 
-            document.querySelector('#mainTabs .nav-btn[data-tab="index"]').classList.add('active');
-            document.getElementById('indexNavList').style.display = 'block'; 
-            document.getElementById('stockNavList').style.display = 'none'; 
-            document.getElementById('btnBacktest').style.display = 'none'; 
-            
-            globalSelectionSeq++; 
-            renderIndexList(); 
-            clearCharts(); 
-            cachedFetch('sh');
+        if(state.stockId === code) {
+            if (state.watchlist.length) {
+                const nextStock = state.watchlist[Math.min(removedIndex, state.watchlist.length - 1)];
+                const nextTarget = normalizeSecurityTarget(nextStock);
+                selectStock(nextTarget.code, nextTarget.name, nextTarget.secid, nextTarget.type, nextTarget.tencentSymbol);
+            } else {
+                showEmptyWatchlistView();
+            }
+        } else if (!state.watchlist.length && state.tab === 'stock') {
+            showEmptyWatchlistView();
         }
     }, 3000);
 }
@@ -849,6 +888,7 @@ async function _selectIndexImpl(id) {
     const config = getIndexConfig(id);
 
     applyActiveSelectionState({ tab: 'index', mode: 'index', id, stockId: null });
+    setWatchlistEmptyState(false);
     resetViewportToLatest(null);
 
     document.querySelectorAll('#mainTabs .nav-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === 'index'));
@@ -860,6 +900,7 @@ async function _selectIndexImpl(id) {
     // P0-1: showLoading 提前到 clearCharts 之前，避免图表区一帧空白闪烁
     showLoading(`加载 ${config.name} 数据...`);
     renderIndexList();
+    renderActiveSelectionStatus('loading');
     clearCharts();
     renderCache.clear();
 
@@ -893,6 +934,7 @@ async function _selectStockImpl(code, name, secid = '', type = '', tencentSymbol
     if (selectionSeq !== globalSelectionSeq) return;
 
     applyActiveSelectionState({ tab: 'stock', mode: 'stock', id: targetSecid, stockId: safeCode });
+    setWatchlistEmptyState(false);
     resetViewportToLatest(null);
 
     document.querySelectorAll('#mainTabs .nav-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === 'stock'));
@@ -914,7 +956,7 @@ async function _selectStockImpl(code, name, secid = '', type = '', tencentSymbol
         const data = getActiveData();
         if (!(data && data.length >= 30 && isValidPrice(data[data.length - 1].close, targetSecid))) {
             setRawData(targetSecid, null);
-            clearCharts();
+            clearCharts('error');
             const cPrice = document.getElementById('cardPrice');
             const cAnalysis = document.getElementById('cardAnalysis');
             if (cPrice) {
@@ -927,7 +969,7 @@ async function _selectStockImpl(code, name, secid = '', type = '', tencentSymbol
     } catch(e) {
         if (selectionSeq !== globalSelectionSeq || state.id !== targetSecid || state.stockId !== safeCode) return;
         setRawData(targetSecid, null);
-        clearCharts();
+        clearCharts('error');
         const cPrice = document.getElementById('cardPrice');
         const cAnalysis = document.getElementById('cardAnalysis');
         if (cPrice) {
@@ -952,32 +994,33 @@ function updateLeftMarketContext(date) {
     const market = getMarketContext(date);
     const panelClass = market.cls === 'bull' ? 'panel-bull' : (market.cls === 'bear' ? 'panel-bear' : 'panel-info');
     const textClass = market.cls === 'bull' ? 'text-bull' : (market.cls === 'bear' ? 'text-bear' : 'text-main');
+    const gateText = Number.isFinite(market.newPositionCap)
+        ? (market.newPositionCap <= 0 ? '关闭' : `新仓≤${market.newPositionCap}%`)
+        : '开放';
 
-    let detailHtml = market.trends.map(t => `
-        <div class="index-dash-card" style="padding: 8px 10px; margin-bottom: 4px;">
+    const detailHtml = market.trends.map(t => `
+        <div class="market-core-state">
             <span class="n">${t.name}</span>
             <span class="s ${t.score>0?'text-bull':t.score<0?'text-bear':'text-main'}">${t.state}</span>
         </div>
     `).join('');
 
     container.innerHTML = `
-        <div class="stock-header" style="margin-top:24px; padding-bottom:8px;">
-            <div class="title-wrap"><span>大盘环境与共振</span></div>
+        <div class="stock-header market-gate-header">
+            <div class="title-wrap"><span>核心建仓门禁</span></div>
         </div>
-        <div class="action-panel ${panelClass}" style="padding: 12px; gap:6px;">
+        <div class="action-panel market-gate-panel ${panelClass}">
             <div class="action-line">
-                <div class="action-name ${textClass}" style="font-size:16px;">${escapeHTML(market.label)}</div>
+                <div class="action-name ${textClass}">${escapeHTML(market.label)}</div>
                 <div class="action-cap">
-                    <span class="text-dim" style="font-size:10px;">建议仓位上限</span>
-                    <strong class="text-main mono" style="font-size:14px;">${market.maxPosition}%</strong>
+                    <span>门禁状态</span>
+                    <strong class="text-main mono">${escapeHTML(gateText)}</strong>
                 </div>
             </div>
-            <div class="action-sub text-dim" style="font-size:11px; padding-top:6px; margin-top:4px; line-height:1.4;">
+            <div class="action-sub text-dim">
                 ${escapeHTML(market.reason)}
             </div>
-        </div>
-        <div class="index-dash-grid" style="margin-top:8px;">
-            ${detailHtml}
+            <div class="market-core-grid">${detailHtml}</div>
         </div>
     `;
 }
@@ -1006,6 +1049,8 @@ function renderIndexList() {
     const html = INDEX_IDS.map(id => {
         const config = INDEX_CONFIG[id];
         const active = state.id === id && state.mode === 'index' ? 'active' : '';
+        const roleText = CORE_MARKET_INDEX_IDS.includes(id) ? '门禁核心' : '仅观察';
+        const roleClass = CORE_MARKET_INDEX_IDS.includes(id) ? 'core' : 'observe';
         const indexCode = (config.tencent || id).toUpperCase();
         const quoteDisplay = getLeftQuoteDisplay(id);
         
@@ -1016,6 +1061,7 @@ function renderIndexList() {
                 <div class="nav-list-main">
                     <div class="lname-wrap">
                         <span class="lname">${config.name}</span>
+                        <span class="index-role ${roleClass}">${roleText}</span>
                     </div>
                 </div>
                 <div class="nav-list-sub">
@@ -1027,7 +1073,7 @@ function renderIndexList() {
     }).join('');
     
     container.innerHTML = `
-        ${renderLeftListHeader('核心宽基指数')}
+        ${renderLeftListHeader('市场与板块指数')}
         <div>${html}</div>
         <div id="leftMarketContext"></div>
     `;
@@ -1065,16 +1111,16 @@ function renderWatchlist() {
     
     const sHtml = `
         <div class="stock-search">
-            <input id="stockSearchInput" placeholder="搜索代码/名称..." autocomplete="off" oninput="onSearchInput()" onkeydown="onSearchKeydown(event)">
+            <input id="stockSearchInput" placeholder="输入股票代码或名称" autocomplete="off" oninput="onSearchInput()" onkeydown="onSearchKeydown(event)">
             <div class="stock-suggest" id="stockSuggest"></div>
         </div>
     `;
     
     if(!state.watchlist.length) { 
         container.innerHTML = `
-            ${renderLeftListHeader('自选股池')}
+            ${renderLeftListHeader('自选股池 · 0/10', { showRefresh: false })}
             ${sHtml}
-            <div class="stock-empty"><strong>添加自选股</strong><br/>开启量化追踪</div>
+            <div class="stock-empty"><strong>还没有自选股</strong><br/>在上方搜索并添加</div>
         `; 
         return; 
     }
@@ -1558,9 +1604,7 @@ async function init() {
                 if(state.watchlist.length > 0) {
                     selectStock(state.watchlist[0].code, state.watchlist[0].name);
                 } else { 
-                    applyActiveSelectionState({ tab: 'stock', mode: 'stock', id: null, stockId: null });
-                    clearCharts(); 
-                    applySidebarHTML({ priceHtml: '', analysisHtml: '', isHide: true }); 
+                    showEmptyWatchlistView();
                 }
             }
         });

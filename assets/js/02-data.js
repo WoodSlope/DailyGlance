@@ -3,8 +3,18 @@
 // [2] 接口与数据层 (API & Data Layer)
 // ==========================================
 
-const INDEX_CONFIG = { sh: {name: '上证指数', eastmoney: '1.000001', tencent: 'sh000001'}, cy: {name: '创业板指', eastmoney: '0.399006', tencent: 'sz399006'}, zz1000: {name: '中证1000', eastmoney: '1.000852', tencent: 'sh000852'}, kc50: {name: '科创50', eastmoney: '1.000688', tencent: 'sh000688'} };
+const INDEX_CONFIG = {
+    sh: { name: '上证指数', eastmoney: '1.000001', tencent: 'sh000001', role: 'observe' },
+    sz: { name: '深证成指', eastmoney: '0.399001', tencent: 'sz399001', role: 'observe' },
+    hs300: { name: '沪深300', eastmoney: '1.000300', tencent: 'sh000300', role: 'core' },
+    zz500: { name: '中证500', eastmoney: '1.000905', tencent: 'sh000905', role: 'core' },
+    zz1000: { name: '中证1000', eastmoney: '1.000852', tencent: 'sh000852', role: 'core' },
+    cy: { name: '创业板指', eastmoney: '0.399006', tencent: 'sz399006', role: 'observe' },
+    kc50: { name: '科创50', eastmoney: '1.000688', tencent: 'sh000688', role: 'observe' },
+    bz50: { name: '北证50', eastmoney: '0.899050', tencent: 'bj899050', role: 'observe' }
+};
 const INDEX_IDS = Object.keys(INDEX_CONFIG);
+const CORE_MARKET_INDEX_IDS = INDEX_IDS.filter(id => INDEX_CONFIG[id].role === 'core');
 function getIndexConfig(id) { return INDEX_CONFIG[id] || null; }
 function resolveSecid(id) {
     const cfg = getIndexConfig(id);
@@ -134,6 +144,7 @@ const cachedFetchRefreshJobs = new Map();
 let cachedFetchRefreshApplyTimer = 0;
 let pendingCachedFetchRefreshApplyId = '';
 const historyRefreshMeta = new Map();
+const historySourceCircuits = new Map();
 const CN_MARKET_HOLIDAYS = new Set([
     // 2026 mainland exchange holidays, from SSE/SZSE yearly market-close notices.
     '2026-01-01', '2026-01-02',
@@ -149,6 +160,36 @@ function getBJDate() { return new Date(new Date().toLocaleString("en-US", {timeZ
 function isValidPrice(price, id) { return !isNaN(price) && price > 0; }
 function formatBJDate(date = getBJDate()) { return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; }
 function getTodayDate() { return formatBJDate(getBJDate()); }
+
+function getHistorySourceCircuit(source) {
+    return historySourceCircuits.get(source) || { consecutiveFailures: 0, openUntil: 0 };
+}
+
+function isHistorySourceCircuitOpen(source, now = Date.now()) {
+    const circuit = getHistorySourceCircuit(source);
+    if (!circuit.openUntil) return false;
+    if (circuit.openUntil > now) return true;
+    historySourceCircuits.delete(source);
+    return false;
+}
+
+function recordHistorySourceTransportFailure(source, now = Date.now()) {
+    const circuit = getHistorySourceCircuit(source);
+    const consecutiveFailures = circuit.consecutiveFailures + 1;
+    const openUntil = consecutiveFailures >= SYS_CONFIG.HISTORY_SOURCE_FAILURE_THRESHOLD
+        ? now + SYS_CONFIG.HISTORY_SOURCE_CIRCUIT_MS
+        : 0;
+    historySourceCircuits.set(source, { consecutiveFailures, openUntil });
+}
+
+function recordHistorySourceSuccess(source) {
+    historySourceCircuits.delete(source);
+}
+
+function resetHistorySourceCircuits() {
+    historySourceCircuits.clear();
+}
+
 function parseTencentQuoteTime(raw) {
     const text = String(raw || '').trim();
     if (!/^\d{14}$/.test(text)) return null;
@@ -173,6 +214,13 @@ function getTencentQuoteTimeInfo(fields, fallbackDate = getTodayDate()) {
         if (parsed) return parsed;
     }
     return { date: fallbackDate, quoteTime: '', quoteDateSource: 'local-fallback' };
+}
+
+function normalizeTencentQuoteAmount(rawAmount) {
+    const amountInTenThousands = parseFloat(rawAmount);
+    return Number.isFinite(amountInTenThousands) && amountInTenThousands >= 0
+        ? amountInTenThousands * 10000
+        : 0;
 }
 function isTradingDay(dateStr) {
     if (!dateStr) return false;
@@ -699,6 +747,22 @@ function convertDailyToWeekly(dailyData) {
     return weekly;
 }
 
+function mergePendingIndicatorMutation(nextMutation) {
+    const current = state.pendingIndicatorMutation;
+    if (nextMutation?.mode === 'market-only') {
+        if (!current || current.mode === 'unchanged' || current.mode === 'market-only') {
+            state.pendingIndicatorMutation = { mode: 'market-only', startIdx: 0 };
+        }
+        return;
+    }
+    if (current?.mode === 'market-only' && nextMutation?.mode === 'incremental') {
+        state.pendingIndicatorMutation = { mode: 'full', startIdx: 0 };
+        return;
+    }
+    if (current?.mode === 'market-only' && nextMutation?.mode === 'unchanged') return;
+    state.pendingIndicatorMutation = nextMutation;
+}
+
 function setRawData(id, data) {
     data = normalizeConfirmedHistoryData(data, id);
     const prevData = state.rawData[id];
@@ -739,9 +803,12 @@ function setRawData(id, data) {
         if (!isSameIndicatorScope) {
             state.indicators = { ma: {}, macd: null, rsi: null, kdj: null };
         }
-        state.pendingIndicatorMutation = isSameIndicatorScope ? getDataMutationMeta(prevData, data) : { mode: 'full', startIdx: 0 };
+        mergePendingIndicatorMutation(isSameIndicatorScope ? getDataMutationMeta(prevData, data) : { mode: 'full', startIdx: 0 });
         if (typeof markIndicatorsDirty === 'function') markIndicatorsDirty();
     }
+    const marketDataChanged = CORE_MARKET_INDEX_IDS.includes(id) && id !== state.id &&
+        mutation.mode !== 'unchanged' && Boolean(prevData?.length || data?.length);
+    if (marketDataChanged) mergePendingIndicatorMutation({ mode: 'market-only', startIdx: 0 });
     // 增量更新（同日价格变动）只清 lookup 缓存，保留 renderCache 防止面板闪烁
     if (mutation.mode === 'incremental') {
         clearLookupCacheOnly();
@@ -800,36 +867,90 @@ const requestManager = {
 };
 
 function jsonpFetchEastmoneyKline(id) {
+    if (isHistorySourceCircuitOpen('eastmoney')) return Promise.resolve([]);
     return new Promise(resolve => {
         const secid = resolveSecid(id), cb = 'em_kline_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
         const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&end=20500101&lmt=1000&cb=${cb}`;
         let cl = false; const cleanup = () => { if(cl) return; cl=true; clearTimeout(timer); delete window[cb]; const s = document.getElementById(cb); if(s) s.remove(); };
-        const timer = setTimeout(() => { cleanup(); resolve([]); }, 8000);
+        const fail = () => { if (cl) return; recordHistorySourceTransportFailure('eastmoney'); cleanup(); resolve([]); };
+        const timer = setTimeout(fail, 8000);
         window[cb] = data => { 
-            cleanup(); 
+            recordHistorySourceSuccess('eastmoney'); cleanup();
             if(data && data.data && data.data.klines) resolve(normalizeConfirmedHistoryData(data.data.klines.map(l => { const p = l.split(','); return { date: p[0], open: p[1], close: p[2], high: p[3], low: p[4], vol: p[5], amt: p[6] }; }), id)); 
             else resolve([]);
         };
-        const script = document.createElement('script'); script.id = cb; script.src = url; script.onerror = () => { cleanup(); resolve([]); }; document.head.appendChild(script);
+        const script = document.createElement('script'); script.id = cb; script.src = url; script.onerror = fail; document.head.appendChild(script);
     });
 }
 
 function jsonpFetchTencentKline(id) {
+    if (isHistorySourceCircuitOpen('tencent')) return Promise.resolve([]);
     return new Promise(resolve => {
         let symbol = resolveTencentSymbol(id);
         const cb = 'tx_kline_' + Date.now(), url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${symbol},day,,,1000,qfq&_var=${cb}`;
         let cl = false; const cleanup = () => { if(cl) return; cl = true; clearTimeout(timer); delete window[cb]; const s = document.getElementById(cb); if(s) s.remove(); };
-        const timer = setTimeout(() => { cleanup(); resolve([]); }, 5000); window[cb] = undefined;
+        const fail = () => { if (cl) return; recordHistorySourceTransportFailure('tencent'); cleanup(); resolve([]); };
+        const timer = setTimeout(fail, 5000); window[cb] = undefined;
         const script = document.createElement('script'); script.id = cb; script.src = url;
         script.onload = () => { 
-            const payload = window[cb]; cleanup(); 
+            if (cl) return;
+            const payload = window[cb]; recordHistorySourceSuccess('tencent'); cleanup();
             if(payload && payload.code === 0 && payload.data && payload.data[symbol]) { 
                 const klines = payload.data[symbol].qfqday || payload.data[symbol].day; 
                 if(!klines) { resolve([]); return; } 
-                resolve(normalizeConfirmedHistoryData(klines.map(p => ({ date: p[0], open: p[1], close: p[2], high: p[3], low: p[4], vol: p[5], amt: p.length > 6 ? p[6] : (parseFloat(p[5]) * parseFloat(p[2]) * 100) })), id)); 
+                resolve(normalizeConfirmedHistoryData(klines.map(p => ({ date: p[0], open: p[1], close: p[2], high: p[3], low: p[4], vol: p[5], amt: p.length > 6 ? p[6] : 0 })), id));
             } else resolve([]); 
         };
-        script.onerror = () => { cleanup(); resolve([]); }; document.head.appendChild(script);
+        script.onerror = fail; document.head.appendChild(script);
+    });
+}
+
+function jsonpFetchSinaBz50Kline(id) {
+    if (id !== 'bz50' || isHistorySourceCircuitOpen('sina')) return Promise.resolve([]);
+    return new Promise(resolve => {
+        const cb = 'dg_sina_bz50_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+        const callbackExpr = encodeURIComponent(`window[${JSON.stringify(cb)}]`);
+        const url = `https://quotes.sina.cn/cn/api/jsonp_v2.php/${callbackExpr}=/CN_MarketDataService.getKLineData?symbol=bj899050&scale=240&ma=no&datalen=1000`;
+        let cl = false;
+        const cleanup = () => {
+            if (cl) return;
+            cl = true;
+            clearTimeout(timer);
+            delete window[cb];
+            const current = document.getElementById(cb);
+            if (current) current.remove();
+        };
+        const fail = () => {
+            if (cl) return;
+            recordHistorySourceTransportFailure('sina');
+            cleanup();
+            resolve([]);
+        };
+        const timer = setTimeout(fail, 5000);
+        const script = document.createElement('script');
+        script.id = cb;
+        script.src = url;
+        script.onload = () => {
+            if (cl) return;
+            const rows = window[cb];
+            recordHistorySourceSuccess('sina');
+            cleanup();
+            if (!Array.isArray(rows)) {
+                resolve([]);
+                return;
+            }
+            resolve(normalizeConfirmedHistoryData(rows.map(row => ({
+                date: row.day,
+                open: row.open,
+                close: row.close,
+                high: row.high,
+                low: row.low,
+                vol: Number(row.volume) / 100,
+                amt: 0
+            })), id));
+        };
+        script.onerror = fail;
+        document.head.appendChild(script);
     });
 }
 
@@ -848,7 +969,7 @@ function getRealtimePriceJSONP(id) {
                     if(price > 0) { 
                         const prevClose = parseFloat(fields[4]) || 0;
                         const quoteTime = getTencentQuoteTimeInfo(fields);
-                        resolve({ date: quoteTime.date, quoteTime: quoteTime.quoteTime, quoteDateSource: quoteTime.quoteDateSource, open: parseFloat(fields[5])||price, high: parseFloat(fields[33])||price, low: parseFloat(fields[34])||price, close: price, prevClose, vol: parseInt(fields[36])||0, amt: parseFloat(fields[37])||0 }); 
+                        resolve({ date: quoteTime.date, quoteTime: quoteTime.quoteTime, quoteDateSource: quoteTime.quoteDateSource, open: parseFloat(fields[5])||price, high: parseFloat(fields[33])||price, low: parseFloat(fields[34])||price, close: price, prevClose, vol: parseInt(fields[36])||0, amt: normalizeTencentQuoteAmount(fields[37]) });
                         return; 
                     } 
                 } 
@@ -899,7 +1020,7 @@ function batchGetRealtimePrices(ids) {
                         if (price > 0) {
                             const prevClose = parseFloat(fields[4]) || 0;
                             const quoteTime = getTencentQuoteTimeInfo(fields);
-                            results[id] = { date: quoteTime.date, quoteTime: quoteTime.quoteTime, quoteDateSource: quoteTime.quoteDateSource, open: parseFloat(fields[5])||price, high: parseFloat(fields[33])||price, low: parseFloat(fields[34])||price, close: price, prevClose, vol: parseInt(fields[36])||0, amt: parseFloat(fields[37])||0 };
+                            results[id] = { date: quoteTime.date, quoteTime: quoteTime.quoteTime, quoteDateSource: quoteTime.quoteDateSource, open: parseFloat(fields[5])||price, high: parseFloat(fields[33])||price, low: parseFloat(fields[34])||price, close: price, prevClose, vol: parseInt(fields[36])||0, amt: normalizeTencentQuoteAmount(fields[37]) };
                         }
                     }
                     delete window[varName];
@@ -914,6 +1035,10 @@ function batchGetRealtimePrices(ids) {
 
 async function syncDataWithHistory(id) {
     let data = normalizeConfirmedHistoryData(await jsonpFetchEastmoneyKline(id), id); if(data && data.length >= 30) { setConfirmedStatus(id, { source: 'eastmoney', status: 'fresh', lastDate: data[data.length - 1]?.date || '', syncedAt: Date.now() }); return data; } 
+    if (id === 'bz50') {
+        data = normalizeConfirmedHistoryData(await jsonpFetchSinaBz50Kline(id), id);
+        if(data && data.length >= 30) { setConfirmedStatus(id, { source: 'sina', status: 'fresh', lastDate: data[data.length - 1]?.date || '', syncedAt: Date.now() }); return data; }
+    }
     data = normalizeConfirmedHistoryData(await jsonpFetchTencentKline(id), id); if(data && data.length >= 30) { setConfirmedStatus(id, { source: 'tencent', status: 'fresh', lastDate: data[data.length - 1]?.date || '', syncedAt: Date.now() }); return data; } 
     setConfirmedStatus(id, { status: 'failed', syncedAt: Date.now() });
     return null; 
@@ -1048,6 +1173,7 @@ async function handleUpdateData(forceFull = false) {
         lastUpdateClicks.set(state.id, Date.now());
     }
     
+    resetHistorySourceCircuits();
     btn.disabled = true; btn.innerHTML = SVG_ICONS.SPIN; 
     try { 
         const fresh = (!forceFull && info.needUpdate) ? await syncData(state.id) : await syncDataWithHistory(state.id); 
@@ -1065,6 +1191,16 @@ async function handleUpdateData(forceFull = false) {
     finally { btn.disabled = false; btn.innerHTML = SVG_ICONS.UPDATE; } 
 }
 
+const KLINE_CACHE_VERSION = 2;
+const NON_KLINE_CACHE_KEYS = new Set(['stock_cache', 'watchlist_list']);
+function isKlineCacheKey(id) { return !NON_KLINE_CACHE_KEYS.has(id); }
+function buildPersistentCacheRecord(id, data) {
+    return { id, data, updated: Date.now(), ...(isKlineCacheKey(id) ? { klineCacheVersion: KLINE_CACHE_VERSION } : {}) };
+}
+function isUsablePersistentCacheRecord(id, record) {
+    return !record || !isKlineCacheKey(id) || record.klineCacheVersion === KLINE_CACHE_VERSION;
+}
+
 let DB = null; const DB_NAME = 'QuantProDB_v515', DB_VER = 1, STORE = 'kline';
 function openDB() { 
     return new Promise(resolve => { 
@@ -1078,7 +1214,11 @@ function dbGet(id) {
     return new Promise(resolve => { 
         if(!DB) return resolve(null); 
         const req = DB.transaction(STORE, 'readonly').objectStore(STORE).get(id); 
-        req.onsuccess = e => resolve(e.target.result); req.onerror = () => resolve(null); 
+        req.onsuccess = e => {
+            const record = e.target.result;
+            resolve(isUsablePersistentCacheRecord(id, record) ? record : null);
+        };
+        req.onerror = () => resolve(null);
     }); 
 }
 function dbSet(id, data) { 
@@ -1086,7 +1226,7 @@ function dbSet(id, data) {
         if(!DB) return resolve(); 
         data = id === 'stock_cache' || id === 'watchlist_list' ? data : normalizeConfirmedHistoryData(data, id);
         const tx = DB.transaction(STORE, 'readwrite'); 
-        tx.objectStore(STORE).put({ id, data, updated: Date.now() }); 
+        tx.objectStore(STORE).put(buildPersistentCacheRecord(id, data));
         tx.oncomplete = () => resolve(); tx.onerror = () => resolve(); 
     }); 
 }
@@ -1278,10 +1418,14 @@ function buildDataRefreshResult(id, oldConfirmed, oldVisible, freshConfirmed, ne
 async function cachedFetch(id) {
     const perfTrace = PERF.start('cachedFetch', { id, activeId: state.id, mode: state.mode });
     const fetchStateKey = `${state.mode}_${state.id}_${state.period}_${state.strategy}`;
+    const fetchSelectionSeq = globalSelectionSeq;
+    const isActiveFetch = () => id === state.id &&
+        fetchStateKey === `${state.mode}_${state.id}_${state.period}_${state.strategy}` &&
+        fetchSelectionSeq === globalSelectionSeq;
     const cachedResult = await dbGet(id);
     if (cachedResult && cachedResult.data) cachedResult.data = normalizeConfirmedHistoryData(cachedResult.data, id);
     PERF.mark(perfTrace, 'dbGet');
-    if (cachedResult && cachedResult.data && cachedResult.data.length > 0 && id === state.id && state.rawData[id]?.length) {
+    if (cachedResult && cachedResult.data && cachedResult.data.length > 0 && isActiveFetch() && state.rawData[id]?.length) {
         scheduleCachedFetchRefresh(id);
         const hasActiveChartView = !!(state.charts && (state.charts.main || state.charts.vol || state.charts.macd || state.charts.kdj));
         if (!hasActiveChartView) {
@@ -1300,7 +1444,7 @@ async function cachedFetch(id) {
             PERF.mark(perfTrace, 'left-list');
             requestAnimationFrame(() => {
                 const currentStateKey = `${state.mode}_${state.id}_${state.period}_${state.strategy}`;
-                if (currentStateKey !== fetchStateKey || id !== state.id) return;
+                if (currentStateKey !== fetchStateKey || !isActiveFetch()) return;
                 draw();
                 safeUpdateSidebar();
                 markRefreshTime(rightTxn, { path: 'restore-memory-chart', id });
@@ -1314,7 +1458,7 @@ async function cachedFetch(id) {
         PERF.end(perfTrace, { status: 'active-memory-refresh', firstLoad: false });
         return;
     }
-    if (cachedResult && cachedResult.data && cachedResult.data.length > 0 && id === state.id) {
+    if (cachedResult && cachedResult.data && cachedResult.data.length > 0 && isActiveFetch()) {
         setRawData(id, cachedResult.data);
         tryApplyCachedLiveOverlay(id, state.rawData[id]);
         setLockIdx(getActiveData()?.length - 1 || -1);
@@ -1329,7 +1473,7 @@ async function cachedFetch(id) {
         PERF.mark(perfTrace, 'left-list');
         requestAnimationFrame(() => {
             const currentStateKey = `${state.mode}_${state.id}_${state.period}_${state.strategy}`;
-            if (currentStateKey !== fetchStateKey || id !== state.id) return;
+            if (currentStateKey !== fetchStateKey || !isActiveFetch()) return;
             draw();
             safeUpdateSidebar();
             markRefreshTime(rightTxn, { path: 'cache-first', id });
@@ -1341,26 +1485,28 @@ async function cachedFetch(id) {
         return;
     }
 
-    const oldVisible = id === state.id ? getActiveData() : null;
+    const oldVisible = isActiveFetch() ? getActiveData() : null;
     const fresh = await syncData(id);
     PERF.mark(perfTrace, 'syncData', { points: fresh?.length || 0 });
     if (!fresh || fresh.length === 0) {
-        document.getElementById('loading').innerHTML = `<div class="loading-wrap" style="flex-direction:column;gap:16px;"><div class="text-bull" style="font-size:14px;font-weight:700;">数据加载失败</div><button onclick="location.reload()" style="padding:8px 24px;background:var(--blue);border:none;border-radius:4px;color:#fff;cursor:pointer;font-weight:600;outline:none;">重试</button></div>`;
+        if (isActiveFetch()) {
+            if (typeof clearCharts === 'function') clearCharts('error');
+            if (typeof renderActiveSelectionStatus === 'function') renderActiveSelectionStatus('unavailable');
+        }
         PERF.end(perfTrace, { status: 'no-fresh-data', firstLoad: true });
         return;
     }
 
     const old = state.rawData[id];
-    const refreshResult = buildDataRefreshResult(id, old, oldVisible, fresh, id === state.id ? getActiveData() : oldVisible);
+    const refreshResult = buildDataRefreshResult(id, old, oldVisible, fresh, isActiveFetch() ? getActiveData() : oldVisible);
     const hasUpdate = refreshResult.confirmedChanged;
-    const visibleHasUpdate = id === state.id && refreshResult.visibleChanged;
+    const visibleHasUpdate = isActiveFetch() && refreshResult.visibleChanged;
     const shouldApplyFresh = !old || !old.length || refreshResult.confirmedChanged;
     const leftTxn = beginRefreshTransaction('leftList', { source: 'cachedFetch', id });
     const rightTxn = beginRefreshTransaction('rightPanel', { source: 'cachedFetch', id });
     
     if (shouldApplyFresh) {
         setRawData(id, fresh);
-        setLockIdx(getActiveData()?.length - 1 || -1);
         PERF.mark(perfTrace, 'active-data', { source: 'fresh', points: fresh.length });
         await dbSet(id, fresh);
         PERF.mark(perfTrace, 'dbSet');
@@ -1369,14 +1515,15 @@ async function cachedFetch(id) {
             if (matched) syncWatchlistSignalSnapshotFast(matched.code, fresh);
             PERF.mark(perfTrace, 'watchlist');
         }
-        if (id === state.id) {
+        if (isActiveFetch()) {
+            setLockIdx(getActiveData()?.length - 1 || -1);
             hideLoading();
             renderMASelector();
             updateAllIndicators();
             PERF.mark(perfTrace, 'indicators');
             requestAnimationFrame(() => {
                 const currentStateKey = `${state.mode}_${state.id}_${state.period}_${state.strategy}`;
-                if (currentStateKey !== fetchStateKey || id !== state.id) return;
+                if (currentStateKey !== fetchStateKey || !isActiveFetch()) return;
                 draw();
                 safeUpdateSidebar();
                 markRefreshTime(rightTxn, { path: 'apply-fresh', id });
@@ -1384,22 +1531,22 @@ async function cachedFetch(id) {
             PERF.mark(perfTrace, 'schedule-draw');
         }
         PERF.mark(perfTrace, 'apply-fresh', { hasUpdate, firstLoad: !old || !old.length });
-    } else if (id === state.id && visibleHasUpdate) {
+    } else if (isActiveFetch() && visibleHasUpdate) {
         renderMASelector();
         updateAllIndicators();
         requestAnimationFrame(() => {
             const currentStateKey = `${state.mode}_${state.id}_${state.period}_${state.strategy}`;
-            if (currentStateKey !== fetchStateKey || id !== state.id) return;
+            if (currentStateKey !== fetchStateKey || !isActiveFetch()) return;
             applyActiveDataRefresh(id);
             markRefreshTime(rightTxn, { path: 'apply-live-overlay', id });
         });
         PERF.mark(perfTrace, 'apply-live-overlay', { points: getActiveData()?.length || 0 });
-    } else if (id === state.id) {
+    } else if (isActiveFetch()) {
         hideLoading();
         renderMASelector();
         requestAnimationFrame(() => {
             const currentStateKey = `${state.mode}_${state.id}_${state.period}_${state.strategy}`;
-            if (currentStateKey !== fetchStateKey || id !== state.id) return;
+            if (currentStateKey !== fetchStateKey || !isActiveFetch()) return;
             draw();
             safeUpdateSidebar();
             markRefreshTime(rightTxn, { path: 'reuse-state', id });
