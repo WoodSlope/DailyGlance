@@ -785,6 +785,29 @@ function getPositionCalculationCopy(meta, decision, mode = 'stock') {
     return parts.length > 1 ? parts.join(' → ') : (decision?.positionDriver || `最终${positionName} ${finalPosition}%`);
 }
 
+function getHistoricalKdjScoreClarification(meta, idx, full, indicators = state.indicators) {
+    const scoreItem = getEffectiveWindowBuySignals(meta, STRATEGY).find(item => item?.signal === 'B8');
+    if (!scoreItem || !Number.isFinite(Number(idx))) return '';
+    const signalDay = Number.isFinite(Number(scoreItem.day))
+        ? Number(scoreItem.day)
+        : Number(idx) - (Number(scoreItem.dayOffset) || 0);
+    if (!Number.isFinite(signalDay) || signalDay >= Number(idx)) return '';
+
+    const signalDate = full?.[signalDay]?.date || `${Number(idx) - signalDay}个交易日前`;
+    const selectedDate = full?.[idx]?.date || '所选日期';
+    const score = Number(scoreItem.score) || getSignalScore('B8', STRATEGY) || 1;
+    const windowDays = Number(STRATEGY?.windowDays) || 10;
+    const currentK = Number(indicators?.kdj?.k?.[idx]);
+    const currentD = Number(indicators?.kdj?.d?.[idx]);
+    let currentState = '';
+    if (Number.isFinite(currentK) && Number.isFinite(currentD)) {
+        if (currentK < currentD) currentState = '；截至所选日期，K已回到D下方';
+        else if (currentK > currentD) currentState = '；截至所选日期，K仍在D上方';
+        else currentState = '；截至所选日期，K与D重合';
+    }
+    return `KDJ说明：金叉发生于${signalDate}，并非${selectedDate}当天${currentState}，但现行${windowDays}日历史窗口仍保留这${score}分`;
+}
+
 function generateAnalysisHTML(idx, full, meta) {
     const fmt = v => v ? v.toFixed(2) : '--';
     if (!full || !full[idx]) return '';
@@ -834,6 +857,32 @@ function generateAnalysisHTML(idx, full, meta) {
         });
     } else {
         ptsValidHtml = UI.sectionTitle(noWindowSignalTitle, 'text-dim');
+    }
+
+    let ptsInvalidHtml = '';
+    const seenInvalidatedSignals = new Set();
+    const invalidatedSignals = [...(meta.invalidatedWindowSignals || [])]
+        .sort((a, b) => (Number(b.invalidationDay) - Number(a.invalidationDay)) || (Number(b.day) - Number(a.day)))
+        .filter(item => {
+            if (!item?.signal || seenInvalidatedSignals.has(item.signal)) return false;
+            seenInvalidatedSignals.add(item.signal);
+            return true;
+        });
+    if (invalidatedSignals.length) {
+        ptsInvalidHtml += UI.sectionTitle('近期失效信号', 'text-dim');
+        invalidatedSignals.forEach(item => {
+            const signalDate = item.signalDate || full?.[item.day]?.date || '近窗';
+            const invalidationDate = item.invalidationDate || full?.[item.invalidationDay]?.date || '后续';
+            const invalidationText = item.reason === 'kdj-dead-cross'
+                ? `${invalidationDate}死叉失效`
+                : `${invalidationDate}跌破${Number.isFinite(Number(item.invalidationLevel)) ? Number(item.invalidationLevel).toFixed(2) : '防守位'}失效`;
+            ptsInvalidHtml += renderTechnicalSignalRow(
+                getUserSignalText(item.signal),
+                item.signal,
+                `${signalDate}触发 · ${invalidationText} · 不计分`,
+                true
+            );
+        });
     }
 
     let signalsHtmlBlock = '';
@@ -896,12 +945,17 @@ function generateAnalysisHTML(idx, full, meta) {
                     </div>
                     <div class="signal-compact">${ptsRawHtml}</div>
                     <div class="signal-compact">${ptsValidHtml}</div>
+                    ${ptsInvalidHtml ? `<div class="signal-compact">${ptsInvalidHtml}</div>` : ''}
                 </div>
             </details>
         `;
     }
     
-    const noviceSummary = getNoviceDecisionSummary(meta, decision, state.mode);
+    const baseNoviceSummary = getNoviceDecisionSummary(meta, decision, state.mode);
+    const kdjScoreClarification = getHistoricalKdjScoreClarification(meta, idx, full, state.indicators);
+    const noviceSummary = kdjScoreClarification
+        ? { ...baseNoviceSummary, reason: `${baseNoviceSummary.reason}。${kdjScoreClarification}` }
+        : baseNoviceSummary;
     const riskFlags = decision.risk.flags.length ? decision.risk.flags.join(' / ') : '处于安全空间，无明显偏离';
     const diagnosis = state.mode === 'stock' ? getHoldingDiagnosis(idx, full, state.indicators, meta, decision) : null;
     const exitEvidence = getExitSignalEvidence(meta, decision);
